@@ -58,19 +58,12 @@ bool are_hashes_equal(const tb_hash_t *hash1, const tb_hash_t *hash2,
     int diff;
     if ( ( hash1 == NULL ) || ( hash2 == NULL ) )
         return false;
-
-    if ( hash_alg == TB_HALG_SHA1 )
-        return (memcmp_s(hash1, SHA1_LENGTH, hash2, SHA1_LENGTH, &diff) == 0 && diff == 0);
-    else if ( hash_alg == TB_HALG_SHA256 )
-        return (memcmp_s(hash1, SHA256_LENGTH, hash2, SHA256_LENGTH, &diff) == 0 && diff == 0);
-    else if ( hash_alg == TB_HALG_SM3 )
-        return (memcmp_s(hash1, SM3_LENGTH, hash2, SM3_LENGTH, &diff) == 0 && diff == 0);
-    else if ( hash_alg == TB_HALG_SHA384 )
-        return (memcmp_s(hash1, SHA384_LENGTH, hash2, SHA384_LENGTH, &diff) == 0 && diff == 0);
-    else if ( hash_alg == TB_HALG_SHA512 )
-        return (memcmp_s(hash1, SHA512_LENGTH, hash2, SHA512_LENGTH, &diff) == 0 && diff == 0);
-    else
+    
+    rsize_t hash_len = get_hash_size(hash_alg);
+    if ( hash_len == 0 )
         return false;
+
+    return (memcmp_s(hash1, hash_len, hash2, hash_len, &diff) == 0 && diff == 0);
 }
 
 /*
@@ -85,62 +78,33 @@ bool hash_buffer(const unsigned char* buf, size_t size, tb_hash_t *hash,
     if ( hash == NULL )
         return false;
 
-    if ( hash_alg == TB_HALG_SHA1 || hash_alg == TB_HALG_SHA1_LG ) {
-        EVP_MD_CTX *ctx = EVP_MD_CTX_create();
-        const EVP_MD *md;
+    EVP_MD_CTX *ctx = EVP_MD_CTX_create();
+    const EVP_MD *md;
 
+    if ( hash_alg == TB_HALG_SHA1 || hash_alg == TB_HALG_SHA1_LG ) {
         md = EVP_sha1();
-        EVP_DigestInit(ctx, md);
-        EVP_DigestUpdate(ctx, buf, size);
-        EVP_DigestFinal(ctx, hash->sha1, NULL);
-        EVP_MD_CTX_destroy(ctx);
-        return true;
+        
     }
     else if (hash_alg == TB_HALG_SHA256) {
-        EVP_MD_CTX *ctx = EVP_MD_CTX_create();
-        const EVP_MD *md;
-
         md = EVP_sha256();
-        EVP_DigestInit(ctx, md);
-        EVP_DigestUpdate(ctx, buf, size);
-        EVP_DigestFinal(ctx, hash->sha256, NULL);
-        EVP_MD_CTX_destroy(ctx);
-        return true;
     }
     else if (hash_alg == TB_HALG_SHA384) {
-        EVP_MD_CTX *ctx = EVP_MD_CTX_create();
-        const EVP_MD *md;
-
         md = EVP_sha384();
-        EVP_DigestInit(ctx, md);
-        EVP_DigestUpdate(ctx, buf, size);
-        EVP_DigestFinal(ctx, hash->sha384, NULL);
-        EVP_MD_CTX_destroy(ctx);
-        return true;
     }
     else if (hash_alg == TB_HALG_SHA512) {
-        EVP_MD_CTX *ctx = EVP_MD_CTX_create();
-        const EVP_MD *md;
-
         md = EVP_sha512();
-        EVP_DigestInit(ctx, md);
-        EVP_DigestUpdate(ctx, buf, size);
-        EVP_DigestFinal(ctx, hash->sha512, NULL);
-        EVP_MD_CTX_destroy(ctx);
-        return true;
     }
     else if (hash_alg == TB_HALG_SM3) {
-        EVP_MD_CTX *ctx = EVP_MD_CTX_create();
-        const EVP_MD *md;
         md = EVP_sm3();
-        EVP_DigestInit(ctx, md);
-        EVP_DigestUpdate(ctx, buf, size);
-        EVP_DigestFinal(ctx, hash->sm3, NULL);
-        EVP_MD_CTX_destroy(ctx);
-        return true;
     }
     else
         return false;
+    
+    EVP_DigestInit(ctx, md);
+    EVP_DigestUpdate(ctx, buf, size);
+    EVP_DigestFinal(ctx, hash->sha1, NULL);
+    EVP_MD_CTX_destroy(ctx);
+    return true;
 }
 
 /*

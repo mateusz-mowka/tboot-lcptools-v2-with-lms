@@ -42,6 +42,8 @@
 #include <ctype.h>
 #include <errno.h>
 #include <string.h>
+#include <arpa/inet.h>
+
 #include <openssl/rsa.h>
 #include <openssl/engine.h>
 #include <openssl/pem.h>
@@ -104,21 +106,20 @@ size_t strlcpy(char *dst, const char *src, size_t siz)
     return strnlen_s(dst, siz);
 }
 
-void print_hex(const char *prefix, const void *data, size_t n)
+void dump_hex(const char *prefix, const void *data, size_t n, uint16_t line_length)
 {
-#define NUM_CHARS_PER_LINE 20
     unsigned int i = 0;
     while ( i < n ) {
-        if ( i % NUM_CHARS_PER_LINE == 0 && prefix != NULL ) {
+        if ( i % line_length == 0 && prefix != NULL ) {
             DISPLAY("%s", prefix);
         }
         DISPLAY("%02x ", *(uint8_t *)data++);
         i++;
-        if ( i % NUM_CHARS_PER_LINE == 0 ) {
+        if ( i % line_length == 0 ) {
             DISPLAY("\n");
         }
     }
-    if ( i % NUM_CHARS_PER_LINE != 0 ) {
+    if ( i % line_length != 0 ) {
         DISPLAY("\n");
     }
 }
@@ -181,7 +182,7 @@ void *read_file(const char *file, size_t *length, bool fail_ok)
     return data;
 }
 
-bool write_file(const char *file, const void *data, size_t size)
+bool write_file(const char *file, const void *data, size_t size, size_t offset)
 {
     LOG("[write_file]\n");
     FILE *fp = fopen(file, "wb");
@@ -190,6 +191,7 @@ bool write_file(const char *file, const void *data, size_t size)
                 file, strerror(errno));
         return false;
     }
+    fseek(fp, offset, SEEK_SET);
     if ( fwrite(data, size, 1, fp) != 1 ) {
         ERROR("Error: writing file %s\n", file);
         fclose(fp);
@@ -309,6 +311,8 @@ const char *key_alg_to_str(uint16_t alg)
         return "TPM_ALG_RSA";
     case TPM_ALG_ECC:
         return "TPM_ALG_ECC";
+    case TPM_ALG_LMS:
+        return "TPM_ALG_LMS";
     default:
         return "";
     }
@@ -332,6 +336,8 @@ const char *sig_alg_to_str(uint16_t alg)
         return "TPM_ALG_NULL";
     case LCP_POLSALG_RSA_PKCS_15:
         return "LCP_POLSALG_RSA_PKCS_15";
+    case TPM_ALG_LMS:
+        return "TPM_ALG_LMS";
     default:
         snprintf_s_i(buf, sizeof(buf), "unknown (%u)", alg);
         return buf;
@@ -383,6 +389,8 @@ uint16_t str_to_sig_alg(const char *str) {
         return TPM_ALG_SM2;
     if( strcmp(str,"rsa-pss") == 0 || strcmp(str,"rsapss") == 0 )
         return TPM_ALG_RSAPSS;
+    if (strcmp(str,"lms") == 0)
+        return TPM_ALG_LMS;
     else {
         LOG("Unrecognized signature alg, assuming TPM_ALG_NULL");
         return TPM_ALG_NULL;
@@ -1153,7 +1161,7 @@ bool ec_sign_data(sized_buffer *data, sized_buffer *r, sized_buffer *s, uint16_t
     // Dry run, calculate length:
     result = EVP_DigestSignFinal(mctx, NULL, &sig_length);
     if (result <= 0 ) {
-        ERROR("Error: failed to comp=ute signature length.\n");
+        ERROR("Error: failed to compute signature length.\n");
         goto OPENSSL_ERROR;
     }
     signature_block = OPENSSL_malloc(sig_length);
@@ -1498,6 +1506,108 @@ unsigned char *der_encode_sig_comps(sized_buffer *sig_r, sized_buffer *sig_s, in
         }
         return der_encoded_sig;
 }
+
+char *strip_fname_extension(const char *fname)
+/**
+ * Strip extension from a filename.
+ *
+ * @param fname The input filename.
+ * @return A new string with the extension removed. Or a copy of original
+ *         string if there's no extension. Caller must free the memory.
+ *         Returns NULL on error or if input is NULL.
+ */
+{
+    size_t len = 0x00;
+    const char *dot = NULL;
+    const char *slash = NULL;
+    char *result = NULL;
+    if (fname == NULL) {
+        ERROR("Error: filename is NULL.\n");
+        return NULL;
+    }
+    
+    // Find the last occurrence of '.' and '/'
+    dot = strrchr(fname, '.');
+    slash = strrchr(fname, '/');
+    
+    // If no dot found or dot is part of directory path, return a copy of original
+    if (dot == NULL || (slash != NULL && dot < slash)) {
+        result = strdup(fname);
+        if (result == NULL) {
+            ERROR("Error: failed to allocate memory for filename.\n");
+            return NULL;
+        }
+        return result;
+    }
+    
+    // Calculate size needed for the result string (without extension)
+    len = dot - fname;
+    
+    // Allocate memory for the result
+    result = calloc(len + 1, 1); // +1 for null terminator
+    if (result == NULL) {
+        ERROR("Error: failed to allocate memory for filename.\n");
+        return NULL;
+    }
+    
+    // Copy the filename without the extension
+    int status = memcpy_s(result, len + 1, fname, len);
+    if (status != 0) {
+        ERROR("Error: memcpy_s failed while copying filename.\n");
+        free(result);
+        return NULL;
+    }
+    
+    return result;
+}
+
+static const char *lms_type_to_str(uint16_t type)
+{
+    switch (type) {
+        case LMOTS_SHA256_N32_W4:
+            return "LMOTS_SHA256_N32_W4";
+        case LMS_SHA256_M32_H20:
+            return "LMS_SHA256_M32_H20";
+        default:
+            return "Unknown";
+    }
+}
+
+void print_xdr_lms_key_info(const lms_xdr_key_data *key) 
+{
+    if (key == NULL) {
+        ERROR("Error: key is NULL.\n");
+        return;
+    }
+    DISPLAY("LMS Public Key is in XDR format, which is Big Endian.\n");
+    DISPLAY("LMS Public Key:\n");
+    DISPLAY("   LMS Type: 0x%x (%s)\n", ntohl(key->LmsType), lms_type_to_str(ntohl(key->LmsType)));
+    DISPLAY("   LMOTS Type: 0x%x (%s)\n", ntohl(key->LmotsType), lms_type_to_str(ntohl(key->LmotsType)));
+    DISPLAY("   LMS Key Identifier:\n");
+    print_hex("      ", (const void *) &key->I, 16);
+    DISPLAY("   LMS tree 1st node string:\n");
+    print_hex("      ", (const void *) &key->T1, 32);
+        
+}
+void print_lms_signature(const lms_signature_block *sig) 
+{
+    if (sig == NULL) {
+        ERROR("Error: signature is NULL.\n");
+        return;
+    }
+    DISPLAY("LMS Signature:\n");
+    DISPLAY("    LMS leaf number: 0x%x\n", ntohl(sig->Q));
+    DISPLAY("    LMOTS Signature:\n");
+    DISPLAY("        LMOTS Type: 0x%x (%s)\n", ntohl(sig->Lmots.Type), lms_type_to_str(ntohl(sig->Lmots.Type)));
+    DISPLAY("        LMOTS Seed:\n");
+    dump_hex("            ", (const void *) &sig->Lmots.Seed, LMS_SEED_SIZE, 32);
+    DISPLAY("        LMOTS Signature Block:\n");
+    dump_hex("            ", (const void *) &sig->Lmots.Y, LMOTS_SIGNATURE_BLOCK_SIZE, 32);
+    DISPLAY("    LMS Type: 0x%x (%s)\n", ntohl(sig->LmsType), lms_type_to_str(ntohl(sig->LmsType)));
+    DISPLAY("    LMS PATH:\n");
+    dump_hex("            ", (const void *) &sig->Path, LMS_SIGNATURE_BLOCK_SIZE, 32);
+}
+
 
 /*
  * Local variables:

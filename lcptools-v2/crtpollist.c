@@ -66,7 +66,7 @@
 #include "pollist1.h"
 
 #define TOOL_VER_MAJOR 0x1
-#define TOOL_VER_MINOR 0x1
+#define TOOL_VER_MINOR 0x2
 
 static const char help[] =
     "Usage: lcp2_crtpollist <COMMAND> [OPTIONS]\n"
@@ -74,7 +74,7 @@ static const char help[] =
     "Supports:\n"
     "    LCP_POLICY_LIST - legacy list format - major version 0x1.\n"
     "    LCP_POLICY_LIST_2 - current list format for RSA-SSA - major version 0x2\n"
-    "    LCP_POLICY_LIST_2_1 - current list format for RSA-PSS and ECDSA - major version 0x1\n"
+    "    LCP_POLICY_LIST_2_1 - current list format for LMS, RSA-PSS, ECDSA and hybrid signatures - major version 0x1\n"
     "\n--create\n"
     "Creates LCP list version <version> containing elements from [ELT FILES]\n"
     "and writes it to <FILE>.\n\n"
@@ -93,13 +93,14 @@ static const char help[] =
     "        [ELT FILES]...           policy element file(s)\n"
     "\n--sign\n"
     "Signs policy list file\n"
-    "        --sigalg                 <rsa|rsapss|ecdsa|sm2> signature algorithm\n"
+    "        --sigalg                 <rsa|rsapss|ecdsa|sm2|lms> signature algorithm\n"
     "        [--hashalg]              LCP_POLICY_LIST2_1 option:\n"
     "                                 <sha1|sha256|sha384|sha512|sm2> hash algorithm\n"
     "        --pub <key file>         PEM file of public key\n"
     "        [--priv <key file>]      PEM file of private key\n"
     "        [--rev <rev ctr>]        revocation counter value\n"
     "        [--nosig]                don't add SigBlock\n"
+    "        [--savesig <FILE>]       save LCP_SIGNATURE2_1 to file\n"
     "        --out <FILE>             policy list file to sign\n"
     "\n--addsig\n"
     "Adds signature file to LCP_POLICY_LIST_2 - this option cannot be used\n"
@@ -118,7 +119,10 @@ static const char help[] =
     "\n--version                      show tool version.\n"
     "The public and private keys can be created as follows:\n"
     "  openssl genrsa -out privkey.pem 2048\n"
-    "  openssl rsa -pubout -in privkey.pem -out pubkey.pem\n";
+    "  openssl rsa -pubout -in privkey.pem -out pubkey.pem\n"
+    "LMS private and public keys with Winternitz coefficient of 4 and Merkle tree height of 20\n"
+    "can be generated as follows:\n"
+    "  demo lms_key 20/4\n";
 
 bool verbose = false;
 
@@ -141,6 +145,7 @@ static struct option long_opts[] =
     {"priv",           required_argument,    NULL,     'i'},
     {"rev",            required_argument,    NULL,     'r'},
     {"nosig",          no_argument,          NULL,     'n'},
+    {"savesig",        required_argument,    NULL,     'g'},
     {"sig",            required_argument,    NULL,     's'},
     {"listver",        required_argument,    NULL,     'l'},
     {"verbose",        no_argument,          NULL,     't'},
@@ -157,8 +162,10 @@ static uint16_t       sigalg_type = TPM_ALG_NULL; // Default
 static char           pubkey_file[MAX_PATH] = "";
 static char           privkey_file[MAX_PATH] = "";
 static char           sig_file[MAX_PATH] = "";
+static char           saved_sig_file[MAX_PATH] = "";
 static uint16_t       rev_ctr = 0;
 static bool           no_sigblock = false;
+static bool           dump_sigblock = false;
 static unsigned int   nr_files = 0;
 static char           files[MAX_FILES][MAX_PATH];
 static char           hash_alg_name[32] = "";
@@ -200,7 +207,7 @@ static int create_list_2_1(void)
         free(elt);
         elt = NULL;
     }
-    write_ok = write_tpm20_policy_list_2_1_file(pollist_file, pollist);
+    write_ok = write_tpm20_policy_list_2_1_file(pollist_file, NULL, pollist);
 
     free(pollist);
     return write_ok ? 0 : 1;
@@ -303,16 +310,21 @@ static int sign(void)
     user_input.sig_alg = sigalg_type;
     user_input.hash_alg = hash_alg_cli;
     user_input.rev_ctr = rev_ctr;
+    user_input.dump_sigblock = dump_sigblock;
     if (strcpy_s(user_input.list_file, MAX_PATH, pollist_file) != EOK) {
-        ERROR("Error: cannot open file.\n");
+        ERROR("Error: cannot copy policy list file name.\n");
         return 1;
     }
     if (strcpy_s(user_input.pubkey_file, MAX_PATH, pubkey_file) != EOK) {
-        ERROR("Error: cannot open file.\n");
+        ERROR("Error: cannot copy public key file name.\n");
         return 1;
     }
     if (strcpy_s(user_input.privkey_file, MAX_PATH, privkey_file) != EOK) {
-        ERROR("Error: cannot open file.\n");
+        ERROR("Error: cannot copy private key file name.\n");
+        return 1;
+    }
+    if (strcpy_s(user_input.saved_sig_file, MAX_PATH, saved_sig_file) != EOK) {
+        ERROR("Error: cannot copy saved signature file name.\n");
         return 1;
     }
     if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION) ) {
@@ -565,6 +577,7 @@ int main(int argc, char *argv[])
         case 'W':          /* show */
         case 'V':          /* verify */
         case 'v':          /* version */
+        case 'L':          /* lms */
             if ( prev_cmd ) {
                 ERROR("Error: only one command can be specified\n");
                 return 1;
@@ -602,7 +615,7 @@ int main(int argc, char *argv[])
 
         case 'i':            /* priv */
             strlcpy(privkey_file, optarg, sizeof(privkey_file));
-            LOG("cmdline opt: pub: %s\n", privkey_file);
+            LOG("cmdline opt: priv: %s\n", privkey_file);
             break;
 
         case 'r':            /* rev */
@@ -618,6 +631,11 @@ int main(int argc, char *argv[])
         case 's':            /* sigblock */
             strlcpy(sig_file, optarg, sizeof(sig_file));
             LOG("cmdline opt: sigblock: %s\n", sig_file);
+            break;
+
+        case 'g':            /* savesig */
+            strlcpy(saved_sig_file, optarg, sizeof(saved_sig_file));
+            LOG("cmdline opt: savesig: %s\n", saved_sig_file);
             break;
 
         case 'l': /* listver */
@@ -702,7 +720,8 @@ int main(int argc, char *argv[])
                 sigalg_type != TPM_ALG_RSAPSS &&
                 sigalg_type != TPM_ALG_SM3_256 &&
                 sigalg_type != LCP_POLSALG_RSA_PKCS_15 &&
-                sigalg_type != TPM_ALG_SM2) {
+                sigalg_type != TPM_ALG_SM2 &&
+                sigalg_type != TPM_ALG_LMS) {
                 ERROR("Error: Signature algorithm 0x%x unsupported.\n", sigalg_type);
                 return 1;
             }

@@ -812,7 +812,7 @@ bool write_tpm20_policy_list_file(const char *file,
         }
     }
 
-    return write_file(file, pollist, len);
+    return write_file(file, pollist, len, 0);
 }
 
 lcp_signature_t2 *read_rsa_pubkey_file(const char *file)

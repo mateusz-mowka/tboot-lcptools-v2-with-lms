@@ -70,13 +70,17 @@ lcp_policy_list_t2_1 *add_tpm20_policy_element_2_1(lcp_policy_list_t2_1
 bool verify_tpm20_pollist_2_1_sig(lcp_policy_list_t2_1 *pollist);
 bool calc_tpm20_policy_list_2_1_hash(const lcp_policy_list_t2_1 *pollist,
                                    lcp_hash_t2 *hash, uint16_t hash_alg);
-bool write_tpm20_policy_list_2_1_file(const char *file,
+bool write_tpm20_policy_list_2_1_file(const char *file, const char *signature_file,
                                     const lcp_policy_list_t2_1 *pollist);
 lcp_signature_2_1 *create_empty_ecc_signature_2_1(void);
 lcp_signature_2_1 *create_empty_rsa_signature_2_1(void);
+lcp_signature_2_1 *create_empty_lms_signature_2_1(void);
 lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base_size,
                                              uint16_t key_signature_offset);
 bool sign_lcp_policy_list_t2_1(sign_user_input user_input);
+bool add_lcp_signature_2_1(uint16_t revocation_counter, const char *sig_file, const char *policy_list_file);
+bool add_lms_signature_and_key(const char *sig_file, const char *pubkey_file,
+                              const char *policy_list_file);
 
 #endif
 
