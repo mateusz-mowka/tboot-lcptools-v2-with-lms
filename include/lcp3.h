@@ -216,6 +216,7 @@ typedef struct __packed {
 #define TPM_ALG_NULL	0x0010
 #define TPM_ALG_SM3_256	0x0012
 #define TPM_ALG_ECC     0x0023
+#define TPM_ALG_LMS     0x0070
 
 #define TPM_ALG_MASK_NULL	    0x0000
 #define TPM_ALG_MASK_SHA1	    0x0001
@@ -240,6 +241,7 @@ typedef struct __packed {
 #define TPM_ALG_RSAPSS  0x0016
 #define TPM_ALG_ECDSA   0x0018
 #define TPM_ALG_SM2     0x001B
+#define TPM_ALG_LMS     0x0070
 
 typedef union {
     uint8_t    sha1[SHA1_DIGEST_SIZE];
@@ -359,11 +361,12 @@ typedef struct __packed {
 } lcp_policy_list_t2;
 
 /* LCP POLICY LIST 2.1 and its helper structs */
-#define SIGNATURE_VERSION 0x10
-#define MAX_RSA_KEY_SIZE  0x180
-#define MIN_RSA_KEY_SIZE  0x100
-#define MAX_ECC_KEY_SIZE  0x30
-#define MIN_ECC_KEY_SIZE  0x20
+#define SIGNATURE_VERSION        0x10
+#define HYBRID_SIGNATURE_VERSION 0x90
+#define MAX_RSA_KEY_SIZE         0x180
+#define MIN_RSA_KEY_SIZE         0x100
+#define MAX_ECC_KEY_SIZE         0x30
+#define MIN_ECC_KEY_SIZE         0x20
 
 typedef struct __packed {
     uint8_t  Version;
@@ -408,9 +411,96 @@ typedef struct __packed {
     rsa_signature  Signature;
 } rsa_key_and_signature;
 
+//LCP supports these LMS and LMOTS types:
+#define LMS_SHA256_M32_H20   0x8
+#define LMOTS_SHA256_N32_W4  0x3
+
+#define LMOTS_SIGNATURE_N_SIZE SHA256_DIGEST_SIZE // bytes in SHA256 digest
+#define LMOTS_SIGNATURE_P_SIZE 67 // Number of n-byte string elements that make up the LMOTS signature
+// With N and P we calculate the size of the signature block:
+#define LMOTS_SIGNATURE_BLOCK_SIZE (LMOTS_SIGNATURE_N_SIZE * LMOTS_SIGNATURE_P_SIZE)
+
+#define LMS_SIGNATURE_H_HEIGHT 20 // Height of the LMS tree
+#define LMS_SIGNATURE_M_SIZE SHA256_DIGEST_SIZE // Number of bytes in each LMS tree node
+
+// With H and M we calculate the size of the LMS signature:
+#define LMS_SIGNATURE_BLOCK_SIZE (LMS_SIGNATURE_H_HEIGHT * LMS_SIGNATURE_M_SIZE)
+
+#define LMS_SEED_SIZE 32
+#define LMS_MAX_PUBKEY_SIZE 56
+
+typedef struct __packed {
+    uint32_t LmsType; //Must be 0x8 (LMS_SHA256_M32_H20)
+    uint32_t LmotsType; //Must be 0x3 (LMOTS_SHA256_N32_W4)
+    uint8_t  I[16]; //LMS key identifier
+    uint8_t  T1[32]; //32-byte string associated with the 1st node of binary Merkel tree.
+} lms_xdr_key_data;
+
+typedef struct __packed {
+    uint8_t  Version;
+    uint16_t KeySize; //Must be 56 (LMS_MAX_PUBKEY_SIZE)
+    lms_xdr_key_data PubKey;
+} lms_public_key;
+
+typedef struct __packed {
+    uint32_t Type; // Must be 0x3 (LMOTS_SHA256_N32_W4)
+    uint8_t  Seed[LMS_SEED_SIZE];
+    uint8_t  Y[LMOTS_SIGNATURE_BLOCK_SIZE];
+} lmots_signature;
+
+typedef struct __packed {
+    uint32_t        Q; //Leaf number
+    lmots_signature Lmots;
+    uint32_t        LmsType; //Must be 0x8 (LMS_SHA256_M32_H20)
+    uint8_t         Path[LMS_SIGNATURE_BLOCK_SIZE];
+} lms_signature_block;
+
+typedef struct __packed {
+    uint8_t  Version;
+    uint16_t KeySize;
+    uint16_t HashAlg;
+    lms_signature_block signature;
+} lms_signature;
+
+typedef struct __packed {
+    uint8_t Version;
+    uint16_t KeyAlg;
+    lms_public_key Key;
+    uint16_t SigScheme;
+    lms_signature Signature;
+} lms_key_and_signature;
+
+typedef struct __packed {
+    uint8_t  Version; //bit7 of this value must be 1 to indicate hybrid signature
+    uint16_t RsaKeyAlg;
+    rsa_public_key RsaKey;
+    uint16_t RsaSigScheme; //TPM_ALG_RSAPSS
+    rsa_signature RsaSignature;
+    uint16_t LmsKeyAlg;
+    lms_public_key LmsKey;
+    uint16_t LmsSigScheme; //TPM_ALG_LMS
+    lms_signature LmsSignature;
+} rsa_lms_key_and_signature;
+
+typedef struct __packed {
+    uint8_t  Version; //bit7 of this
+    uint16_t EccKeyAlg;
+    ecc_public_key EccKey;
+    uint16_t EccSigScheme;
+    ecc_signature EccSignature;
+    uint16_t LmsKeyAlg;
+    lms_public_key LmsKey;
+    uint16_t LmsSigScheme; //TPM_ALG_LMS
+    lms_signature LmsSignature;
+} ecc_lms_key_and_signature;
+
 typedef union __packed {
-    rsa_key_and_signature    RsaKeyAndSignature;
-    ecc_key_and_signature    EccKeyAndSignature;
+    rsa_key_and_signature     RsaKeyAndSignature;
+    ecc_key_and_signature     EccKeyAndSignature;
+    lms_key_and_signature     LmsKeyAndSignature;
+    //New Hybrid signatures
+    rsa_lms_key_and_signature RsaLmsKeyAndSignature;
+    ecc_lms_key_and_signature EccLmsKeyAndSignature;
 } lcp_key_and_sig;
 
 typedef struct __packed {
