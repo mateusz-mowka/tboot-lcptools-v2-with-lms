@@ -684,7 +684,7 @@ int main (int argc, char *argv[])
             }
         case 'e':           /* LCP version */
             strlcpy(pol_ver_name, optarg, sizeof(pol_ver_name));
-            LOG("cmdline opt: sign: %s\n", pol_ver_name);
+            LOG("cmdline opt: LCP version: %s\n", pol_ver_name);
 
             pol_ver = str_to_pol_ver(pol_ver_name);
             if ( pol_ver == LCP_VER_NULL) {

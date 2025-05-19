@@ -426,6 +426,9 @@ uint32_t str_to_sig_alg_mask(const char *str, const uint16_t version, size_t siz
         else if (strncmp(str, "sm2", size) == 0) {
             return SIGN_ALG_MASK_SM2;
         }
+        else if (strncmp(str, "lms", size) == 0) {
+            return (SIGN_ALG_MASK_LMS_P56B | SIGN_ALG_MASK_LMS_SHA256_M32_H20);
+        }
         else if(strncmp(str, "0X", 2) || strncmp(str, "0x", 2)){
             return strtoul(str, NULL, 0);
         }

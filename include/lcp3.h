@@ -40,6 +40,10 @@
  * is incremented since layout is incompatible with previous revision.
  */
 
+#ifndef BITN
+#define BITN(n) (1 << (n))
+#endif
+
 /*--------- LCP UUID ------------*/
 #define LCP_POLICY_DATA_UUID   {0xab0d1925, 0xeee7, 0x48eb, 0xa9fc, \
                                {0xb, 0xac, 0x5a, 0x26, 0x2d, 0xe}}
@@ -226,15 +230,18 @@ typedef struct __packed {
 #define TPM_ALG_MASK_SHA512	    0x0080
 
 #define SIGN_ALG_MASK_NULL                  0x00000000
-#define SIGN_ALG_MASK_RSASSA_1024_SHA1      0x00000001 //Not supported
-#define SIGN_ALG_MASK_RSASSA_1024_SHA256    0x00000002
-#define SIGN_ALG_MASK_RSASSA_2048_SHA1      0x00000004 //Legacy
-#define SIGN_ALG_MASK_RSASSA_2048_SHA256    0x00000008 //ok
-#define SIGN_ALG_MASK_RSASSA_3072_SHA256    0x00000040 //ok
-#define SIGN_ALG_MASK_RSASSA_3072_SHA384    0x00000080 //ok
-#define SIGN_ALG_MASK_ECDSA_P256            0x00001000 //Sha256 ok
-#define SIGN_ALG_MASK_ECDSA_P384            0x00002000 //Sha 384
-#define SIGN_ALG_MASK_SM2                   0x00010000 //ok
+#define SIGN_ALG_MASK_RSASSA_1024_SHA1      BITN(0)  //Not supported
+#define SIGN_ALG_MASK_RSASSA_1024_SHA256    BITN(1)
+#define SIGN_ALG_MASK_RSASSA_2048_SHA1      BITN(2)  //Legacy
+#define SIGN_ALG_MASK_RSASSA_2048_SHA256    BITN(3)  //ok
+#define SIGN_ALG_MASK_RSASSA_3072_SHA256    BITN(6)  //ok
+#define SIGN_ALG_MASK_RSASSA_3072_SHA384    BITN(7)  //ok
+#define SIGN_ALG_MASK_ECDSA_P256            BITN(12) //Sha256 ok
+#define SIGN_ALG_MASK_ECDSA_P384            BITN(13) //Sha 384
+#define SIGN_ALG_MASK_LMS_P56B              BITN(14) //Public key size 56 bytes
+#define SIGN_ALG_MASK_SM2                   BITN(16) //ok
+#define SIGN_ALG_MASK_LMS_SHA256_M32_H20    BITN(17) //LMS LMOTS_SHA256_N32_W4 is used with
+
 
 /*--------- Signature algs ------------*/
 #define TPM_ALG_RSASSA  0x0014
@@ -362,7 +369,6 @@ typedef struct __packed {
 
 /* LCP POLICY LIST 2.1 and its helper structs */
 #define SIGNATURE_VERSION        0x10
-#define HYBRID_SIGNATURE_VERSION 0x90
 #define MAX_RSA_KEY_SIZE         0x180
 #define MIN_RSA_KEY_SIZE         0x100
 #define MAX_ECC_KEY_SIZE         0x30
@@ -470,37 +476,10 @@ typedef struct __packed {
     lms_signature Signature;
 } lms_key_and_signature;
 
-typedef struct __packed {
-    uint8_t  Version; //bit7 of this value must be 1 to indicate hybrid signature
-    uint16_t RsaKeyAlg;
-    rsa_public_key RsaKey;
-    uint16_t RsaSigScheme; //TPM_ALG_RSAPSS
-    rsa_signature RsaSignature;
-    uint16_t LmsKeyAlg;
-    lms_public_key LmsKey;
-    uint16_t LmsSigScheme; //TPM_ALG_LMS
-    lms_signature LmsSignature;
-} rsa_lms_key_and_signature;
-
-typedef struct __packed {
-    uint8_t  Version; //bit7 of this
-    uint16_t EccKeyAlg;
-    ecc_public_key EccKey;
-    uint16_t EccSigScheme;
-    ecc_signature EccSignature;
-    uint16_t LmsKeyAlg;
-    lms_public_key LmsKey;
-    uint16_t LmsSigScheme; //TPM_ALG_LMS
-    lms_signature LmsSignature;
-} ecc_lms_key_and_signature;
-
 typedef union __packed {
     rsa_key_and_signature     RsaKeyAndSignature;
     ecc_key_and_signature     EccKeyAndSignature;
     lms_key_and_signature     LmsKeyAndSignature;
-    //New Hybrid signatures
-    rsa_lms_key_and_signature RsaLmsKeyAndSignature;
-    ecc_lms_key_and_signature EccLmsKeyAndSignature;
 } lcp_key_and_sig;
 
 typedef struct __packed {

@@ -43,7 +43,13 @@
 
 #define MAX_PATH           256
 
+#ifndef BITN
 #define BITN(x) (1 << (x))
+#endif
+
+#ifndef UNUSED
+#define UNUSED(x) (void)(x)
+#endif
 
 #include <openssl/evp.h>
 

@@ -67,8 +67,9 @@ static size_t get_tpm20_key_and_signature_2_1_real_size(const lcp_signature_2_1 
 static size_t get_tpm20_list_2_1_signature_size(const lcp_signature_2_1 *sig);
 static bool get_rsa_signature_2_1_data(lcp_signature_2_1 *sig, void *data);
 static bool get_ecc_signature_2_1_data(lcp_signature_2_1 *sig, void *data);
-static bool verify_tpm20_pollist_2_1_rsa_sig(lcp_policy_list_t2_1 *pollist);
+static bool verify_tpm20_pollist_2_1_rsa_sig(const lcp_policy_list_t2_1 *pollist);
 static bool verify_tpm20_pollist_2_1_ec_sig(const lcp_policy_list_t2_1 *pollist);
+static bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist);
 static void display_tpm20_signature_2_1(const char *prefix, const lcp_signature_2_1 *sig,
                                                         const uint16_t sig_alg);
 static lcp_policy_list_t2_1 *add_tpm20_signature_2_1(lcp_policy_list_t2_1 *pollist,
@@ -747,6 +748,9 @@ bool verify_tpm20_pollist_2_1_sig(lcp_policy_list_t2_1 *pollist)
         //This works with SM2 too.
         result = verify_tpm20_pollist_2_1_ec_sig(pollist);
     }
+    else if ( header->key_alg == TPM_ALG_LMS) {
+        result = verify_tpm20_pollist_2_1_lms_sig(pollist);
+    }
     else {
         //Function end
         ERROR("Error: signature verification failed - unknown key algorithm\n");
@@ -909,7 +913,7 @@ bool verify_tpm20_pollist_2_1_ec_sig(const lcp_policy_list_t2_1 *pollist)
         return result;
 }
 
-bool verify_tpm20_pollist_2_1_rsa_sig(lcp_policy_list_t2_1 *pollist)
+bool verify_tpm20_pollist_2_1_rsa_sig(const lcp_policy_list_t2_1 *pollist)
 /*
 This function: verifies rsa signature block in policy list
 
@@ -1039,6 +1043,13 @@ Out: true if verifies false if not
     free(signature_buffer);
     free(list_data);
     return result;
+}
+
+bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
+{
+    LOG("[verify_tpm20_pollist_2_1_lms_sig]\n");
+    UNUSED(pollist);
+    return true;
 }
 
 void display_tpm20_signature_2_1(const char *prefix, const lcp_signature_2_1 *sig,
@@ -1348,6 +1359,21 @@ Out: void
             buff_size = 2 * (sig->KeyAndSignature.EccKeyAndSignature.Key.KeySize / 8);
             result = hash_buffer(
             (const unsigned char *) sig->KeyAndSignature.EccKeyAndSignature.Key.QxQy,
+            buff_size, (tb_hash_t *) hash, hash_alg);
+            if (!result) {
+                ERROR("ERROR: failed to allocate buffer\n");
+                return false;
+            }
+            else {
+                return true;
+            }
+        case TPM_ALG_LMS:
+            LOG("List signed: LMS\n");
+            //keysize in lcp signature 2.1 is in bits
+            //Qx and Qy are each KeySize
+            buff_size = sig->KeyAndSignature.LmsKeyAndSignature.Key.KeySize;
+            result = hash_buffer(
+            (const unsigned char *) &sig->KeyAndSignature.LmsKeyAndSignature.Key.PubKey,
             buff_size, (tb_hash_t *) hash, hash_alg);
             if (!result) {
                 ERROR("ERROR: failed to allocate buffer\n");
