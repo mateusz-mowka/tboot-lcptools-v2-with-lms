@@ -1048,7 +1048,65 @@ Out: true if verifies false if not
 bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
 {
     LOG("[verify_tpm20_pollist_2_1_lms_sig]\n");
-    UNUSED(pollist);
+    //Dump public key to file
+    //Dump signature to file
+    //Remember to add 0x00000001 at the beginning of the signature and key
+    //bevause that's the format the demo tool uses
+    lcp_signature_2_1 *sig = NULL;
+
+    const char *pub_key_fname = "lcp_pubkey_temp.pub";
+    const char *sig_fname = "lcp_list_data_temp.sig";
+    const char *list_data_fname = "lcp_list_data_temp";
+    const char *cli = "demo verify lcp_pubkey_temp lcp_list_data_temp";
+    uint32_t num_micali_trees = 0x01000000;
+
+    FILE *fp_key = NULL;
+    FILE *fp_sig = NULL;
+    FILE *fp_list_data = NULL;
+
+    fp_key = fopen(pub_key_fname, "wb+");
+    if ( fp_key == NULL ) {
+        ERROR("Error: failed to open file for writing key.\n");
+        return false;
+    }
+    fp_sig = fopen(sig_fname, "wb+");
+    if ( fp_sig == NULL ) {
+        ERROR("Error: failed to open file for writing signature.\n");
+        fclose(fp_key);
+        return false;
+    }
+    fp_list_data = fopen(list_data_fname, "wb+");
+    if (fp_list_data == NULL) {
+        ERROR("Error: failed to open file for writing list data.\n");
+        fclose(fp_key);
+        fclose(fp_sig);
+        return false;
+    }
+
+    //Write 0x00000001 to the file (Big Endian)
+    fwrite((const void *) &num_micali_trees, sizeof(uint32_t), 1, fp_key);
+    fwrite((const void *) &num_micali_trees, sizeof(uint32_t), 1, fp_sig);
+
+    //Write public key to file
+    sig = get_tpm20_signature_2_1(pollist);
+    fwrite((const void *) &sig->KeyAndSignature.LmsKeyAndSignature.Key.PubKey, sizeof(uint8_t),
+           sizeof(lms_xdr_key_data), fp_key);
+    //Write signature to file
+    fwrite((const void *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature,
+           sizeof(uint8_t), sizeof(lms_signature_block), fp_sig);
+    //Write list data to file   
+    fwrite((const void *) pollist, sizeof(uint8_t), pollist->KeySignatureOffset,
+           fp_list_data);
+
+    fclose(fp_key);
+    fclose(fp_sig);
+    fclose(fp_list_data);
+    
+    //Now we call "demo verify" to verify the signature
+    if (system(cli) != EOK) {
+        ERROR("Error: signature did not verify.\n");
+        return false;
+    }
     return true;
 }
 
@@ -1231,7 +1289,7 @@ Out:
             sig->KeyAndSignature.LmsKeyAndSignature.Signature.HashAlg,
             hash_alg_to_str(sig->KeyAndSignature.LmsKeyAndSignature.Signature.HashAlg)
         );
-        print_lms_signature((const lms_signature_block *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.signature);
+        print_lms_signature((const lms_signature_block *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature);
     default:
         break;
     }
@@ -2116,7 +2174,11 @@ static lcp_signature_2_1 *read_lms_pubkey_file_2_1(const char *pubkey_file)
     }
     fseek(fp, sizeof(uint32_t), SEEK_SET);
     //Read the public key to buffer and close the file
-    fread((void *) &lms_pubkey.PubKey, sizeof(lms_pubkey.PubKey), 1, fp);
+    if (fread((void *) &lms_pubkey.PubKey, sizeof(lms_pubkey.PubKey), 1, fp) == 0) {
+        ERROR("ERROR: failed to read public key file.\n");
+        fclose(fp);
+        return NULL;
+    }
     fclose(fp);
 
     sig = create_empty_lms_signature_2_1();
@@ -2221,7 +2283,7 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     //to skip first 4 bytes (similar to public key)
     fseek(fp_signature, sizeof(uint32_t), SEEK_SET);
     size_t copy_size = sizeof(lms_signature_block);
-    if (fread((void *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.signature, sizeof(uint8_t), copy_size, fp_signature) == 0) {
+    if (fread((void *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature, sizeof(uint8_t), copy_size, fp_signature) == 0) {
         ERROR("ERROR: failed to read signature file.\n");
         goto CLOSE_FILES;
     }
@@ -2229,7 +2291,7 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     //Dump sigblock if verbose is on
     if (verbose) {
         DISPLAY("Signature blokc:\n");
-        print_hex("    ", (const void *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.signature, copy_size);
+        print_hex("    ", (const void *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature, copy_size);
 
     }
 

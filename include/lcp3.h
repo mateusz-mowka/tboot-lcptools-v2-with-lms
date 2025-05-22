@@ -465,7 +465,7 @@ typedef struct __packed {
     uint8_t  Version;
     uint16_t KeySize;
     uint16_t HashAlg;
-    lms_signature_block signature;
+    lms_signature_block Signature;
 } lms_signature;
 
 typedef struct __packed {
