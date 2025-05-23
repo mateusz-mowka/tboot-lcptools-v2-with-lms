@@ -146,8 +146,9 @@ static void display(const char *prefix, const lcp_policy_element_t *elt)
 
     uint8_t *hash = (uint8_t *)get_hashes(sbios);
     for ( unsigned int i = 0; i < *get_num_hashes(sbios); i++ ) {
-        DISPLAY("%s hashes[%u]: ", prefix, i);
-        print_hex("", hash, hash_size);
+        DISPLAY("%s hashes[%u]:\n", prefix, i);
+        DISPLAY("%s", prefix);
+        print_hex("    ", hash, hash_size);
         hash += hash_size;
     }
 }

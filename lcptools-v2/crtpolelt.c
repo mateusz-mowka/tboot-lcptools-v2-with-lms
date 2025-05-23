@@ -251,7 +251,7 @@ int main (int argc, char *argv[])
         elt->type = curr_plugin->type;
         elt->policy_elt_control = pol_elt_ctrl;
 
-        if ( !write_file(out_file, elt, elt->size) ) {
+        if ( !write_file(out_file, elt, elt->size, 0) ) {
             ERROR("Error: error writing element\n");
             free(elt);
             return 1;
