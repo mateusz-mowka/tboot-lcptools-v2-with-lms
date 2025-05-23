@@ -1064,6 +1064,8 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
     FILE *fp_sig = NULL;
     FILE *fp_list_data = NULL;
 
+    tb_hash_t policy_list_hash = { 0 };
+
     fp_key = fopen(pub_key_fname, "wb+");
     if ( fp_key == NULL ) {
         ERROR("Error: failed to open file for writing key.\n");
@@ -1085,6 +1087,7 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
 
     //Write 0x00000001 to the file (Big Endian)
     fwrite((const void *) &num_micali_trees, sizeof(uint32_t), 1, fp_key);
+    num_micali_trees = 0x0;
     fwrite((const void *) &num_micali_trees, sizeof(uint32_t), 1, fp_sig);
 
     //Write public key to file
@@ -1094,15 +1097,18 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
     //Write signature to file
     fwrite((const void *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature,
            sizeof(uint8_t), sizeof(lms_signature_block), fp_sig);
-    //Write list data to file   
-    fwrite((const void *) pollist, sizeof(uint8_t), pollist->KeySignatureOffset,
-           fp_list_data);
+    //Write list data to file
+
+    hash_buffer((const unsigned char *) pollist, pollist->KeySignatureOffset, &policy_list_hash, TPM_ALG_SHA256);
+
+    fwrite((const void *) &policy_list_hash, 1, SHA256_DIGEST_SIZE, fp_list_data);
 
     fclose(fp_key);
     fclose(fp_sig);
     fclose(fp_list_data);
     
     //Now we call "demo verify" to verify the signature
+    DISPLAY("Calling: %s\n", cli);
     if (system(cli) != EOK) {
         ERROR("Error: signature did not verify.\n");
         return false;
