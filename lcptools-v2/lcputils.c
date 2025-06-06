@@ -720,7 +720,7 @@ Out: true/false on verification success or failure
         goto OPENSSL_ERROR;
     }
     
-    digest = malloc(get_lcp_hash_size(hashAlg));
+    digest = malloc(sizeof(tb_hash_t));
     if (digest == NULL) {
         ERROR("Error: failed to allocate digest");
         status = 0;
