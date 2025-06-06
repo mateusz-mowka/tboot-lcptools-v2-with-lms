@@ -89,12 +89,12 @@ bool verify_policy_element(const lcp_policy_element_t *elt, size_t size)
 void display_policy_element(const char *prefix,
                             const lcp_policy_element_t *elt, bool brief)
 {
-    DISPLAY("%s size: 0x%x (%u)\n", prefix, elt->size, elt->size);
+    DISPLAY("%s size: 0x%x\n", prefix, elt->size);
 
     polelt_plugin_t *plugin = find_polelt_plugin_by_type(elt->type);
 
     const char *type_str = (plugin == NULL) ? "unknown" : plugin->type_string;
-    DISPLAY("%s type: \'%s\' (%u)\n", prefix, type_str, elt->type);
+    DISPLAY("%s type: \'0x%x\' (%s)\n", prefix, elt->type, type_str);
 
     DISPLAY("%s policy_elt_control: 0x%08x\n", prefix,
             elt->policy_elt_control);

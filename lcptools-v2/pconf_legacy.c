@@ -324,7 +324,7 @@ static lcp_policy_element_t *create(void)
             ERROR("Error: no pcrs were selected.\n");
             return NULL;
         }
-        digest = malloc(SHA1_DIGEST_SIZE);
+        digest = malloc(sizeof(tb_hash_t));
         if (digest == NULL) {
             ERROR("Error: failed to allocate memory for digest buffer.\n");
             return NULL;
