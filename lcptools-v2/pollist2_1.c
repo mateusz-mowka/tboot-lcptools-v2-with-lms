@@ -134,7 +134,7 @@ lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base
     }
 
     new_pollist = malloc(key_signature_offset);
-    key_alg = *((uint16_t *) raw_data + key_signature_offset + 1);
+    key_alg = *((uint16_t *)(raw_data + key_signature_offset + 1));
     sig = create_empty_signature_2_1(key_alg);
     if (sig == NULL || new_pollist == NULL ) {
         ERROR("ERROR: unable to create signature.\n");
