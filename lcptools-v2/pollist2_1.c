@@ -1066,18 +1066,18 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
 
     tb_hash_t policy_list_hash = { 0 };
 
-    fp_key = fopen(pub_key_fname, "wb+");
+    fp_key = fopen(pub_key_fname, "wb");
     if ( fp_key == NULL ) {
         ERROR("Error: failed to open file for writing key.\n");
         return false;
     }
-    fp_sig = fopen(sig_fname, "wb+");
+    fp_sig = fopen(sig_fname, "wb");
     if ( fp_sig == NULL ) {
         ERROR("Error: failed to open file for writing signature.\n");
         fclose(fp_key);
         return false;
     }
-    fp_list_data = fopen(list_data_fname, "wb+");
+    fp_list_data = fopen(list_data_fname, "wb");
     if (fp_list_data == NULL) {
         ERROR("Error: failed to open file for writing list data.\n");
         fclose(fp_key);
@@ -2262,8 +2262,12 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
         goto CLOSE_FILES;
     }
 
+    fclose(fp_list_digest);
+    fp_list_digest = NULL; //We don't need it anymore
+
     //Here we call the LMS demo tool to sign the digest
     sprintf(cli, fmt, privkey_file_no_ext, lcp_list_digest_file);
+    printf("Running command: %s\n", cli);
     status = system(cli);
     if (status != EOK) {
         ERROR("ERROR: failed to sign list data.\n");
