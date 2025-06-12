@@ -180,7 +180,7 @@ static lcp_policy_element_t *create(void)
     /* generate a TPM2B_DIGEST using the pcr composite */
     /* TODO: not sure if this is correct, but reuse the pcr hash alg */
     pcr_digest_size = sizeof(*pcr_digest) + pcr_alg_size;
-    pcr_digest = malloc(pcr_digest_size);
+    pcr_digest = malloc(sizeof(tb_hash_t));
     if (!pcr_digest) {
         ERROR("Error: failed to allocate a TPM2B_DIGEST\n");
         goto err;
