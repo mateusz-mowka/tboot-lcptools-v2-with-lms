@@ -43,6 +43,14 @@
 
 #define MAX_PATH           256
 
+#ifndef BITN
+#define BITN(x) (1 << (x))
+#endif
+
+#ifndef UNUSED
+#define UNUSED(x) (void)(x)
+#endif
+
 #include <openssl/evp.h>
 
 //Helper struct to pass user input data to functions in pollist2 and pollist2_1
@@ -50,9 +58,11 @@ typedef struct sign_user_input {
     uint16_t sig_alg;
     uint16_t hash_alg;
     uint16_t rev_ctr;
+    bool     dump_sigblock;
     char list_file[MAX_PATH];
     char pubkey_file[MAX_PATH];
     char privkey_file[MAX_PATH];
+    char saved_sig_file[MAX_PATH];
 } sign_user_input;
 
 /*
@@ -71,11 +81,14 @@ extern void DISPLAY(const char *fmt, ...);
 
 extern size_t strlcpy(char *dst, const char *src, size_t siz);
 
-extern void print_hex(const char *prefix, const void *data, size_t n);
+extern void dump_hex(const char *prefix, const void *data, size_t n, uint16_t line_length);
+
+#define print_hex(prefix, data, n) dump_hex(prefix, data, n, 16)
+
 extern void parse_comma_sep_ints(char *s, uint16_t ints[],
                                  unsigned int *nr_ints);
 extern void *read_file(const char *file, size_t *length, bool fail_ok);
-extern bool write_file(const char *file, const void *data, size_t size);
+extern bool write_file(const char *file, const void *data, size_t size, size_t offset);
 extern bool parse_line_hashes(const char *line, tb_hash_t *hash, uint16_t alg);
 extern bool parse_file(const char *filename, bool (*parse_line)(const char *line));
 extern const char *hash_alg_to_str(uint16_t alg);
@@ -101,7 +114,9 @@ bool verify_rsa_signature(sized_buffer *data, sized_buffer *pubkey, sized_buffer
                           uint16_t hashAlg, uint16_t sig_alg, uint16_t list_ver);
 EVP_PKEY_CTX *rsa_get_sig_ctx(const char *key_path, uint16_t key_size_bytes);
 unsigned char *der_encode_sig_comps(sized_buffer *sig_r, sized_buffer *sig_s, int *length);
-
+char *strip_fname_extension(const char *fname);
+void print_xdr_lms_key_info(const lms_xdr_key_data *key);
+void print_lms_signature(const lms_signature_block *sig);
 
 #endif    /* __LCPUTILS_H__ */
 

@@ -452,7 +452,7 @@ bool write_tpm12_policy_list_file(const char *file, const lcp_policy_list_t *pol
         }
     }
 
-    return write_file(file, pollist, len);
+    return write_file(file, pollist, len, 0);
 }
 
 bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)

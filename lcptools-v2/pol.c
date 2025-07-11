@@ -143,8 +143,8 @@ void display_legacy_policy(const char *prefix, const lcp_policy_t *pol)
     if (pol->version < LCP_VER_2_4) {
         DISPLAY("%s max_biosac_min_ver: 0x%x\n", prefix, pol->reserved2);
     }
-    DISPLAY("%s policy_hash: ", prefix);
-    print_hex("", &pol->policy_hash, SHA1_DIGEST_SIZE);
+    DISPLAY("%s \n ", prefix);
+    print_hex(prefix, &pol->policy_hash, SHA1_DIGEST_SIZE);
 }
 
 void display_policy(const char *prefix, const lcp_policy_t2 *pol, bool brief)
@@ -181,8 +181,8 @@ void display_policy(const char *prefix, const lcp_policy_t2 *pol, bool brief)
     else {
         DISPLAY("%s reserved2: 0x%x\n", prefix, pol->aux_hash_alg_mask);
     }
-    DISPLAY("%s policy_hash: ", prefix);
-    print_hex("", &pol->policy_hash, get_lcp_hash_size(pol->hash_alg));
+    DISPLAY("%s policy_hash:\n", prefix);
+    print_hex(prefix, &pol->policy_hash, get_lcp_hash_size(pol->hash_alg));
 }
 
 const char *policy_type_to_str(uint8_t type)

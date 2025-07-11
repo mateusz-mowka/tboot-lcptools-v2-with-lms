@@ -195,9 +195,9 @@ int create_legacy(void)
     }
 
     bool ok;
-    ok = write_file(policy_file, pol, policy_size);
+    ok = write_file(policy_file, pol, policy_size, 0);
     if ( ok && pol->policy_type == LCP_POLTYPE_LIST )
-        ok = write_file(poldata_file, poldata, get_policy_data_size(poldata));
+        ok = write_file(poldata_file, poldata, get_policy_data_size(poldata), 0);
 
     free(pol);
     if (poldata != NULL)
@@ -437,9 +437,9 @@ int create(void)
     LOG("pol alg=0x%x, mask=0x%x, aux_mask=0x%x, sign_mask=0x%x\n", pol->hash_alg, pol->lcp_hash_alg_mask, pol->aux_hash_alg_mask, pol->lcp_sign_alg_mask);
 
     bool ok;
-    ok = write_file(policy_file, pol, get_policy_size(pol));
+    ok = write_file(policy_file, pol, get_policy_size(pol), 0);
     if ( ok && pol->policy_type == LCP_POLTYPE_LIST )
-        ok = write_file(poldata_file, poldata, get_policy_data_size(poldata));
+        ok = write_file(poldata_file, poldata, get_policy_data_size(poldata), 0);
 
     free(pol);
     free(poldata);
@@ -684,7 +684,7 @@ int main (int argc, char *argv[])
             }
         case 'e':           /* LCP version */
             strlcpy(pol_ver_name, optarg, sizeof(pol_ver_name));
-            LOG("cmdline opt: sign: %s\n", pol_ver_name);
+            LOG("cmdline opt: LCP version: %s\n", pol_ver_name);
 
             pol_ver = str_to_pol_ver(pol_ver_name);
             if ( pol_ver == LCP_VER_NULL) {

@@ -120,8 +120,9 @@ static void display(const char *prefix, const lcp_policy_element_t *elt)
     uint8_t *hash = (uint8_t *)&stm->hashes;
     unsigned int hash_size = get_hash_size(stm->hash_alg);
     for ( unsigned int i = 0; i < stm->num_hashes; i++ ) {
-        DISPLAY("%s hashes[%u]: ", prefix, i);
-        print_hex("", hash, hash_size);
+        DISPLAY("%s hashes[%u]\n ", prefix, i);\
+        DISPLAY("%s", prefix);
+        print_hex("    ", hash, hash_size);
         hash += hash_size;
     }
 }
