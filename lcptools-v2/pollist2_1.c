@@ -2209,14 +2209,14 @@ static lcp_signature_2_1 *read_lms_pubkey_file_2_1(const char *pubkey_file)
 
 bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file)
 {
-    FILE *fp_list_digest = NULL;
+    FILE *fp_list = NULL;
     FILE *fp_signature = NULL;
-    sized_buffer *digest = NULL;
+    //sized_buffer *digest = NULL;
     lcp_signature_2_1 *sig = NULL;
 
     int status = EOK;
-    const char *sig_file = "lcp_list_digest.sig";
-    const char *lcp_list_digest_file = "lcp_list_digest";
+    const char *sig_file = "lcp_list.sig";
+    const char *lcp_list_file = "lcp_list";
     char *privkey_file_no_ext = strip_fname_extension(privkey_file);
     char cli[16 + (MAX_PATH * 2)] = {0};
     const char *fmt = "demo sign %s %s";
@@ -2229,12 +2229,19 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     }
     
     //Create files
-    fp_list_digest = fopen(lcp_list_digest_file, "wb+");
-    if (fp_list_digest == NULL) {
-        ERROR("ERROR: cannot create file %s.\n", lcp_list_digest_file);
+    fp_list = fopen(lcp_list_file, "wb+");
+    if (fp_list == NULL) {
+        ERROR("ERROR: cannot create file %s.\n", lcp_list_file);
         return false;
     }
 
+    //
+    // LMS has SHA256 hashing built-in. Should not create a digest
+    // of the input data here. Otherwise, we will be hashing the
+    // digest again in LMS, which is incorrect. This is the reason
+    // verification was failing.
+    //
+    /*
     //Prepare buffer for the LCP list digest
     digest = allocate_sized_buffer(SHA256_DIGEST_SIZE);
     if (digest == NULL) {
@@ -2254,19 +2261,20 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
         LOG("List digest:\n");
         print_hex("    ", (const void *) digest->data, digest->size);
     }
+    */
 
-    //Now we write the digest to the file
-    status = fwrite((const void *) digest->data, 1, digest->size, fp_list_digest);
-    if ((size_t) status != digest->size) {
-        ERROR("ERROR: failed to write digest to file.\n");
+    //Now we write the policy list to the file
+    status = fwrite((const void *) pollist, 1, pollist->KeySignatureOffset, fp_list);
+    if ((size_t) status != pollist->KeySignatureOffset) {
+        ERROR("ERROR: failed to write policy list to file.\n");
         goto CLOSE_FILES;
     }
 
-    fclose(fp_list_digest);
-    fp_list_digest = NULL; //We don't need it anymore
+    fclose(fp_list);
+    fp_list = NULL; //We don't need it anymore
 
-    //Here we call the LMS demo tool to sign the digest
-    sprintf(cli, fmt, privkey_file_no_ext, lcp_list_digest_file);
+    //Here we call the LMS demo tool to sign the policy list
+    sprintf(cli, fmt, privkey_file_no_ext, lcp_list_file);
     printf("Running command: %s\n", cli);
     status = system(cli);
     if (status != EOK) {
