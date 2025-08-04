@@ -2238,30 +2238,8 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     //
     // LMS has SHA256 hashing built-in. Should not create a digest
     // of the input data here. Otherwise, we will be hashing the
-    // digest again in LMS, which is incorrect. This is the reason
-    // verification was failing.
+    // digest again in LMS, which is incorrect.
     //
-    /*
-    //Prepare buffer for the LCP list digest
-    digest = allocate_sized_buffer(SHA256_DIGEST_SIZE);
-    if (digest == NULL) {
-        ERROR("ERROR: failed to allocate buffer.\n");
-        goto CLOSE_FILES;
-    }
-    digest->size = SHA256_DIGEST_SIZE;
-
-    //Hash the list data
-    status = hash_buffer((const unsigned char *) pollist, pollist->KeySignatureOffset,
-                         (tb_hash_t *) digest->data, TPM_ALG_SHA256);
-    if (!status) {
-        ERROR("ERROR: failed to hash list data.\n");
-        goto CLOSE_FILES;
-    }
-    if (verbose) {
-        LOG("List digest:\n");
-        print_hex("    ", (const void *) digest->data, digest->size);
-    }
-    */
 
     //Now we write the policy list to the file
     status = fwrite((const void *) pollist, 1, pollist->KeySignatureOffset, fp_list);
