@@ -2211,7 +2211,6 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
 {
     FILE *fp_list = NULL;
     FILE *fp_signature = NULL;
-    //sized_buffer *digest = NULL;
     lcp_signature_2_1 *sig = NULL;
 
     int status = EOK;
@@ -2292,14 +2291,12 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     }
 
 CLOSE_FILES:
-    if (fp_list_digest != NULL)
-        fclose(fp_list_digest);
+    if (fp_list != NULL)
+        fclose(fp_list);
     if (fp_signature != NULL)
         fclose(fp_signature);
     if (privkey_file_no_ext != NULL)
         free(privkey_file_no_ext);
-    if (digest != NULL)
-        free(digest);
     return true;
 }
 
