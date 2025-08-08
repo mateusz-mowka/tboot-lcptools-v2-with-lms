@@ -1058,13 +1058,13 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
     const char *sig_fname = "lcp_list_data_temp.sig";
     const char *list_data_fname = "lcp_list_data_temp";
     const char *cli = "demo verify lcp_pubkey_temp lcp_list_data_temp";
-    uint32_t num_micali_trees = 0x01000000;
+    uint32_t num_micali_trees = 0x01000000; //This is 0x1 in Big Endian
 
     FILE *fp_key = NULL;
     FILE *fp_sig = NULL;
     FILE *fp_list_data = NULL;
 
-    tb_hash_t policy_list_hash = { 0 };
+    sized_buffer *policy_list_data = NULL;
 
     fp_key = fopen(pub_key_fname, "wb");
     if ( fp_key == NULL ) {
@@ -1099,13 +1099,23 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
            sizeof(uint8_t), sizeof(lms_signature_block), fp_sig);
     //Write list data to file
 
-    hash_buffer((const unsigned char *) pollist, pollist->KeySignatureOffset, &policy_list_hash, TPM_ALG_SHA256);
+    policy_list_data = allocate_sized_buffer(pollist->KeySignatureOffset);
+    if (policy_list_data == NULL) {
+        fclose(fp_key);
+        fclose(fp_sig);
+        fclose(fp_list_data);
+        return false;
+    }
 
-    fwrite((const void *) &policy_list_hash, 1, SHA256_DIGEST_SIZE, fp_list_data);
+    policy_list_data->size = pollist->KeySignatureOffset;
+
+    memcpy_s((void *) policy_list_data->data, policy_list_data->size, (const void *) pollist, pollist->KeySignatureOffset);
+    fwrite((const void *) policy_list_data->data, 1, policy_list_data->size, fp_list_data);
 
     fclose(fp_key);
     fclose(fp_sig);
     fclose(fp_list_data);
+    free(policy_list_data);
     
     //Now we call "demo verify" to verify the signature
     DISPLAY("Calling: %s\n", cli);
