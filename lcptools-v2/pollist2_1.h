@@ -67,7 +67,7 @@ void display_tpm20_policy_list_2_1(const char *prefix,
 lcp_policy_list_t2_1 *create_empty_tpm20_policy_list_2_1(void);
 lcp_policy_list_t2_1 *add_tpm20_policy_element_2_1(lcp_policy_list_t2_1
                               *pollist, const lcp_policy_element_t *elt);
-bool verify_tpm20_pollist_2_1_sig(lcp_policy_list_t2_1 *pollist);
+bool verify_tpm20_pollist_2_1_sig(const lcp_policy_list_t2_1 *pollist);
 bool calc_tpm20_policy_list_2_1_hash(const lcp_policy_list_t2_1 *pollist,
                                    lcp_hash_t2 *hash, uint16_t hash_alg);
 bool write_tpm20_policy_list_2_1_file(const char *file, const char *signature_file,

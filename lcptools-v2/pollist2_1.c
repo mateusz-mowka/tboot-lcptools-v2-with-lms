@@ -373,6 +373,8 @@ Out: Size
         return sizeof(sig->RevocationCounter) + sizeof(rsa_key_and_signature);
     case TPM_ALG_ECC:
         return sizeof(sig->RevocationCounter) + sizeof(ecc_key_and_signature);
+    case TPM_ALG_LMS:
+        return sizeof(sig->RevocationCounter) + sizeof(lms_key_and_signature);
     default:
         break;
     }
@@ -477,6 +479,7 @@ Out: True on success, false on error
         }
     }
     else {
+        verify_tpm20_pollist_2_1_sig(pollist);
         if (has_sig != NULL)
             *has_sig = true;
         return true; //list signed, func end
@@ -710,7 +713,7 @@ bool get_rsa_signature_2_1_data(lcp_signature_2_1 *empty_sig, void *raw_data)
     return true;
 }
 
-bool verify_tpm20_pollist_2_1_sig(lcp_policy_list_t2_1 *pollist)
+bool verify_tpm20_pollist_2_1_sig(const lcp_policy_list_t2_1 *pollist)
 {
     bool result;
     sig_key_2_1_header *header;
