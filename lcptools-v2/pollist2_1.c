@@ -60,6 +60,7 @@
 #include "lcputils.h"
 #include "pollist2_1.h"
 #include "polelt.h"
+#include "hash-sigs/hss.h"
 
 //Function prototypes:
 
@@ -1047,83 +1048,76 @@ Out: true if verifies false if not
 
 bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
 {
+    bool status = false;
     LOG("[verify_tpm20_pollist_2_1_lms_sig]\n");
-    //Dump public key to file
-    //Dump signature to file
-    //Remember to add 0x00000001 at the beginning of the signature and key
-    //bevause that's the format the demo tool uses
+
     lcp_signature_2_1 *sig = NULL;
-
-    const char *pub_key_fname = "lcp_pubkey_temp.pub";
-    const char *sig_fname = "lcp_list_data_temp.sig";
-    const char *list_data_fname = "lcp_list_data_temp";
-    const char *cli = "demo verify lcp_pubkey_temp lcp_list_data_temp";
-    uint32_t num_micali_trees = 0x01000000; //This is 0x1 in Big Endian
-
-    FILE *fp_key = NULL;
-    FILE *fp_sig = NULL;
-    FILE *fp_list_data = NULL;
-
-    sized_buffer *policy_list_data = NULL;
-
-    fp_key = fopen(pub_key_fname, "wb");
-    if ( fp_key == NULL ) {
-        ERROR("Error: failed to open file for writing key.\n");
-        return false;
-    }
-    fp_sig = fopen(sig_fname, "wb");
-    if ( fp_sig == NULL ) {
-        ERROR("Error: failed to open file for writing signature.\n");
-        fclose(fp_key);
-        return false;
-    }
-    fp_list_data = fopen(list_data_fname, "wb");
-    if (fp_list_data == NULL) {
-        ERROR("Error: failed to open file for writing list data.\n");
-        fclose(fp_key);
-        fclose(fp_sig);
-        return false;
-    }
-
-    //Write 0x00000001 to the file (Big Endian)
-    fwrite((const void *) &num_micali_trees, sizeof(uint32_t), 1, fp_key);
-    num_micali_trees = 0x0;
-    fwrite((const void *) &num_micali_trees, sizeof(uint32_t), 1, fp_sig);
-
-    //Write public key to file
+    uint8_t* lms_sig = NULL;
+    uint8_t* public_key = NULL;
+    uint8_t *policy_list_data = NULL;
     sig = get_tpm20_signature_2_1(pollist);
-    fwrite((const void *) &sig->KeyAndSignature.LmsKeyAndSignature.Key.PubKey, sizeof(uint8_t),
-           sizeof(lms_xdr_key_data), fp_key);
-    //Write signature to file
-    fwrite((const void *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature,
-           sizeof(uint8_t), sizeof(lms_signature_block), fp_sig);
-    //Write list data to file
+    uint64_t signature_len = sizeof(lms_signature_block) + 4;		// +4 for NSPK
+	uint64_t publickey_len = sig->KeyAndSignature.LmsKeyAndSignature.Key.KeySize + 4;		// +4 for LEVELS
 
-    policy_list_data = allocate_sized_buffer(pollist->KeySignatureOffset);
-    if (policy_list_data == NULL) {
-        fclose(fp_key);
-        fclose(fp_sig);
-        fclose(fp_list_data);
-        return false;
+    uint32_t num_micali_trees = 0x01000000; //This is 0x1 in Big Endian, for LEVELS
+    uint32_t nspk = 0x00000000;
+
+    public_key = malloc(publickey_len);
+
+    if(public_key == NULL)
+    {
+        ERROR("Error during malloc, public_key");
+        goto CLEANUP;
     }
 
-    policy_list_data->size = pollist->KeySignatureOffset;
+	memcpy(public_key, &num_micali_trees, 4);	// first 4 bytes are levels
+	memcpy((public_key + 4), (void*) &(sig->KeyAndSignature.LmsKeyAndSignature.Key.PubKey), sig->KeyAndSignature.LmsKeyAndSignature.Key.KeySize); //rest of public key
 
-    memcpy_s((void *) policy_list_data->data, policy_list_data->size, (const void *) pollist, pollist->KeySignatureOffset);
-    fwrite((const void *) policy_list_data->data, 1, policy_list_data->size, fp_list_data);
+	
+    lms_sig = malloc(signature_len);
 
-    fclose(fp_key);
-    fclose(fp_sig);
-    fclose(fp_list_data);
-    free(policy_list_data);
+    if(lms_sig == NULL){
+        ERROR("Error during malloc, lms_sig");
+        goto CLEANUP;
+    }
     
-    //Now we call "demo verify" to verify the signature
-    DISPLAY("Calling: %s\n", cli);
-    if (system(cli) != EOK) {
-        ERROR("Error: signature did not verify.\n");
-        return false;
+	memcpy(lms_sig, &nspk, 4);	// first 4 bytes are nspk
+	memcpy((lms_sig + 4), (void*) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature, sizeof(lms_signature_block)); // rest of signature
+
+    policy_list_data = malloc(pollist->KeySignatureOffset);
+
+    if (policy_list_data == NULL) {
+        ERROR("Error during malloc, policy_list_data");
+        goto CLEANUP;
     }
-    return true;
+
+    if(EOK != memcpy_s((void *) policy_list_data, pollist->KeySignatureOffset, (const void *) pollist, pollist->KeySignatureOffset)){
+        ERROR("Error during memcpy_s");
+        goto CLEANUP;
+    }
+
+    if(!hss_validate_signature(
+		public_key,
+		policy_list_data,
+		pollist->KeySignatureOffset,
+		lms_sig,
+		signature_len,
+		NULL
+	)){
+        goto CLEANUP;
+    }
+
+    status = true;
+
+CLEANUP:
+    if(public_key != NULL)
+        free(public_key);
+    if(lms_sig != NULL)
+        free(lms_sig);
+    if(policy_list_data != NULL)
+        free(policy_list_data);
+
+    return status;
 }
 
 void display_tpm20_signature_2_1(const char *prefix, const lcp_signature_2_1 *sig,
@@ -2217,97 +2211,155 @@ static lcp_signature_2_1 *read_lms_pubkey_file_2_1(const char *pubkey_file)
     return sig;
 }
 
+static bool read_private_key( unsigned char *private_key,
+                              size_t len_private_key, void *filename) {
+    FILE *f = fopen( filename, "rb" );
+    if (!f) {
+        return false;
+    }
+    if (1 != fread( private_key, len_private_key, 1, f )) {
+        /* Read failed */
+        fclose(f);
+        return false;
+    }
+    fclose(f);
+
+    /* Everything succeeded */
+    return true;
+}
+
+static bool update_private_key( unsigned char *private_key,
+                               size_t len_private_key, void *filename) {
+    FILE *f = fopen( filename, "r+" );
+    if (!f) {
+        /* Open failed, possibly because the file didn't exist */
+        f = fopen( filename, "wb" );
+        if (!f) {
+            /* Unable to open file */
+            return false;
+        }
+    }
+    if (1 != fwrite( private_key, len_private_key, 1, f )) {
+        /* Write failed */
+        fclose(f);
+        return false;
+    }
+    if (0 != fclose(f)) {
+        /* Close failed (possibly because pending write failed) */
+        return false;
+    }
+
+    /* Everything succeeded */
+    return true;
+}
+
 bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file)
 {
-    FILE *fp_list = NULL;
-    FILE *fp_signature = NULL;
+    struct hss_working_key *working_key = NULL;
     lcp_signature_2_1 *sig = NULL;
+    uint8_t* lms_sig = NULL;
+    bool status = false;
 
-    int status = EOK;
-    const char *sig_file = "lcp_list.sig";
-    const char *lcp_list_file = "lcp_list";
     char *privkey_file_no_ext = strip_fname_extension(privkey_file);
-    char cli[16 + (MAX_PATH * 2)] = {0};
-    const char *fmt = "demo sign %s %s";
 
+    size_t aux_filename_len = strlen(privkey_file_no_ext) + sizeof (".prv" ) + 1;
+    char *aux_filename = malloc(aux_filename_len);
+    
+    if (aux_filename == NULL) {
+        ERROR( "Error during malloc, aux_filename\n" );
+        return false;
+    }
+
+    sprintf( aux_filename, "%s.aux", privkey_file_no_ext );
+    
     DISPLAY("[lms_sign_list_2_1_data]\n");
     
     if (pollist == NULL || privkey_file == NULL) {
         ERROR("ERROR: lcp policy list or private key file is not defined.\n");
-        return false;
+        goto CLEANUP;
     }
     
-    //Create files
-    fp_list = fopen(lcp_list_file, "wb+");
-    if (fp_list == NULL) {
-        ERROR("ERROR: cannot create file %s.\n", lcp_list_file);
-        return false;
+    size_t len_aux_data = 0;
+    void *aux_data = read_file( aux_filename, &len_aux_data, false);
+    if (aux_data != NULL) {
+        DISPLAY( "Processing with aux data, %s \n", aux_filename);
+    } else {
+        /* We don't have the aux data; proceed without it */
+        DISPLAY( "Processing without aux data\n" );
     }
 
-    //
-    // LMS has SHA256 hashing built-in. Should not create a digest
-    // of the input data here. Otherwise, we will be hashing the
-    // digest again in LMS, which is incorrect.
-    //
-
-    //Now we write the policy list to the file
-    status = fwrite((const void *) pollist, 1, pollist->KeySignatureOffset, fp_list);
-    if ((size_t) status != pollist->KeySignatureOffset) {
-        ERROR("ERROR: failed to write policy list to file.\n");
-        goto CLOSE_FILES;
+    DISPLAY( "Loading private key\n" );
+    LOG("privkey_file: %s \n", privkey_file);
+    working_key = hss_load_private_key(read_private_key, (unsigned char *)privkey_file, 0, aux_data, len_aux_data, NULL);
+    
+    if (working_key == NULL) {
+        ERROR( "Error loading private key\n" );
+        goto CLEANUP;
     }
 
-    fclose(fp_list);
-    fp_list = NULL; //We don't need it anymore
+    //aux_data allready loaded with priv key, so not needed
+    free(aux_data);
+    aux_data = NULL;
 
-    //Here we call the LMS demo tool to sign the policy list
-    sprintf(cli, fmt, privkey_file_no_ext, lcp_list_file);
-    printf("Running command: %s\n", cli);
-    status = system(cli);
-    if (status != EOK) {
-        ERROR("ERROR: failed to sign list data.\n");
-        ERROR("Check if LMS Demo tool is installed and in PATH.\n");
-        goto CLOSE_FILES;
+    size_t sig_len;
+    sig_len = hss_get_signature_len_from_working_key(working_key);
+    if (sig_len == 0) {
+        ERROR( "Error getting signature len\n" );
+        goto CLEANUP;
     }
 
-    //Now we can open the signature file and read the signature
-    fp_signature = fopen(sig_file, "rb");
-    if (fp_signature == NULL) {
-        ERROR("ERROR: cannot create file %s.\n", sig_file);
-        goto CLOSE_FILES;
+    lms_sig = malloc(sig_len);
+    if (lms_sig == NULL) {
+        ERROR( "Error during malloc, lms_sig\n" );
+        goto CLEANUP;
     }
 
-    //Read the signature into signature structure
-    sig = get_tpm20_signature_2_1(pollist);
+    DISPLAY( "Generate signature\n" );
+
+    if (!hss_generate_signature(
+		working_key, 
+		update_private_key, 
+		(unsigned char *)privkey_file,
+		pollist,
+		pollist->KeySignatureOffset,
+		lms_sig,
+		sig_len,
+		NULL
+		)){
+        
+        ERROR("Error during generation of LMS signature");
+        goto CLEANUP;
+    }
+
+    sig=get_tpm20_signature_2_1(pollist);
     sig->KeyAndSignature.LmsKeyAndSignature.SigScheme = TPM_ALG_LMS;
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.HashAlg = TPM_ALG_SHA256;
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.Version = SIGNATURE_VERSION;
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.KeySize = LMS_MAX_PUBKEY_SIZE;
-
-    //Now we copy the signature from file but remember to move file pointer
-    //to skip first 4 bytes (similar to public key)
-    fseek(fp_signature, sizeof(uint32_t), SEEK_SET);
-    size_t copy_size = sizeof(lms_signature_block);
-    if (fread((void *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature, sizeof(uint8_t), copy_size, fp_signature) == 0) {
-        ERROR("ERROR: failed to read signature file.\n");
-        goto CLOSE_FILES;
+    if (memcpy_s(&sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature, sizeof(lms_signature_block), (lms_sig+sizeof(uint32_t)), sig_len-sizeof(uint32_t)) != 0) {
+        ERROR("Error during the copying of signature to LCP.\n");
+        goto CLEANUP;
     }
+
+    status = true;
 
     //Dump sigblock if verbose is on
     if (verbose) {
-        DISPLAY("Signature blokc:\n");
-        print_hex("    ", (const void *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature, copy_size);
-
+        DISPLAY("Signature block:\n");
+        print_hex("    ", (const void *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature, sizeof(lms_signature_block));
     }
 
-CLOSE_FILES:
-    if (fp_list != NULL)
-        fclose(fp_list);
-    if (fp_signature != NULL)
-        fclose(fp_signature);
-    if (privkey_file_no_ext != NULL)
-        free(privkey_file_no_ext);
-    return true;
+CLEANUP:
+    if (aux_filename != NULL)
+        free(aux_filename);
+    if(aux_data != NULL)
+        free(aux_data);
+    if(working_key != NULL)
+        hss_free_working_key(working_key);
+    if(lms_sig != NULL)
+        free(lms_sig);
+
+    return status;
 }
 
 bool ec_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file)
@@ -2497,7 +2549,6 @@ static lcp_policy_list_t2_1 *policy_list2_1_lms_sign(lcp_policy_list_t2_1 *polli
 {
     lcp_signature_2_1 *sig = NULL;
     bool result;
-
     if (pollist == NULL) {
         ERROR("Error: cannot create lcp signature 2.1.\n");
         return NULL;

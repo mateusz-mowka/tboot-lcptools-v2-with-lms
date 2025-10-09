@@ -13,6 +13,7 @@ include $(ROOTDIR)/Config.mk
 
 
 LCP2_TARGETS := \
+	hash_sigs	\
 	lcp2_mlehash    \
 	lcp2_crtpol    \
 	lcp2_crtpollist \
@@ -47,6 +48,7 @@ $(INST_TARGET) : $(notdir $(INST_TARGET))
 
 clean :
 	rm -f *~ *.a *.so *.o *.rpm $(DEP_FILES) $(LCP2_TARGETS)
+	$(MAKE) -C hash-sigs clean
 
 mrproper : clean
 
@@ -68,21 +70,25 @@ LCP2_LIB := liblcp.a
 
 LIBS += -lcrypto -llcp -lz $(ROOTDIR)/safestringlib/libsafestring.a
 
+HASH_SIGS := ./hash-sigs/hss_lib_thread.a ./hash-sigs/hss_verify.a
+
 $(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o
 	$(AR) rc $@ $^
 
-lcp2_crtpolelt : crtpolelt.o $(POLELT_PLUGINS) $(LCP2_LIB)
+lcp2_crtpolelt : crtpolelt.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
-lcp2_crtpollist : crtpollist.o $(POLELT_PLUGINS) $(LCP2_LIB)
+lcp2_crtpollist : crtpollist.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
-lcp2_crtpol : crtpol.o $(POLELT_PLUGINS) $(LCP2_LIB)
+lcp2_crtpol : crtpol.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
-lcp2_mlehash : mlehash.o $(LCP2_LIB)
+lcp2_mlehash : mlehash.o $(LCP2_LIB) $(HASH_SIGS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
+hash_sigs : 
+	$(MAKE) -C hash-sigs
 
 #
 # implicit rules
