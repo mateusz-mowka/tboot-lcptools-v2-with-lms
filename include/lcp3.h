@@ -436,10 +436,10 @@ typedef struct __packed {
 #define LMS_MAX_PUBKEY_SIZE 48
 
 typedef struct __packed {
-    uint32_t LmsType; //Must be 0x8 (LMS_SHA256_M32_H20)
-    uint32_t LmotsType; //Must be 0x3 (LMOTS_SHA256_N32_W4)
+    uint32_t LmsType; //Must be 0xD (LMS_SHA256_M24_H20)
+    uint32_t LmotsType; //Must be 0x3 (LMOTS_SHA256_N24_W4)
     uint8_t  I[16]; //LMS key identifier
-    uint8_t  T1[24]; //32-byte string associated with the 1st node of binary Merkel tree.
+    uint8_t  T1[24]; //24-byte string associated with the 1st node of binary Merkel tree.
 } lms_xdr_key_data;
 
 typedef struct __packed {
@@ -449,7 +449,7 @@ typedef struct __packed {
 } lms_public_key;
 
 typedef struct __packed {
-    uint32_t Type; // Must be 0x3 (LMOTS_SHA256_N32_W4)
+    uint32_t Type; // Must be 0x3 (LMOTS_SHA256_N24_W4)
     uint8_t  Seed[SHA256_192_DIGEST_SIZE];
     uint8_t  Y[LMOTS_SIGNATURE_BLOCK_SIZE];
 } lmots_signature;

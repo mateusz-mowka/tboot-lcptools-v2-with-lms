@@ -1065,7 +1065,7 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
     public_key = malloc(publickey_len);
 
     if(public_key == NULL) {
-        ERROR("Error during malloc, public_key");
+        ERROR("Error during malloc, public_key.\n");
         goto CLEANUP;
     }
 
@@ -1079,7 +1079,7 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
     lms_sig = malloc(signature_len);
 
     if(lms_sig == NULL){
-        ERROR("Error during malloc, lms_sig");
+        ERROR("Error during malloc, lms_sig.\n");
         goto CLEANUP;
     }
     
@@ -1089,7 +1089,7 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
     policy_list_data = malloc(pollist->KeySignatureOffset);
 
     if (policy_list_data == NULL) {
-        ERROR("Error during malloc, policy_list_data");
+        ERROR("Error during malloc, policy_list_data.\n");
         goto CLEANUP;
     }
 
@@ -2296,7 +2296,7 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
         goto CLEANUP;
     }
 
-    //aux_data allready loaded with priv key, so not needed
+    //aux_data already loaded with priv key, so not needed
     free(aux_data);
     aux_data = NULL;
 
@@ -2326,7 +2326,7 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
 		NULL
 		)){
         
-        ERROR("Error during generation of LMS signature");
+        ERROR("Error during generation of LMS signature.\n");
         goto CLEANUP;
     }
 
