@@ -428,7 +428,7 @@ typedef struct __packed {
 #define LMOTS_SIGNATURE_BLOCK_SIZE (LMOTS_SIGNATURE_N_SIZE * LMOTS_SIGNATURE_P_SIZE)
 
 #define LMS_SIGNATURE_H_HEIGHT 20 // Height of the LMS tree
-#define LMS_SIGNATURE_M_SIZE 24 // Number of bytes in each LMS tree node
+#define LMS_SIGNATURE_M_SIZE SHA256_192_DIGEST_SIZE // Number of bytes in each LMS tree node
 
 // With H and M we calculate the size of the LMS signature:
 #define LMS_SIGNATURE_BLOCK_SIZE (LMS_SIGNATURE_H_HEIGHT * LMS_SIGNATURE_M_SIZE)
