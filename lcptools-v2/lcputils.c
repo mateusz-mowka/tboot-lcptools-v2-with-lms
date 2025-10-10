@@ -1608,7 +1608,7 @@ void print_lms_signature(const lms_signature_block *sig)
     DISPLAY("    LMOTS Signature:\n");
     DISPLAY("        LMOTS Type: 0x%x (%s)\n", ntohl(sig->Lmots.Type), lms_type_to_str(ntohl(sig->Lmots.Type)));
     DISPLAY("        LMOTS Seed:\n");
-    dump_hex("            ", (const void *) &sig->Lmots.Seed, LMS_SEED_SIZE, 32);
+    dump_hex("            ", (const void *) &sig->Lmots.Seed, SHA256_192_DIGEST_SIZE, 32);
     DISPLAY("        LMOTS Signature Block:\n");
     dump_hex("            ", (const void *) &sig->Lmots.Y, LMOTS_SIGNATURE_BLOCK_SIZE, 32);
     DISPLAY("    LMS Type: 0x%x (%s)\n", ntohl(sig->LmsType), lms_type_to_str(ntohl(sig->LmsType)));

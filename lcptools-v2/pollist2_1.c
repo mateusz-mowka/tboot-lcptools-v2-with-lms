@@ -1048,9 +1048,9 @@ Out: true if verifies false if not
 
 bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
 {
-    bool status = false;
     LOG("[verify_tpm20_pollist_2_1_lms_sig]\n");
-
+    
+    bool status = false;
     lcp_signature_2_1 *sig = NULL;
     uint8_t* lms_sig = NULL;
     uint8_t* public_key = NULL;
@@ -1064,14 +1064,16 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
 
     public_key = malloc(publickey_len);
 
-    if(public_key == NULL)
-    {
+    if(public_key == NULL) {
         ERROR("Error during malloc, public_key");
         goto CLEANUP;
     }
 
 	memcpy(public_key, &num_micali_trees, 4);	// first 4 bytes are levels
-	memcpy((public_key + 4), (void*) &(sig->KeyAndSignature.LmsKeyAndSignature.Key.PubKey), sig->KeyAndSignature.LmsKeyAndSignature.Key.KeySize); //rest of public key
+	memcpy(
+        (public_key + 4),
+        (void*) &(sig->KeyAndSignature.LmsKeyAndSignature.Key.PubKey),
+        sig->KeyAndSignature.LmsKeyAndSignature.Key.KeySize); //rest of public key
 
 	
     lms_sig = malloc(signature_len);
@@ -1091,10 +1093,7 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
         goto CLEANUP;
     }
 
-    if(EOK != memcpy_s((void *) policy_list_data, pollist->KeySignatureOffset, (const void *) pollist, pollist->KeySignatureOffset)){
-        ERROR("Error during memcpy_s");
-        goto CLEANUP;
-    }
+    memcpy_s((void *) policy_list_data, pollist->KeySignatureOffset, (const void *) pollist, pollist->KeySignatureOffset);
 
     if(!hss_validate_signature(
 		public_key,
@@ -2331,15 +2330,16 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
         goto CLEANUP;
     }
 
-    sig=get_tpm20_signature_2_1(pollist);
+    sig = get_tpm20_signature_2_1(pollist);
     sig->KeyAndSignature.LmsKeyAndSignature.SigScheme = TPM_ALG_LMS;
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.HashAlg = TPM_ALG_SHA256;
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.Version = SIGNATURE_VERSION;
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.KeySize = LMS_MAX_PUBKEY_SIZE;
-    if (memcpy_s(&sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature, sizeof(lms_signature_block), (lms_sig+sizeof(uint32_t)), sig_len-sizeof(uint32_t)) != 0) {
-        ERROR("Error during the copying of signature to LCP.\n");
-        goto CLEANUP;
-    }
+    memcpy_s(
+        &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature,
+        sizeof(lms_signature_block),
+        (lms_sig+sizeof(uint32_t)),
+        sig_len-sizeof(uint32_t));
 
     status = true;
 
@@ -2549,6 +2549,7 @@ static lcp_policy_list_t2_1 *policy_list2_1_lms_sign(lcp_policy_list_t2_1 *polli
 {
     lcp_signature_2_1 *sig = NULL;
     bool result;
+
     if (pollist == NULL) {
         ERROR("Error: cannot create lcp signature 2.1.\n");
         return NULL;
