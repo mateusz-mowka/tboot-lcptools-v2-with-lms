@@ -2214,15 +2214,17 @@ static bool read_private_key( unsigned char *private_key,
                               size_t len_private_key, void *filename) {
     FILE *f = fopen( filename, "rb" );
     if (!f) {
+        ERROR("ERROR: Cannot open private key: %s\n", filename);
         return false;
     }
     if (1 != fread( private_key, len_private_key, 1, f )) {
         /* Read failed */
+        ERROR("ERROR: Cannot read private key: %s\n", filename);
         fclose(f);
         return false;
     }
     fclose(f);
-
+    LOG("LMS private key successfully read.");
     /* Everything succeeded */
     return true;
 }
@@ -2232,22 +2234,26 @@ static bool update_private_key( unsigned char *private_key,
     FILE *f = fopen( filename, "r+" );
     if (!f) {
         /* Open failed, possibly because the file didn't exist */
+        ERROR("ERROR: Cannot open private key for update with r+ mode: %s\n", filename);
         f = fopen( filename, "wb" );
         if (!f) {
+            ERROR("ERROR: Cannot open private key for update with wb mode: %s\n", filename);
             /* Unable to open file */
             return false;
         }
     }
     if (1 != fwrite( private_key, len_private_key, 1, f )) {
         /* Write failed */
+        ERROR("ERROR: Cannot write to private key for update: %s\n", filename);
         fclose(f);
         return false;
     }
     if (0 != fclose(f)) {
+        ERROR("ERROR: Cannot close the private key after update: %s\n", filename);
         /* Close failed (possibly because pending write failed) */
         return false;
     }
-
+    LOG("LMS private key successfully updated.");
     /* Everything succeeded */
     return true;
 }
