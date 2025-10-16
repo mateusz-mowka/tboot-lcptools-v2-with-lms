@@ -122,7 +122,7 @@ static const char help[] =
     "  openssl rsa -pubout -in privkey.pem -out pubkey.pem\n"
     "LMS private and public keys with Winternitz coefficient of 4 and Merkle tree height of 20\n"
     "can be generated as follows:\n"
-    "  demo lms_key 20/4\n";
+    "  demo lms_key SHA192,20/4\n";
 
 bool verbose = false;
 

@@ -1,0 +1,3 @@
+[submodule "lcptools-v2/hash-sigs"]
+	path = lcptools-v2/hash-sigs
+	url = https://github.com/cisco/hash-sigs.git

@@ -68,6 +68,7 @@
 #include "polelt_plugin.h"
 #include "lcputils.h"
 #include "pollist2.h"
+#include "hash-sigs/common_defs.h"
 
 static uint16_t pkcs_get_hashalg(const unsigned char *data);
 
@@ -1567,10 +1568,14 @@ char *strip_fname_extension(const char *fname)
 static const char *lms_type_to_str(uint16_t type)
 {
     switch (type) {
+        case LMOTS_SHA256_N24_W4:
+            return "LMOTS_SHA256_N24_W4";
         case LMOTS_SHA256_N32_W4:
             return "LMOTS_SHA256_N32_W4";
         case LMS_SHA256_M32_H20:
             return "LMS_SHA256_M32_H20";
+        case LMS_SHA256_M24_H20:
+            return "LMS_SHA256_M24_H20";
         default:
             return "Unknown";
     }
@@ -1603,7 +1608,7 @@ void print_lms_signature(const lms_signature_block *sig)
     DISPLAY("    LMOTS Signature:\n");
     DISPLAY("        LMOTS Type: 0x%x (%s)\n", ntohl(sig->Lmots.Type), lms_type_to_str(ntohl(sig->Lmots.Type)));
     DISPLAY("        LMOTS Seed:\n");
-    dump_hex("            ", (const void *) &sig->Lmots.Seed, LMS_SEED_SIZE, 32);
+    dump_hex("            ", (const void *) &sig->Lmots.Seed, SHA256_192_DIGEST_SIZE, 32);
     DISPLAY("        LMOTS Signature Block:\n");
     dump_hex("            ", (const void *) &sig->Lmots.Y, LMOTS_SIGNATURE_BLOCK_SIZE, 32);
     DISPLAY("    LMS Type: 0x%x (%s)\n", ntohl(sig->LmsType), lms_type_to_str(ntohl(sig->LmsType)));

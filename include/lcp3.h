@@ -84,6 +84,7 @@
 #define SHA384_DIGEST_SIZE	48
 #define SHA512_DIGEST_SIZE	64
 #define SM3_256_DIGEST_SIZE	32
+#define SHA256_192_DIGEST_SIZE 24
 
 /*Default RSA exponent*/
 #define LCP_SIG_EXPONENT    65537
@@ -419,27 +420,26 @@ typedef struct __packed {
 
 //LCP supports these LMS and LMOTS types:
 #define LMS_SHA256_M32_H20   0x8
-#define LMOTS_SHA256_N32_W4  0x3
+#define LMS_SHA256_M24_H20   0xD
 
-#define LMOTS_SIGNATURE_N_SIZE SHA256_DIGEST_SIZE // bytes in SHA256 digest
-#define LMOTS_SIGNATURE_P_SIZE 67 // Number of n-byte string elements that make up the LMOTS signature
+#define LMOTS_SIGNATURE_N_SIZE SHA256_192_DIGEST_SIZE // bytes in SHA256/192 digest
+#define LMOTS_SIGNATURE_P_SIZE 51 // Number of n-byte string elements that make up the LMOTS signature
 // With N and P we calculate the size of the signature block:
 #define LMOTS_SIGNATURE_BLOCK_SIZE (LMOTS_SIGNATURE_N_SIZE * LMOTS_SIGNATURE_P_SIZE)
 
 #define LMS_SIGNATURE_H_HEIGHT 20 // Height of the LMS tree
-#define LMS_SIGNATURE_M_SIZE SHA256_DIGEST_SIZE // Number of bytes in each LMS tree node
+#define LMS_SIGNATURE_M_SIZE SHA256_192_DIGEST_SIZE // Number of bytes in each LMS tree node
 
 // With H and M we calculate the size of the LMS signature:
 #define LMS_SIGNATURE_BLOCK_SIZE (LMS_SIGNATURE_H_HEIGHT * LMS_SIGNATURE_M_SIZE)
 
-#define LMS_SEED_SIZE 32
-#define LMS_MAX_PUBKEY_SIZE 56
+#define LMS_MAX_PUBKEY_SIZE 48
 
 typedef struct __packed {
-    uint32_t LmsType; //Must be 0x8 (LMS_SHA256_M32_H20)
-    uint32_t LmotsType; //Must be 0x3 (LMOTS_SHA256_N32_W4)
+    uint32_t LmsType; //Must be 0xD (LMS_SHA256_M24_H20)
+    uint32_t LmotsType; //Must be 0x3 (LMOTS_SHA256_N24_W4)
     uint8_t  I[16]; //LMS key identifier
-    uint8_t  T1[32]; //32-byte string associated with the 1st node of binary Merkel tree.
+    uint8_t  T1[24]; //24-byte string associated with the 1st node of binary Merkel tree.
 } lms_xdr_key_data;
 
 typedef struct __packed {
@@ -449,8 +449,8 @@ typedef struct __packed {
 } lms_public_key;
 
 typedef struct __packed {
-    uint32_t Type; // Must be 0x3 (LMOTS_SHA256_N32_W4)
-    uint8_t  Seed[LMS_SEED_SIZE];
+    uint32_t Type; // Must be 0x3 (LMOTS_SHA256_N24_W4)
+    uint8_t  Seed[SHA256_192_DIGEST_SIZE];
     uint8_t  Y[LMOTS_SIGNATURE_BLOCK_SIZE];
 } lmots_signature;
 
