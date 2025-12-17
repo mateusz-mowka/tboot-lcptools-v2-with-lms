@@ -421,7 +421,7 @@ typedef struct __packed {
 //LCP supports these LMS and LMOTS types:
 #define LMS_SHA256_M32_H20   0x8
 #define LMS_SHA256_M24_H20   0xD
-#define LMOTS_SHA256_N24_W4  0x00000007
+#define LMOTS_SHA256_N24_W4  0x7
 
 #define LMOTS_SIGNATURE_N_SIZE SHA256_192_DIGEST_SIZE // bytes in SHA256/192 digest
 #define LMOTS_SIGNATURE_P_SIZE 51 // Number of n-byte string elements that make up the LMOTS signature
