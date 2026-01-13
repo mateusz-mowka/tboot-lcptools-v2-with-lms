@@ -547,7 +547,7 @@ bool get_tboot_force_pmrs(void)
     const char *force_pmrs = get_option_val(g_tboot_cmdline_options,
                                             g_tboot_param_values,
                                             "force_pmrs");
-    if (force_pmrs != NULL && tb_strcmp(force_pmrs, "true"))
+    if (force_pmrs != NULL && (tb_strcmp(force_pmrs, "true") == 0))
     {
         return true;
     }
