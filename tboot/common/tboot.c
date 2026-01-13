@@ -352,9 +352,8 @@ void check_racm_result(void)
 void begin_launch(void *addr, uint32_t magic)
 {
     tb_error_t err;
-    bool force_pmrs = false;
 
-    if (g_ldr_ctx->type == 0)        
+    if (g_ldr_ctx->type == 0)
         determine_loader_type(addr, magic);
 
     /* on pre-SENTER boot, copy command line to buffer in tboot image
@@ -456,11 +455,9 @@ void begin_launch(void *addr, uint32_t magic)
            apply_policy(TB_ERR_ACMOD_VERIFY_FAILED);
     }
 
-    force_pmrs = get_tboot_force_pmrs();
-
     //We need to have g_sinit point to SINIT ACM before we can run is_tpr_supported
     //This global variable decides whether PMR or TPR is used
-    g_tpr_support = is_tpr_supported(force_pmrs);
+    g_tpr_support = is_tpr_supported(get_tboot_force_pmrs());
 
     /* make TPM ready for measured launch */
     if (!tpm_detect())

@@ -111,9 +111,12 @@ static __text mle_hdr_t g_mle_hdr = {
                                                        TBOOT_BASE_ADDR,
 };
 
+static bool g_force_pmrs = false;
+
 /*
  * counts of APs going into wait-for-sipi
  */
+
 /* count of APs in WAIT-FOR-SIPI */
 atomic_t ap_wfs_count;
 
@@ -667,6 +670,14 @@ static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit, loader_ctx *
         printk(TBOOT_ERR"SINIT capabilities are incompatible (0x%x)\n", sinit_caps._raw);
         return NULL;
     }
+
+    if (g_tpr_support == false && g_force_pmrs == true)
+    {
+        os_sinit_data->capabilities.tpr_support = 0;
+        printk(TBOOT_INFO"TPR Support disabled in the ACM capabilities "
+                         "(OsSinitData).\n");
+    }
+
     if ( get_evtlog_type() == EVTLOG_TPM2_TCG ) {
         printk(TBOOT_INFO"SINIT ACM supports TCG compliant TPM 2.0 event log format, tcg_event_log_format = %d \n", 
               sinit_caps.tcg_event_log_format);
@@ -830,6 +841,7 @@ bool is_tpr_supported(bool force_pmrs)
     // Disable TPR support, if "force_pmrs" cmdline option was set
     if (force_pmrs)
     {
+        g_force_pmrs = true;
         g_mle_hdr.capabilities.tpr_support = 0;
         printk(TBOOT_INFO"TPR Support disabled in the MLE capabilities.\n");
     }
