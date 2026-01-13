@@ -97,7 +97,7 @@ extern void __enable_nmi(void);
  * this is the structure whose addr we'll put in TXT heap
  * it needs to be within the MLE pages, so force it to the .text section
  */
-static __text const mle_hdr_t g_mle_hdr = {
+static __text mle_hdr_t g_mle_hdr = {
     uuid              :  MLE_HDR_UUID,
     length            :  sizeof(mle_hdr_t),
     version           :  MLE_HDR_VER,
@@ -116,6 +116,23 @@ static __text const mle_hdr_t g_mle_hdr = {
  */
 /* count of APs in WAIT-FOR-SIPI */
 atomic_t ap_wfs_count;
+
+static void disable_tpr_support(const acm_hdr_t *hdr)
+{
+    // Disable TPR support in the SINIT ACM capabilities
+    acm_info_table_t *info_table = get_acmod_info_table(hdr);
+    if ( info_table == NULL || info_table->version < 3 ) {
+        printk(TBOOT_ERR"TPR support disabling process has failed\n");
+    }
+
+    info_table->capabilities.tpr_support = 0;
+    printk(TBOOT_INFO"TPR support has been disabled properly in SINIT ACM\n");
+
+    // Disable TPR support bit in the MLE capabilities
+    g_mle_hdr.capabilities.tpr_support = 0;
+
+    printk(TBOOT_INFO"MLE capabilities: 0x%X\n", g_mle_hdr.capabilities._raw);
+}
 
 static void print_file_info(void)
 {
@@ -824,13 +841,19 @@ bool txt_is_launched(void)
     return sts.senter_done_sts;
 }
 
-bool is_tpr_supported(void)
+bool is_tpr_supported(bool force_pmrs)
 {
     //Reads SINIT ACM capabilities field and returns tpr_support bit
     //Needs g_sinit to be set.
     txt_caps_t sinit_caps;
 
     sinit_caps._raw = 0;
+
+    // Disable TPR support, if "force_pmrs" cmdline option was set
+    if (force_pmrs && g_sinit != NULL)
+    {
+        disable_tpr_support(g_sinit);
+    }
 
     if (g_sinit != NULL) {
         sinit_caps = get_sinit_capabilities(g_sinit);
