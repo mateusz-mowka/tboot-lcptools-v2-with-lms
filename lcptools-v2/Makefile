@@ -72,7 +72,7 @@ LIBS += -lcrypto -llcp -lz $(ROOTDIR)/safestringlib/libsafestring.a
 
 HASH_SIGS := ./hash-sigs/hss_lib_thread.a ./hash-sigs/hss_verify.a
 
-$(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o
+$(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o crypto.o crypto_OpenSSL.o crypto_ippc.o
 	$(AR) rc $@ $^
 
 lcp2_crtpolelt : crtpolelt.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)

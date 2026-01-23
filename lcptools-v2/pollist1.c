@@ -41,9 +41,6 @@
 #include <string.h>
 #include <safe_lib.h>
 #define PRINT   printf
-#include <openssl/pem.h>
-#include <openssl/err.h>
-#include <openssl/rsa.h>
 #include "../include/config.h"
 #include "../include/hash.h"
 #include "../include/uuid.h"
@@ -54,6 +51,7 @@
 #include "pollist1.h"
 #include "pollist2.h"
 #include "polelt.h"
+#include "crypto.h"
 
 bool verify_tpm12_policy_list(const lcp_policy_list_t *pollist, size_t size,
         bool *no_sigblock, bool size_is_exact)
@@ -461,7 +459,7 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
     size_t list_data_len;
     sized_buffer *signature_block = NULL;
     sized_buffer *digest = NULL;
-    EVP_PKEY_CTX *private_key_context = NULL;
+    crypto_status c_status = crypto_general_fail;
 
     bool status;
 
@@ -504,18 +502,15 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
         print_hex("", (const void *) digest->data, SHA1_DIGEST_SIZE);
     }
 
-    private_key_context = rsa_get_sig_ctx(privkey_file, sig->pubkey_size);
-    if (private_key_context == NULL) {
-        ERROR("Error: failed to initialize EVP context.\n");
-        goto ERROR;
-    }
-    //Now do the signing
-    status = rsa_ssa_pss_sign(signature_block, digest, pollist->sig_alg, TPM_ALG_SHA1,
-                                                           private_key_context);
+    c_status = crypto_rsa_sign((crypto_sized_buffer *)signature_block, (crypto_sized_buffer *)digest, pollist->sig_alg, TPM_ALG_SHA1, privkey_file);
+
+    status = (c_status == crypto_general_fail) ? false : true;
+
     if (!status) {
         ERROR("Error: failed to sign list data.\n");
         goto ERROR;
     }
+
     buffer_reverse_byte_order((uint8_t *) signature_block->data, signature_block->size);
     memcpy_s((void *) sig->pubkey_value + sig->pubkey_size, sig->pubkey_size,
                     (const void *) signature_block->data, signature_block->size);
@@ -530,7 +525,6 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
     if (digest != NULL) {
         free(digest);
     }
-    OPENSSL_free((void *) private_key_context);
     return true;
     ERROR:
         if (signature_block != NULL) {
@@ -539,7 +533,6 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
         if (digest != NULL) {
             free(digest);
         }
-        OPENSSL_free((void *) private_key_context);
         return false;
 }
 

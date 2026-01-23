@@ -41,8 +41,8 @@
 #include <errno.h>
 #include <zlib.h>
 #include <memory.h>
+#include <stdlib.h>
 #include <sys/stat.h>
-#include <openssl/evp.h>
 #include <safe_lib.h>
 #define PRINT   printf
 #include "../include/config.h"

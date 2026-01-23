@@ -181,9 +181,4 @@ typedef struct __packed {
 
 #define LCP_POLELT_TYPE_CUSTOM  3
 
-typedef struct __packed {
-    uuid_t       uuid;
-    uint8_t      data[];
-} lcp_custom_element_t;
-
 #endif    /*  __TXT_LCP2_H__ */

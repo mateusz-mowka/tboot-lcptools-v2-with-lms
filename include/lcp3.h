@@ -155,11 +155,6 @@ typedef struct __packed {
     uint8_t     data[];
 } lcp_policy_element_t;
 
-typedef struct __packed {
-    uuid_t       uuid;
-    uint8_t      data[];
-} lcp_custom_element_t;
-
 /*
     LCP_POLICY_LIST  deprecated, kept to support legacy systems
     LCP_POLICY_LIST2 supported versions currently are: 2.0 and 2.1
@@ -308,10 +303,6 @@ typedef struct __packed {
 
 #define LCP_POLELT_TYPE_CUSTOM2    0x13
 #define LCP_POLELT_TYPE_CUSTOM     0x03 //Legacy
-typedef struct __packed {
-    uuid_t       uuid;
-    uint8_t      data[];
-} lcp_custom_element_t2;
 
 #define LCP_POLELT_TYPE_STM2       0x14
 typedef struct __packed {
@@ -421,7 +412,6 @@ typedef struct __packed {
 //LCP supports these LMS and LMOTS types:
 #define LMS_SHA256_M32_H20   0x8
 #define LMS_SHA256_M24_H20   0xD
-#define LMOTS_SHA256_N24_W4  0x7
 
 #define LMOTS_SIGNATURE_N_SIZE SHA256_192_DIGEST_SIZE // bytes in SHA256/192 digest
 #define LMOTS_SIGNATURE_P_SIZE 51 // Number of n-byte string elements that make up the LMOTS signature

@@ -41,17 +41,6 @@
 #include <string.h>
 #include <safe_lib.h>
 #define PRINT printf
-#include <openssl/rsa.h>
-#include <openssl/pem.h>
-#include <openssl/err.h>
-#include <openssl/bn.h>
-#include <openssl/ecdsa.h>
-#include <openssl/ec.h>
-#include <openssl/evp.h>
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-    #include <openssl/decoder.h>
-    #include <openssl/core.h>
-#endif
 #include "../include/hash.h"
 #include "../include/uuid.h"
 #include "../include/lcp3.h"
@@ -61,6 +50,7 @@
 #include "pollist2_1.h"
 #include "polelt.h"
 #include "hash-sigs/hss.h"
+#include "crypto.h"
 
 //Function prototypes:
 
@@ -1740,54 +1730,12 @@ In: path to file containing RSA public key
 Out: Pointer to signature structure.
 */
 {
-    FILE *fp = NULL;
-    BIGNUM *modulus = NULL;
-    #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-        EVP_PKEY *pubkey = NULL;
-    #else
-        RSA *pubkey = NULL;
-    #endif
-    lcp_signature_2_1 *sig = NULL;
     unsigned char *key = NULL;
+    lcp_signature_2_1 *sig = NULL;
+    size_t keysize = 0;
+    crypto_status status = crypto_read_rsa_pubkey(file, &key, &keysize);
 
-    int keysize = 0;
-    int result = 0;
-
-    LOG("read_rsa_pubkey_file_2_1\n");
-    fp = fopen(file, "rb");
-    if ( fp == NULL ) {
-        ERROR("Error: failed to open .pem file %s: %s\n", file,
-                strerror(errno));
-        return NULL;
-    }
-
-    #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-        OSSL_DECODER_CTX *dctx;
-        dctx = OSSL_DECODER_CTX_new_for_pkey(&pubkey, "PEM", NULL, "RSA", OSSL_KEYMGMT_SELECT_PUBLIC_KEY, NULL, NULL);
-        if ( dctx == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-        if ( !OSSL_DECODER_from_fp(dctx, fp) ) {
-            goto OPENSSL_ERROR;
-        }
-        OSSL_DECODER_CTX_free(dctx);
-    #else
-        pubkey = PEM_read_RSA_PUBKEY(fp, NULL, NULL, NULL);
-    #endif
-    if ( pubkey == NULL ) {
-        goto OPENSSL_ERROR;
-    }
-    //Close the file, won't need it anymore
-    fclose(fp);
-    fp = NULL;
-
-    #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-        keysize = EVP_PKEY_get_size(pubkey);
-    #else
-        keysize = RSA_size(pubkey);
-    #endif
-    if ( keysize != 256 && keysize != 384 ) {
-        ERROR("Error: public key size %d is not supported\n", keysize);
+    if(crypto_ok != status){
         goto ERROR;
     }
 
@@ -1796,34 +1744,10 @@ Out: Pointer to signature structure.
         ERROR("Error: failed to create empty lcp signature 2.1\n");
         goto ERROR;
     }
-
-    #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-        EVP_PKEY_get_bn_param(pubkey, "n", &modulus);
-    #elif OPENSSL_VERSION_NUMBER >= 0x10100000L
-        RSA_get0_key(pubkey, (const BIGNUM **) &modulus, NULL, NULL);
-    #else
-        modulus = pubkey->n;
-    #endif
-    if (modulus == NULL) {
-        goto OPENSSL_ERROR;
-    }
-
-    //Allocate for the key
-    key = malloc(keysize);
-    if (key == NULL) {
-        ERROR("Error: failed to allocate memory for public key.\n");
-        goto ERROR;
-    }
-    //Save mod into key array
-    result = BN_bn2bin(modulus, key);
-    if (result <= 0 || result != keysize) {
-        goto OPENSSL_ERROR;
-    }
-
     /* openssl key is big-endian and policy requires little-endian, so reverse
        bytes and append to sig*/
 
-    for ( int i = 0; i < keysize; i++ ) {
+    for ( unsigned int i = 0; i < keysize; i++ ) {
         sig->KeyAndSignature.RsaKeyAndSignature.Key.Modulus[i] = key[keysize -i -1];
     }
 
@@ -1840,24 +1764,14 @@ Out: Pointer to signature structure.
         display_tpm20_signature_2_1("    ", sig, TPM_ALG_RSAPSS);
     }
     //SUCCESS:
-        OPENSSL_free((void *) pubkey);
-        OPENSSL_free((void * )modulus);
         free(key);
+        key=NULL;
         return sig;
-    OPENSSL_ERROR:
-        ERROR("OpenSSL error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-        goto ERROR;
     ERROR:
-        if (fp != NULL)
-            fclose(fp);
         if (key != NULL)
             free(key);
         if (sig != NULL)
             free(sig);
-        if (modulus == NULL)
-            OPENSSL_free((void *) modulus);
-        if (pubkey != NULL)
-            OPENSSL_free((void *) pubkey);
         return NULL;
 }
 
@@ -1879,7 +1793,7 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     lcp_signature_2_1 *sig = NULL;
     sized_buffer *digest = NULL;
     sized_buffer *sig_block = NULL;  //Buffer for generated sig
-    EVP_PKEY_CTX *context = NULL;  //Context for openssl functions
+    crypto_status c_status = crypto_general_fail;
 
     LOG("rsa_sign_list_2_1_data\n");
     if ( pollist == NULL || privkey_file == NULL )
@@ -1922,13 +1836,6 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
         print_hex("", &digest, get_hash_size(hashalg));
     }
 
-    //Create context using key
-    context = rsa_get_sig_ctx(privkey_file, keysize);
-    if ( context == NULL) {
-        ERROR("ERROR: failed to initialize EVP context.\n");
-        goto ERROR;
-    }
-
     //Allocate mem for signature block:
     sig_block = allocate_sized_buffer(keysize);
     if (sig_block == NULL) {
@@ -1937,10 +1844,12 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     }
     sig_block->size = keysize;
 
-    //Sign
-    status = rsa_ssa_pss_sign(sig_block, digest, sig_alg, hashalg, context);
+    c_status = crypto_rsa_sign((crypto_sized_buffer *)sig_block,(crypto_sized_buffer *) digest, sig_alg, hashalg, privkey_file);
+
+    status = (c_status == crypto_general_fail) ? false : true;
+
     if (!status) {
-        ERROR("ERROR: failed to sign list data.");
+        ERROR("Error: failed to sign list data.\n");
         goto ERROR;
     }
 
@@ -1958,8 +1867,6 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     if (digest != NULL) {
         free(digest);
     }
-    if (context != NULL)
-        OPENSSL_free(context);
     return true;
     ERROR:
         if (sig_block != NULL) {
@@ -1968,198 +1875,70 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
         if (digest != NULL) {
             free(digest);
         }
-        if (context != NULL)
-            OPENSSL_free(context);
         return false;
 }
 
 static lcp_signature_2_1 *read_ecdsa_pubkey_file_2_1(const char *pubkey_file)
 {
-    int result;
     lcp_signature_2_1 *sig = NULL;
-    FILE *fp = NULL;
-    BIGNUM *x = NULL;
-    BIGNUM *y = NULL;
-    uint16_t bytes_in_x;
-    uint16_t bytes_in_y;
-    uint16_t keySize;
-    uint16_t keySizeBytes;
-    uint8_t qx[MAX_ECC_KEY_SIZE];
-    uint8_t qy[MAX_ECC_KEY_SIZE];
-    uint8_t qx_le[MAX_ECC_KEY_SIZE];
-    uint8_t qy_le[MAX_ECC_KEY_SIZE];
-    #if OPENSSL_VERSION_NUMBER < 0x30000000L
-        const EC_KEY *pubkey = NULL;
-        const EC_POINT *pubpoint = NULL;
-        const EC_GROUP *pubgroup = NULL;
-        BN_CTX *ctx = NULL;
-    #else
-        EVP_PKEY *pubkey = NULL;
-    #endif
+    size_t key_size_bytes;
+    uint8_t *qx;
+    uint8_t *qy;
+    int result;
 
-    fp = fopen(pubkey_file, "rb");
-    if ( fp == NULL) {
-        ERROR("ERROR: cannot open file.\n");
-        goto ERROR;
+    crypto_status c_status = crypto_read_ecdsa_pubkey(pubkey_file, &qx, &qy, &key_size_bytes);
+    if (c_status != crypto_ok){
+        return NULL;
     }
 
-    #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-        OSSL_DECODER_CTX *dctx;
-        dctx = OSSL_DECODER_CTX_new_for_pkey(&pubkey, "PEM", NULL, "EC", OSSL_KEYMGMT_SELECT_PUBLIC_KEY, NULL, NULL);
-        if ( dctx == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-        if ( !OSSL_DECODER_from_fp(dctx, fp) ) {
-            goto OPENSSL_ERROR;
-        }
-        OSSL_DECODER_CTX_free(dctx);
-
-        if ( pubkey == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-
-        EVP_PKEY_get_bn_param(pubkey, "qx", &x);
-        EVP_PKEY_get_bn_param(pubkey, "qy", &y);
-        if ( x == NULL|| y == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-    #else
-        pubkey = PEM_read_EC_PUBKEY(fp, NULL, NULL, NULL);
-        if ( pubkey == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-
-        pubpoint = EC_KEY_get0_public_key(pubkey);
-        if ( pubpoint == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-        pubgroup = EC_KEY_get0_group(pubkey);
-        if ( pubgroup == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-
-        x = BN_new();
-        y = BN_new();
-        if ( x == NULL|| y == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-        ctx = BN_CTX_new();
-        if ( ctx == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-        result = EC_POINT_get_affine_coordinates_GFp(pubgroup, pubpoint, x, y, ctx);
-        if (result <= 0) {
-            goto OPENSSL_ERROR;
-        }
-    #endif    
-    //Close the file
-    fclose(fp);
-    fp = NULL;
-
-    bytes_in_x = BN_num_bytes(x);
-    bytes_in_y = BN_num_bytes(y);
-
-    keySize = bytes_in_x*8;
-    if (bytes_in_x != bytes_in_y) {
-        ERROR("ERROR: key coordinates are not the same length.");
-        goto ERROR;
-    }
-    if ( keySize != 256 && keySize != 384 ) {
-        ERROR("ERROR: keySize 0x%X is not 0x%X or 0x%X.\n", keySize/8, MIN_ECC_KEY_SIZE,
-                                                              MAX_ECC_KEY_SIZE);
-        goto ERROR;
-    }
-
-    keySizeBytes = bytes_in_x;
-    if ( keySize/8 != bytes_in_x || keySize/8 != bytes_in_y ) {
-        ERROR("ERROR: keySize 0x%X is not 0x%X or 0x%X.\n", keySizeBytes,
-                                            MIN_ECC_KEY_SIZE, MAX_ECC_KEY_SIZE);
-        goto ERROR;
-    }
     sig = create_empty_ecc_signature_2_1();
     if ( sig == NULL ) {
+        result = ESNULLP;
         ERROR("ERROR: failed to generate ecc signature 2.1.\n");
-        goto ERROR;
+        goto END;
     }
 
     sig->KeyAndSignature.EccKeyAndSignature.Version = SIGNATURE_VERSION;
     sig->KeyAndSignature.EccKeyAndSignature.KeyAlg = TPM_ALG_ECC;
     sig->KeyAndSignature.EccKeyAndSignature.Key.Version = SIGNATURE_VERSION;
-    sig->KeyAndSignature.EccKeyAndSignature.Key.KeySize = keySize; //In bits!
+    sig->KeyAndSignature.EccKeyAndSignature.Key.KeySize = key_size_bytes*8; //In bits!
     sig->KeyAndSignature.EccKeyAndSignature.Signature.Version = SIGNATURE_VERSION;
-    sig->KeyAndSignature.EccKeyAndSignature.Signature.KeySize = keySize;
+    sig->KeyAndSignature.EccKeyAndSignature.Signature.KeySize = key_size_bytes*8;
 
-    if (keySize == 256) { //256 bit key with sha256
+    if ((key_size_bytes*8) == 256) { //256 bit key with sha256
         sig->KeyAndSignature.EccKeyAndSignature.Signature.HashAlg = TPM_ALG_SHA256;
     }
     else { //384 bit key with sha384
         sig->KeyAndSignature.EccKeyAndSignature.Signature.HashAlg = TPM_ALG_SHA384;
     }
 
-    if (!BN_bn2bin(x, qx)) {
-        goto OPENSSL_ERROR;
-    }
-    if (!BN_bn2bin(y, qy)) {
-        goto OPENSSL_ERROR;
-    }
-
-    for (uint8_t i = 0; i < keySizeBytes; i++) { //reverse
-        qx_le[i] = qx[keySizeBytes-1-i];
-        qy_le[i] = qy[keySizeBytes-1-i];
-    }
 
     result = memcpy_s(
         (void*)sig->KeyAndSignature.EccKeyAndSignature.Key.QxQy,
-        2*MAX_ECC_KEY_SIZE, qx_le, bytes_in_x
+        2*MAX_ECC_KEY_SIZE, qx, key_size_bytes
     );
     if ( result != EOK ) {
         ERROR("ERROR: Cannot copy key data to LCP list\n");
-        goto ERROR;
+        goto END;
     }
     result = memcpy_s(
-        (void*)sig->KeyAndSignature.EccKeyAndSignature.Key.QxQy + bytes_in_x,
-        (2*MAX_ECC_KEY_SIZE)-bytes_in_x, qy_le, bytes_in_y
+        (void*)sig->KeyAndSignature.EccKeyAndSignature.Key.QxQy + key_size_bytes,
+        (2*MAX_ECC_KEY_SIZE)-key_size_bytes, qy, key_size_bytes
     );
     if ( result != EOK ) {
         ERROR("ERROR: Cannot copy key data to LCP list\n");
-        goto ERROR;
+        goto END;
     }
-//Free resources:
-    OPENSSL_free((void *) pubkey);
-    OPENSSL_free((void *) x);
-    OPENSSL_free((void *) y);
-    #if OPENSSL_VERSION_NUMBER < 0x30000000L
-        OPENSSL_free((void *) pubpoint);
-        OPENSSL_free((void *) pubgroup);
-        OPENSSL_free((void *) ctx);
-    #endif
+
+END:
+    free(qx);
+    free(qy);
+    if(result != EOK){
+        free(sig);
+        sig = NULL;
+    }
+
     return sig;
-//ERROR handling:
-    OPENSSL_ERROR:
-        ERR_load_crypto_strings();
-        ERROR("OpenSSL error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-        ERR_free_strings();
-    ERROR:
-        //Free all OPENSSL stuff
-        if (fp != NULL)
-            fclose(fp);
-        if (sig != NULL)
-            free(sig);
-        if (pubkey != NULL)
-            OPENSSL_free((void *) pubkey);
-        if (x != NULL)
-            OPENSSL_free((void *) x);
-        if (y != NULL)
-            OPENSSL_free((void *) y);
-        #if OPENSSL_VERSION_NUMBER < 0x30000000L
-            if (pubpoint != NULL)
-                OPENSSL_free((void *) pubpoint);
-            if (pubgroup != NULL)
-                OPENSSL_free((void *) pubgroup);
-            if (ctx != NULL)
-                OPENSSL_free((void *) ctx);
-        #endif
-        return NULL;
 }
 
 static lcp_signature_2_1 *read_lms_pubkey_file_2_1(const char *pubkey_file)
