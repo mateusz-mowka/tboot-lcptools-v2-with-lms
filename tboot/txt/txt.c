@@ -836,51 +836,38 @@ bool txt_is_launched(void)
     return sts.senter_done_sts;
 }
 
-bool is_tpr_supported(bool force_pmrs)
+bool is_tpr_supported(void)
 {
-    acm_info_table_t *info_table = NULL;
+    //Reads SINIT ACM capabilities field and returns tpr_support bit
+    //Needs g_sinit to be set.
     txt_caps_t sinit_caps;
 
     sinit_caps._raw = 0;
+
     if (g_sinit != NULL) {
         sinit_caps = get_sinit_capabilities(g_sinit);
     }
-    else {
-        return sinit_caps.tpr_support;
+
+    return sinit_caps.tpr_support;
+}
+
+void force_pmrs_usage(void)
+{
+    acm_info_table_t *info_table = get_acmod_info_table(g_sinit);
+    if (info_table == NULL) {
+        return;
     }
 
-    // Disable TPR support, if "force_pmrs" cmdline option was set
-    if (force_pmrs) {
-        info_table = get_acmod_info_table(g_sinit);
-        if (info_table == NULL) {
-            return sinit_caps.tpr_support;
-        }
-
-        if (info_table->min_mle_hdr_ver == 0x00020003) {
-            printk(TBOOT_INFO"MinMleHeader version is 2.3. "
-                             "Forcing PMRs is forbidden.\n");
-            return sinit_caps.tpr_support;
-        }
-        else {
-            if (info_table->min_mle_hdr_ver == 0x00020002) {
-                printk(TBOOT_INFO"MinMleHeader version is 2.2. "
-                                 "SINIT will ignore TPR support bit 14 in\n"
-                                 "OsSinit.Capabilities.\n");
-                return sinit_caps.tpr_support;
-            }
-            else {
-                g_force_pmrs = true;
-            }
-
-            g_mle_hdr.capabilities.tpr_support = 0;
-            printk(TBOOT_INFO"TPR Support disabled in the MLE capabilities.\n");
-
-            return g_mle_hdr.capabilities.tpr_support;
-        }
+    if (info_table->min_mle_hdr_ver >= 0x00020003) {
+        printk(TBOOT_WARN"SINIT ACM has no support for PMR DMA Protection by default.\n");
+        printk(TBOOT_WARN"MinMleHeader version is downgraded to 2.2.\n");
+        info_table->min_mle_hdr_ver = 0x00020002;
     }
-    else {
-        return sinit_caps.tpr_support;
-    }
+
+    g_force_pmrs = true;
+    g_mle_hdr.capabilities.tpr_support = 0;
+    printk(TBOOT_INFO"TPR support disabled in the MLE capabilities.\n");
+    return;
 }
 
 tb_error_t txt_launch_environment(loader_ctx *lctx)
