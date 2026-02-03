@@ -353,7 +353,7 @@ void begin_launch(void *addr, uint32_t magic)
 {
     tb_error_t err;
 
-    if (g_ldr_ctx->type == 0)        
+    if (g_ldr_ctx->type == 0)
         determine_loader_type(addr, magic);
 
     /* on pre-SENTER boot, copy command line to buffer in tboot image
@@ -400,7 +400,7 @@ void begin_launch(void *addr, uint32_t magic)
 
     if (is_launched()) printk(TBOOT_INFO"SINIT ACM successfully returned...\n");
     if ( s3_flag ) printk(TBOOT_INFO"Resume from S3...\n");
-    
+
     /* RLM scaffolding
        if (g_ldr_ctx->type == 2)
        print_loader_ctx(g_ldr_ctx);
@@ -454,10 +454,17 @@ void begin_launch(void *addr, uint32_t magic)
        if (!verify_acmod(g_sinit)) 
            apply_policy(TB_ERR_ACMOD_VERIFY_FAILED);
     }
-    
+
     //We need to have g_sinit point to SINIT ACM before we can run is_tpr_supported
     //This global variable decides whether PMR or TPR is used
-    g_tpr_support = is_tpr_supported();
+    if (get_tboot_force_pmrs()) {
+        // Disable TPR support, if "force_pmrs" cmdline option was set
+        g_tpr_support = false;
+        force_pmrs_usage();
+    }
+    else {
+        g_tpr_support = is_tpr_supported();
+    }
 
     /* make TPM ready for measured launch */
     if (!tpm_detect())

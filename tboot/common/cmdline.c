@@ -85,6 +85,7 @@ static const cmdline_option_t g_tboot_cmdline_options[] = {
     { "measure_nv", "false" },       /* true|false */
     { "extpol",    "sha256" },         /*agile|embedded|sha1|sha256|sm3|... */
     { "ignore_prev_err", "true"},    /* true|false */
+    { "force_pmrs", "false"},        /* true|false */
     { "force_tpm2_legacy_log", "false"}, /* true|false */
     { "save_vtd", "false"},          /* true|false */
     { "dump_memmap", "false"},          /* true|false */
@@ -539,6 +540,19 @@ void get_tboot_extpol(void)
         tpm->extpol = TB_EXTPOL_FIXED;
         tpm->cur_alg = TB_HALG_SHA512;
     }
+}
+
+bool get_tboot_force_pmrs(void)
+{
+    const char *force_pmrs = get_option_val(g_tboot_cmdline_options,
+                                            g_tboot_param_values,
+                                            "force_pmrs");
+    if (force_pmrs != NULL && (tb_strcmp(force_pmrs, "true") == 0))
+    {
+        return true;
+    }
+
+    return false;
 }
 
 bool get_tboot_force_tpm2_legacy_log(void)

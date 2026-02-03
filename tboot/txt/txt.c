@@ -97,7 +97,7 @@ extern void __enable_nmi(void);
  * this is the structure whose addr we'll put in TXT heap
  * it needs to be within the MLE pages, so force it to the .text section
  */
-static __text const mle_hdr_t g_mle_hdr = {
+static __text mle_hdr_t g_mle_hdr = {
     uuid              :  MLE_HDR_UUID,
     length            :  sizeof(mle_hdr_t),
     version           :  MLE_HDR_VER,
@@ -111,11 +111,15 @@ static __text const mle_hdr_t g_mle_hdr = {
                                                        TBOOT_BASE_ADDR,
 };
 
+static bool g_force_pmrs = false;
+
 /*
  * counts of APs going into wait-for-sipi
  */
+
 /* count of APs in WAIT-FOR-SIPI */
 atomic_t ap_wfs_count;
+
 
 static void print_file_info(void)
 {
@@ -666,6 +670,14 @@ static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit, loader_ctx *
         printk(TBOOT_ERR"SINIT capabilities are incompatible (0x%x)\n", sinit_caps._raw);
         return NULL;
     }
+
+    if (g_tpr_support == false && g_force_pmrs == true)
+    {
+        os_sinit_data->capabilities.tpr_support = 0;
+        printk(TBOOT_INFO"TPR Support disabled in the ACM capabilities "
+                         "(OsSinitData).\n");
+    }
+
     if ( get_evtlog_type() == EVTLOG_TPM2_TCG ) {
         printk(TBOOT_INFO"SINIT ACM supports TCG compliant TPM 2.0 event log format, tcg_event_log_format = %d \n", 
               sinit_caps.tcg_event_log_format);
@@ -837,6 +849,25 @@ bool is_tpr_supported(void)
     }
 
     return sinit_caps.tpr_support;
+}
+
+void force_pmrs_usage(void)
+{
+    acm_info_table_t *info_table = get_acmod_info_table(g_sinit);
+    if (info_table == NULL) {
+        return;
+    }
+
+    if (info_table->min_mle_hdr_ver >= 0x00020003) {
+        printk(TBOOT_WARN"SINIT ACM has no support for PMR DMA Protection by default.\n");
+        printk(TBOOT_WARN"MinMleHeader version is downgraded to 2.2.\n");
+        info_table->min_mle_hdr_ver = 0x00020002;
+    }
+
+    g_force_pmrs = true;
+    g_mle_hdr.capabilities.tpr_support = 0;
+    printk(TBOOT_INFO"TPR support disabled in the MLE capabilities.\n");
+    return;
 }
 
 tb_error_t txt_launch_environment(loader_ctx *lctx)

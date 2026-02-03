@@ -56,7 +56,7 @@
 #include <tpm.h>
 #endif    /* IS_INCLUDED */
 
-static acm_info_table_t *get_acmod_info_table(const acm_hdr_t* hdr)
+acm_info_table_t *get_acmod_info_table(const acm_hdr_t* hdr)
 {
     uint32_t user_area_off;
 

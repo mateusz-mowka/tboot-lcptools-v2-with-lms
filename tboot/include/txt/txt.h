@@ -60,6 +60,7 @@ extern bool txt_s3_launch_environment(void);
 extern void txt_shutdown(void);
 extern bool txt_is_powercycle_required(void);
 extern void ap_wait(unsigned int cpuid);
+extern void force_pmrs_usage(void);
 extern int get_evtlog_type(void);
 extern bool is_tpr_supported(void);
 
