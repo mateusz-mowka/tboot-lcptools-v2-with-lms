@@ -22,9 +22,26 @@
 #define LMS_PUBLIC_KEY_MAX_BYTES   1372
 #define LMS_PRIVATE_KEY_MAX_BYTES  1372
 
+/* Offset to leaf index in hash-sigs LMS private key file format:
+ * 4 bytes (levels) + 4 bytes (LMOTS algo) + 4 bytes (LMS algo) + 16 bytes (key_id) */
+#define LMS_LEAF_INDEX_OFFSET  28
+
 /* Helper function declarations */
-extern uint16_t base64_decode(const uint8_t *src, uint32_t src_len, uint8_t *dst);
-extern uint8_t get_key_from_der(uint8_t *der_buf, uint16_t der_size, uint8_t pem_type, 
-                                bool is_private, uint8_t *key_buf, uint16_t *key_size);
-extern int str8cmp(const char *s1, const char *s2);
-extern void buffer_reverse_byte_order(uint8_t *buffer, size_t length);
+extern uint16_t
+base64_decode (
+  const uint8_t  *src,
+  uint32_t       src_len,
+  uint8_t        *dst
+  );
+
+extern int
+str8cmp (
+  const char  *s1,
+  const char  *s2
+  );
+
+extern void
+buffer_reverse_byte_order (
+  uint8_t  *buffer,
+  size_t   length
+  );

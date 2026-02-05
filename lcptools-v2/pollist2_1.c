@@ -1085,13 +1085,14 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
 
     memcpy_s((void *) policy_list_data, pollist->KeySignatureOffset, (const void *) pollist, pollist->KeySignatureOffset);
 
-    if(!hss_validate_signature(
-		public_key,
+    // Use crypto abstraction layer for LMS verification
+    if(!crypto_lms_verify_signature(
 		policy_list_data,
 		pollist->KeySignatureOffset,
 		lms_sig,
 		signature_len,
-		NULL
+		public_key,
+		publickey_len
 	)){
         goto CLEANUP;
     }
@@ -1989,57 +1990,9 @@ static lcp_signature_2_1 *read_lms_pubkey_file_2_1(const char *pubkey_file)
     return sig;
 }
 
-static bool read_private_key( unsigned char *private_key,
-                              size_t len_private_key, void *filename) {
-    FILE *f = fopen( filename, "rb" );
-    if (!f) {
-        ERROR("ERROR: Cannot open private key: %s\n", filename);
-        return false;
-    }
-    if (1 != fread( private_key, len_private_key, 1, f )) {
-        /* Read failed */
-        ERROR("ERROR: Cannot read private key: %s\n", filename);
-        fclose(f);
-        return false;
-    }
-    fclose(f);
-    LOG("LMS private key successfully read.");
-    /* Everything succeeded */
-    return true;
-}
-
-static bool update_private_key( unsigned char *private_key,
-                               size_t len_private_key, void *filename) {
-    FILE *f = fopen( filename, "r+" );
-    if (!f) {
-        /* Open failed, possibly because the file didn't exist */
-        ERROR("ERROR: Cannot open private key for update with r+ mode: %s\n", filename);
-        f = fopen( filename, "wb" );
-        if (!f) {
-            ERROR("ERROR: Cannot open private key for update with wb mode: %s\n", filename);
-            /* Unable to open file */
-            return false;
-        }
-    }
-    if (1 != fwrite( private_key, len_private_key, 1, f )) {
-        /* Write failed */
-        ERROR("ERROR: Cannot write to private key for update: %s\n", filename);
-        fclose(f);
-        return false;
-    }
-    if (0 != fclose(f)) {
-        ERROR("ERROR: Cannot close the private key after update: %s\n", filename);
-        /* Close failed (possibly because pending write failed) */
-        return false;
-    }
-    LOG("LMS private key successfully updated.");
-    /* Everything succeeded */
-    return true;
-}
 
 bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file)
 {
-    struct hss_working_key *working_key = NULL;
     lcp_signature_2_1 *sig = NULL;
     uint8_t* lms_sig = NULL;
     bool status = false;
@@ -2072,26 +2025,8 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
         DISPLAY( "Processing without aux data\n" );
     }
 
-    DISPLAY( "Loading private key\n" );
-    LOG("privkey_file: %s \n", privkey_file);
-    working_key = hss_load_private_key(read_private_key, (unsigned char *)privkey_file, 0, aux_data, len_aux_data, NULL);
-    
-    if (working_key == NULL) {
-        ERROR( "Error loading private key\n" );
-        goto CLEANUP;
-    }
-
-    //aux_data already loaded with priv key, so not needed
-    free(aux_data);
-    aux_data = NULL;
-
-    size_t sig_len;
-    sig_len = hss_get_signature_len_from_working_key(working_key);
-    if (sig_len == 0) {
-        ERROR( "Error getting signature len\n" );
-        goto CLEANUP;
-    }
-
+    // Allocate buffer for signature (max LMS signature size)
+    size_t sig_len = LMS_MAX_SIGNATURE_SIZE;
     lms_sig = malloc(sig_len);
     if (lms_sig == NULL) {
         ERROR( "Error during malloc, lms_sig\n" );
@@ -2100,17 +2035,18 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
 
     DISPLAY( "Generate signature\n" );
 
-    if (!hss_generate_signature(
-		working_key, 
-		update_private_key, 
-		(unsigned char *)privkey_file,
-		pollist,
-		pollist->KeySignatureOffset,
-		lms_sig,
-		sig_len,
-		NULL
-		)){
-        
+    // Use crypto abstraction layer for LMS signing
+    crypto_status sign_result = crypto_lms_sign_data(
+        (const unsigned char*)pollist,
+        pollist->KeySignatureOffset,
+        lms_sig,
+        &sig_len,
+        privkey_file,
+        aux_data,
+        len_aux_data
+    );
+
+    if (sign_result != crypto_ok) {
         ERROR("Error during generation of LMS signature.\n");
         goto CLEANUP;
     }
@@ -2120,11 +2056,21 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.HashAlg = TPM_ALG_SHA256;
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.Version = SIGNATURE_VERSION;
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.KeySize = LMS_MAX_PUBKEY_SIZE;
+    
+    /* The signature returned by crypto_lms_sign_data already includes NSPK prefix
+     * We skip the first 4 bytes (NSPK) and copy the rest into the structure */
+    size_t bytes_to_copy = sig_len - sizeof(uint32_t);
+    if (bytes_to_copy != sizeof(lms_signature_block)) {
+        ERROR("Signature size mismatch: expected %zu, got %zu (total sig_len=%zu)\n", 
+              sizeof(lms_signature_block), bytes_to_copy, sig_len);
+        goto CLEANUP;
+    }
+    
     memcpy_s(
         &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature,
         sizeof(lms_signature_block),
         (lms_sig+sizeof(uint32_t)),
-        sig_len-sizeof(uint32_t));
+        bytes_to_copy);
 
     status = true;
 
@@ -2139,8 +2085,6 @@ CLEANUP:
         free(aux_filename);
     if(aux_data != NULL)
         free(aux_data);
-    if(working_key != NULL)
-        hss_free_working_key(working_key);
     if(lms_sig != NULL)
         free(lms_sig);
 

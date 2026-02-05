@@ -20,6 +20,7 @@
 #include "../include/lcp3.h"
 #include "crypto_interface.h"
 #include "safe_lib.h"
+#include "hash-sigs/hss.h"
 #define LOG      printf
 #define ERROR    printf
 #define DISPLAY  printf
@@ -1469,7 +1470,7 @@ crypto_ec_sign_data_internal (
 
   result = EVP_DigestSignFinal (mctx, (unsigned char *)signature_block, &sig_length);
   if (result <= 0) {
-    ERROR ("Error: failed to comp=ute signature length.\n");
+    ERROR ("Error: failed to compute signature length.\n");
     goto OPENSSL_ERROR;
   }
 
@@ -1527,4 +1528,219 @@ EXIT:
   return result ? true : false;
 }
 
-#endif
+bool
+crypto_lms_verify_signature_internal (
+  const unsigned char  *msg,
+  size_t               msg_len,
+  const unsigned char  *signature,
+  size_t               sig_len,
+  const unsigned char  *public_key,
+  size_t               pubkey_len __attribute__ ((unused))
+  )
+{
+  if ((NULL == msg) || (NULL == signature) || (NULL == public_key)) {
+    ERROR ("LMS verify: NULL parameter\n");
+    return false;
+  }
+
+  /* Note: public_key already has LEVELS prefix (4 bytes 0x01000000 BE)
+   * and signature already has NSPK prefix (4 bytes 0x00000000)
+   * added by the caller (pollist2_1.c) */
+
+  /* Verify signature using hash-sigs library */
+  bool  result = hss_validate_signature (
+                                         public_key,
+                                         msg,
+                                         msg_len,
+                                         signature,
+                                         sig_len,
+                                         NULL /* info parameter */
+                                         );
+
+  if (!result) {
+    ERROR ("LMS signature verification failed\n");
+    return false;
+  }
+
+  if (verbose) {
+    LOG ("LMS signature verification succeeded\n");
+  }
+
+  return true;
+}
+
+/*
+ * Callback for hss_load_private_key to read private key file
+ */
+static bool
+read_private_key (
+  unsigned char  *buffer,
+  size_t         len_buffer,
+  void           *context
+  )
+{
+  const char  *filename = (const char *)context;
+  FILE        *fp       = fopen (filename, "rb");
+
+  if (NULL == fp) {
+    ERROR ("Failed to open private key file: %s\n", filename);
+    return false;
+  }
+
+  size_t  bytes_read = fread (buffer, 1, len_buffer, fp);
+  fclose (fp);
+
+  if (bytes_read != len_buffer) {
+    ERROR ("Failed to read %zu bytes from private key file (got %zu)\n", len_buffer, bytes_read);
+    return false;
+  }
+
+  return true;
+}
+
+/*
+ * Callback for hss_generate_signature to update private key file
+ */
+static bool
+update_private_key (
+  unsigned char  *buffer,
+  size_t         len_buffer,
+  void           *context
+  )
+{
+  const char  *filename = (const char *)context;
+
+  /* Try to open for update (read/write without truncating) */
+  FILE  *fp = fopen (filename, "r+");
+
+  if (NULL == fp) {
+    /* If r+ fails, fall back to creating new file */
+    ERROR ("Cannot open private key for update with r+ mode: %s\n", filename);
+    fp = fopen (filename, "wb");
+    if (NULL == fp) {
+      ERROR ("Cannot open private key for update with wb mode: %s\n", filename);
+      return false;
+    }
+  }
+
+  /* Write the entire buffer as one item (matching original implementation) */
+  size_t  written = fwrite (buffer, len_buffer, 1, fp);
+
+  if (written != 1) {
+    ERROR ("Cannot write to private key for update: %s\n", filename);
+    fclose (fp);
+    return false;
+  }
+
+  if (fclose (fp) != 0) {
+    ERROR ("Cannot close the private key after update: %s\n", filename);
+    return false;
+  }
+
+  if (verbose) {
+    LOG ("LMS private key successfully updated.\n");
+  }
+
+  return true;
+}
+
+/*
+ * LMS signature generation using hash-sigs library
+ */
+crypto_status
+crypto_lms_sign_data_internal (
+  const unsigned char  *msg,
+  size_t               msg_len,
+  unsigned char        *signature,
+  size_t               *sig_len,
+  const char           *privkey_file,
+  const unsigned char  *aux_data,
+  size_t               aux_len
+  )
+{
+  if ((NULL == msg) || (NULL == signature) || (NULL == sig_len) || (NULL == privkey_file)) {
+    ERROR ("LMS sign: NULL parameter\n");
+    return crypto_nullptr_error;
+  }
+
+  struct hss_working_key  *working_key   = NULL;
+  unsigned char           *aux_data_copy = NULL;
+  size_t                  aux_data_len   = aux_len;
+
+  /* Load auxiliary data if provided */
+  if ((aux_data != NULL) && (aux_len > 0)) {
+    aux_data_copy = malloc (aux_len);
+    if (NULL == aux_data_copy) {
+      ERROR ("Failed to allocate memory for aux data\n");
+      return crypto_memory_alloc_fail;
+    }
+
+    memcpy (aux_data_copy, aux_data, aux_len);
+  }
+
+  /* Load private key into working key structure */
+  working_key = hss_load_private_key (
+                                      read_private_key,
+                                      (void *)privkey_file,
+                                      0, /* memory_target: 0 = minimize memory */
+                                      aux_data_copy,
+                                      aux_data_len,
+                                      NULL /* info parameter */
+                                      );
+
+  if (aux_data_copy != NULL) {
+    free (aux_data_copy);
+  }
+
+  if (NULL == working_key) {
+    ERROR ("Failed to load LMS private key from %s\n", privkey_file);
+    return crypto_invalid_key;
+  }
+
+  /* Query signature length */
+  size_t  sig_buffer_len = hss_get_signature_len_from_working_key (working_key);
+  if (sig_buffer_len == 0) {
+    ERROR ("Failed to get signature length\n");
+    hss_free_working_key (working_key);
+    return crypto_crypto_operation_fail;
+  }
+
+  /* Check if provided buffer is large enough
+   * Note: hss_generate_signature already includes NSPK prefix (levels-1 field) */
+  if (*sig_len < sig_buffer_len) {
+    ERROR ("Signature buffer too small: need %zu, have %zu\n", sig_buffer_len, *sig_len);
+    hss_free_working_key (working_key);
+    return crypto_buffer_too_small;
+  }
+
+  /* Generate signature directly into output buffer
+   * The signature already includes the NSPK prefix (levels-1 = 0x00000000) */
+  bool  result = hss_generate_signature (
+                                         working_key,
+                                         update_private_key,
+                                         (void *)privkey_file,
+                                         msg,
+                                         msg_len,
+                                         signature,
+                                         sig_buffer_len,
+                                         NULL /* info parameter */
+                                         );
+
+  if (!result) {
+    ERROR ("LMS signature generation failed\n");
+    hss_free_working_key (working_key);
+    return crypto_crypto_operation_fail;
+  }
+
+  *sig_len = sig_buffer_len;
+
+  hss_free_working_key (working_key);
+
+  if (verbose) {
+    LOG ("LMS signature generation succeeded, signature length: %zu\n", *sig_len);
+  }
+
+  return crypto_ok;
+}
+
+#endif /* !USE_IPPC */

@@ -426,6 +426,10 @@ typedef struct __packed {
 
 #define LMS_MAX_PUBKEY_SIZE 48
 
+// Maximum LMS signature size (includes all fields of lms_signature with NSPK prefix)
+// Q (4) + lmots_signature (4 + 24 + 1224) + LmsType (4) + Path (480) + overhead = ~4096
+#define LMS_MAX_SIGNATURE_SIZE 4096
+
 typedef struct __packed {
     uint32_t LmsType; //Must be 0xD (LMS_SHA256_M24_H20)
     uint32_t LmotsType; //Must be 0x3 (LMOTS_SHA256_N24_W4)
