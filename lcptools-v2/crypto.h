@@ -13,7 +13,13 @@ typedef enum {
   crypto_general_fail,
   crypto_unknown_hashalg,
   crypto_unknown_signalg,
-  crypto_nullptr_error
+  crypto_nullptr_error,
+  crypto_invalid_size,
+  crypto_memory_alloc_fail,
+  crypto_file_io_error,
+  crypto_invalid_key,
+  crypto_buffer_too_small,
+  crypto_crypto_operation_fail
 } crypto_status;
 
 typedef struct {

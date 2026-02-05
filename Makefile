@@ -14,12 +14,14 @@ export ROOTDIR=$(CURDIR)
 include Config.mk
 
 # (txt-test is not included because it requires pathing to Linux src)
-SUBDIRS := tboot safestringlib lcptools-v2 tb_polgen utils docs
 
-# Conditionally add ippc if USE_IPPC is set
+# Conditionally set SUBDIRS based on USE_IPPC
 ifdef USE_IPPC
-    SUBDIRS += ippc
+    SUBDIRS := tboot safestringlib ippc lcptools-v2 tb_polgen utils docs
+	CFLAGS += -DUSE_IPPC
     $(info Building with IPPC support enabled)
+else
+    SUBDIRS := tboot safestringlib lcptools-v2 tb_polgen utils docs
 endif
 
 #

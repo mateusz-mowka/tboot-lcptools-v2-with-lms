@@ -70,6 +70,12 @@ LCP2_LIB := liblcp.a
 
 LIBS += -lcrypto -llcp -lz $(ROOTDIR)/safestringlib/libsafestring.a
 
+# Add IPPC library if USE_IPPC is set
+ifdef USE_IPPC
+LIBS += -L$(ROOTDIR)/ippc/cryptography-primitives/build/.build/RELEASE/lib -lippcp
+LDFLAGS += -Wl,-rpath,$(ROOTDIR)/ippc/cryptography-primitives/build/.build/RELEASE/lib
+endif
+
 HASH_SIGS := ./hash-sigs/hss_lib_thread.a ./hash-sigs/hss_verify.a
 
 $(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o crypto.o crypto_OpenSSL.o crypto_ippc.o
