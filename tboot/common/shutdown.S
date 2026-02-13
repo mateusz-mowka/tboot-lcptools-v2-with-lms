@@ -116,8 +116,20 @@ shutdown_entry32:
  */
 ENTRY(shutdown_entry)
 	.code64
+        endbr64
 	cli
 	wbinvd
+
+        /* Disable CET*/
+        movl    $0, %eax
+        movl    $0, %edx
+        movl    $MSR_IA32_U_CET, %ecx
+        wrmsr
+
+        movl    $0, %eax
+        movl    $0, %edx
+        movl    $MSR_IA32_S_CET, %ecx
+        wrmsr
 
 	movl    $MSR_EFER,%ecx
 	rdmsr
