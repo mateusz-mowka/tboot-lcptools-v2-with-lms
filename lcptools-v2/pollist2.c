@@ -814,9 +814,9 @@ lcp_signature_t2 *read_rsa_pubkey_file(const char *file)
     crypto_status status = crypto_read_rsa_pubkey(file, &key, &keysize);
 
     if(crypto_ok != status){
-        if(key != NULL){
+        if (key != NULL){
             free(key);
-            key=NULL;
+            key = NULL;
         }
         return NULL;
     }
@@ -825,7 +825,7 @@ lcp_signature_t2 *read_rsa_pubkey_file(const char *file)
     if ( sig == NULL ) {
         ERROR("Error: failed to allocate sig\n");
         free(key);
-        key=NULL;
+        key = NULL;
         return NULL;
     }
 
@@ -844,7 +844,7 @@ lcp_signature_t2 *read_rsa_pubkey_file(const char *file)
 
     LOG("read rsa pubkey succeed!\n");
     free(key);
-    key=NULL;
+    key = NULL;
     return sig;
 }
 
@@ -864,6 +864,8 @@ lcp_signature_t2 *read_ecdsa_pubkey(const char *pubkey_file)
     sig = calloc(1, sizeof(lcp_ecc_signature_t)+(4*key_size_bytes)); //qx, qy, r and s
     if (sig == NULL) {
         ERROR("Error: failed to allocate signature.\n");
+        free(qx);
+        free(qy);
         return NULL;
     }
 
@@ -1061,7 +1063,7 @@ bool rsa_sign_list2_data(lcp_policy_list_t2 *pollist, const char *privkey_file,
 
     c_status = crypto_rsa_sign((crypto_sized_buffer *)signature_block,(crypto_sized_buffer *) data_to_sign, pollist->sig_alg, hash_alg, privkey_file);
 
-    status = (c_status == crypto_general_fail) ? false : true;
+    status = (c_status == crypto_ok) ? true : false;
 
     if (!status) {
         ERROR("Error: failed to sign list data.\n");

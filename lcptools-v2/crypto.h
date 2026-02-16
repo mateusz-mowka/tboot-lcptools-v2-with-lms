@@ -1,12 +1,45 @@
 #pragma once
 
-#include "../include/lcp3.h"
-
 #define CRYPTO_SHA1_LENGTH    20
 #define CRYPTO_SHA256_LENGTH  32
 #define CRYPTO_SM3_LENGTH     32
 #define CRYPTO_SHA384_LENGTH  48
 #define CRYPTO_SHA512_LENGTH  64
+#define MAX_RSA_KEY_SIZE         0x180
+#define MIN_RSA_KEY_SIZE         0x100
+#define MAX_ECC_KEY_SIZE         0x30
+#define MIN_ECC_KEY_SIZE         0x20
+
+#ifndef __packed
+#define __packed   __attribute__ ((packed))
+#endif
+
+typedef struct __packed {
+    uint8_t  Version;
+    uint16_t KeySize; //IN BITS - 2048 or 3072!
+    uint32_t Exponent;
+    uint8_t  Modulus[MAX_RSA_KEY_SIZE];
+} rsa_public_key;
+
+typedef struct __packed {
+    uint8_t  Version;
+    uint16_t KeySize; //IN BITS - 2048 or 3072!
+    uint16_t HashAlg;
+    uint8_t  Signature[MAX_RSA_KEY_SIZE];
+} rsa_signature;
+
+typedef struct __packed {
+    uint8_t  Version;
+    uint16_t KeySize; //IN BITS - 256 or 384!
+    uint8_t  QxQy[2*MAX_ECC_KEY_SIZE];
+} ecc_public_key;
+
+typedef struct __packed {
+    uint8_t Version;
+    uint16_t KeySize; //IN BITS - 256 or 384!
+    uint16_t HashAlg;
+    uint8_t  sigRsigS[2*MAX_ECC_KEY_SIZE];
+} ecc_signature;
 
 typedef enum {
   crypto_ok,
@@ -24,7 +57,7 @@ typedef enum {
 
 typedef struct {
   size_t           size;
-  unsigned char    data[];
+  unsigned char   *data;
 } crypto_sized_buffer;
 
 crypto_status

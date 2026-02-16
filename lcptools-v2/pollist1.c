@@ -504,7 +504,7 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
 
     c_status = crypto_rsa_sign((crypto_sized_buffer *)signature_block, (crypto_sized_buffer *)digest, pollist->sig_alg, TPM_ALG_SHA1, privkey_file);
 
-    status = (c_status == crypto_general_fail) ? false : true;
+    status = (c_status == crypto_ok) ? true : false;
 
     if (!status) {
         ERROR("Error: failed to sign list data.\n");

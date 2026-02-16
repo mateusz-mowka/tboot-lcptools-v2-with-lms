@@ -122,16 +122,6 @@ crypto_hash_buffer_internal (
   return crypto_ok;
 }
 
-/* Helper function to compare strings (compatible with strcmp) */
-int
-str8cmp (
-  const char  *s1,
-  const char  *s2
-  )
-{
-  return strcmp (s1, s2);
-}
-
 /* Simple base64 decode function */
 uint16_t
 base64_decode (
@@ -219,7 +209,8 @@ der_parse_length (
 
   /* Long form: first byte (minus high bit) tells us how many bytes encode the length */
   int  num_length_bytes = first_byte & 0x7F;
-  if ((num_length_bytes > 4) || (*offset + num_length_bytes > max_size)) {
+  if ((num_length_bytes == 0) || (num_length_bytes > 4) || (*offset + num_length_bytes > max_size)) {
+    /* num_length_bytes == 0 means indefinite length (0x80), which is invalid in DER */
     return -1;
   }
 
@@ -281,18 +272,12 @@ der_parse_integer (
 
 /* Helper structure to hold parsed RSA key components */
 typedef struct {
-  uint8_t    *n;
-  size_t     n_len;
-  uint8_t    *p;
-  size_t     p_len;
-  uint8_t    *q;
-  size_t     q_len;
-  uint8_t    *dp;
-  size_t     dp_len;
-  uint8_t    *dq;
-  size_t     dq_len;
-  uint8_t    *qinv;
-  size_t     qinv_len;
+  crypto_sized_buffer n;
+  crypto_sized_buffer p;
+  crypto_sized_buffer q;
+  crypto_sized_buffer dp;
+  crypto_sized_buffer dq;
+  crypto_sized_buffer qinv;
 } rsa_private_key_params;
 
 /* Parse RSA private key from DER format (PKCS#1) */
@@ -328,10 +313,14 @@ parse_rsa_private_key_der (
   }
 
   /* Parse modulus (n) - save it to get key size */
-  if (der_parse_integer (der_buf, &offset, der_size, &params->n, &params->n_len) != 0) {
+  uint8_t *n_ptr = NULL;
+  size_t n_len = 0;
+  if (der_parse_integer (der_buf, &offset, der_size, &n_ptr, &n_len) != 0) {
     printf ("ERROR: Failed to parse modulus\n");
     return -1;
   }
+  params->n.data = n_ptr;
+  params->n.size = n_len;
 
   /* Skip publicExponent (e) */
   if (der_parse_integer (der_buf, &offset, der_size, &temp_value, &temp_len) != 0) {
@@ -346,34 +335,240 @@ parse_rsa_private_key_der (
   }
 
   /* Parse prime1 (p) */
-  if (der_parse_integer (der_buf, &offset, der_size, &params->p, &params->p_len) != 0) {
+  uint8_t *p_ptr = NULL;
+  size_t p_len = 0;
+  if (der_parse_integer (der_buf, &offset, der_size, &p_ptr, &p_len) != 0) {
     printf ("ERROR: Failed to parse prime1 (p)\n");
     return -1;
   }
+  params->p.data = p_ptr;
+  params->p.size = p_len;
 
   /* Parse prime2 (q) */
-  if (der_parse_integer (der_buf, &offset, der_size, &params->q, &params->q_len) != 0) {
+  uint8_t *q_ptr = NULL;
+  size_t q_len = 0;
+  if (der_parse_integer (der_buf, &offset, der_size, &q_ptr, &q_len) != 0) {
     printf ("ERROR: Failed to parse prime2 (q)\n");
     return -1;
   }
+  params->q.data = q_ptr;
+  params->q.size = q_len;
 
   /* Parse exponent1 (dP) */
-  if (der_parse_integer (der_buf, &offset, der_size, &params->dp, &params->dp_len) != 0) {
+  uint8_t *dp_ptr = NULL;
+  size_t dp_len = 0;
+  if (der_parse_integer (der_buf, &offset, der_size, &dp_ptr, &dp_len) != 0) {
     printf ("ERROR: Failed to parse exponent1 (dP)\n");
     return -1;
   }
+  params->dp.data = dp_ptr;
+  params->dp.size = dp_len;
 
   /* Parse exponent2 (dQ) */
-  if (der_parse_integer (der_buf, &offset, der_size, &params->dq, &params->dq_len) != 0) {
+  uint8_t *dq_ptr = NULL;
+  size_t dq_len = 0;
+  if (der_parse_integer (der_buf, &offset, der_size, &dq_ptr, &dq_len) != 0) {
     printf ("ERROR: Failed to parse exponent2 (dQ)\n");
     return -1;
   }
+  params->dq.data = dq_ptr;
+  params->dq.size = dq_len;
 
   /* Parse coefficient (qInv) */
-  if (der_parse_integer (der_buf, &offset, der_size, &params->qinv, &params->qinv_len) != 0) {
+  uint8_t *qinv_ptr = NULL;
+  size_t qinv_len = 0;
+  if (der_parse_integer (der_buf, &offset, der_size, &qinv_ptr, &qinv_len) != 0) {
     printf ("ERROR: Failed to parse coefficient (qInv)\n");
     return -1;
   }
+  params->qinv.data = qinv_ptr;
+  params->qinv.size = qinv_len;
+
+  return 0;
+}
+
+/* Parse RSA public key from DER format (PKCS#1 - RSAPublicKey) */
+static int
+parse_rsa_public_key_pkcs1 (
+  const uint8_t  *der_buf,
+  size_t         der_size,
+  uint8_t        **modulus,
+  size_t         *modulus_len
+  )
+{
+  size_t   offset = 0;
+  uint8_t  *temp_value;
+  size_t   temp_len;
+
+  /* Parse outer SEQUENCE */
+  if (der_buf[offset] != 0x30) {
+    printf ("ERROR: Expected SEQUENCE tag (0x30) at offset %zu\n", offset);
+    return -1;
+  }
+
+  offset++;
+
+  size_t  seq_len;
+  if (der_parse_length (der_buf, &offset, der_size, &seq_len) != 0) {
+    printf ("ERROR: Failed to parse SEQUENCE length\n");
+    return -1;
+  }
+
+  /* Parse modulus (n) - this returns a pointer into der_buf */
+  if (der_parse_integer (der_buf, &offset, der_size, modulus, modulus_len) != 0) {
+    printf ("ERROR: Failed to parse modulus\n");
+    return -1;
+  }
+
+  /* Parse publicExponent (e) - we don't need it but validate it exists */
+  if (der_parse_integer (der_buf, &offset, der_size, &temp_value, &temp_len) != 0) {
+    printf ("ERROR: Failed to parse publicExponent\n");
+    return -1;
+  }
+
+  return 0;
+}
+
+/* Parse RSA public key from DER format (SubjectPublicKeyInfo - generic PUBLIC KEY) */
+static int
+parse_rsa_public_key_spki (
+  const uint8_t  *der_buf,
+  size_t         der_size,
+  uint8_t        **modulus,
+  size_t         *modulus_len
+  )
+{
+  size_t  offset = 0;
+  size_t  seq_len;
+
+  /* rsaEncryption OID: 1.2.840.113549.1.1.1 */
+  static const uint8_t  rsa_oid[] = {
+    0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01
+  };
+
+  /* Parse outer SEQUENCE (SubjectPublicKeyInfo) */
+  if (der_buf[offset] != 0x30) {
+    printf ("ERROR: Expected SEQUENCE tag (0x30)\n");
+    return -1;
+  }
+
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &seq_len) != 0) {
+    printf ("ERROR: Failed to parse outer SEQUENCE length\n");
+    return -1;
+  }
+
+  /* Parse algorithm identifier SEQUENCE */
+  if (der_buf[offset] != 0x30) {
+    printf ("ERROR: Expected algorithm SEQUENCE tag (0x30)\n");
+    return -1;
+  }
+
+  offset++;
+
+  size_t  alg_seq_len;
+  if (der_parse_length (der_buf, &offset, der_size, &alg_seq_len) != 0) {
+    printf ("ERROR: Failed to parse algorithm SEQUENCE length\n");
+    return -1;
+  }
+
+  /* Validate the AlgorithmIdentifier contains rsaEncryption OID */
+  size_t  alg_seq_end = offset + alg_seq_len;
+  if ((alg_seq_len < sizeof (rsa_oid)) || (alg_seq_end > der_size)) {
+    printf ("ERROR: Algorithm identifier too short or extends beyond buffer\n");
+    return -1;
+  }
+
+  if (memcmp (&der_buf[offset], rsa_oid, sizeof (rsa_oid)) != 0) {
+    printf ("ERROR: AlgorithmIdentifier OID is not rsaEncryption\n");
+    return -1;
+  }
+
+  /* Skip past the full AlgorithmIdentifier SEQUENCE content (OID + optional NULL) */
+  offset = alg_seq_end;
+
+  /* Parse BIT STRING containing the public key */
+  if (offset >= der_size || der_buf[offset] != 0x03) {
+    printf ("ERROR: Expected BIT STRING tag (0x03)\n");
+    return -1;
+  }
+
+  offset++;
+
+  size_t  bitstring_len;
+  if (der_parse_length (der_buf, &offset, der_size, &bitstring_len) != 0) {
+    printf ("ERROR: Failed to parse BIT STRING length\n");
+    return -1;
+  }
+
+  /* Validate and skip the unused bits byte (must be 0 for byte-aligned keys) */
+  if ((offset >= der_size) || (bitstring_len == 0)) {
+    printf ("ERROR: Unexpected end of data in BIT STRING\n");
+    return -1;
+  }
+
+  if (der_buf[offset] != 0x00) {
+    printf ("ERROR: BIT STRING unused bits byte is non-zero (0x%02X), malformed key\n", der_buf[offset]);
+    return -1;
+  }
+
+  offset++;
+  bitstring_len--;
+
+  /* Now we have the RSAPublicKey structure (PKCS#1) inside the BIT STRING */
+  if (offset + bitstring_len > der_size) {
+    printf ("ERROR: BIT STRING extends beyond buffer\n");
+    return -1;
+  }
+
+  /* Parse the inner RSAPublicKey structure */
+  return parse_rsa_public_key_pkcs1 (der_buf + offset, bitstring_len, modulus, modulus_len);
+}
+
+/* Extract RSA public key modulus and copy to buffer */
+static int
+extract_rsa_public_key_to_buffer (
+  const uint8_t  *der_buf,
+  size_t         der_size,
+  uint8_t        pem_type,
+  uint8_t        *key_buf,
+  uint16_t       max_size,
+  uint16_t       *key_size
+  )
+{
+  uint8_t  *modulus     = NULL;
+  size_t   modulus_len  = 0;
+  int      result;
+
+  if (pem_type == PEMTYPE_RSA_PUBLIC) {
+    /* PKCS#1 format */
+    result = parse_rsa_public_key_pkcs1 (der_buf, der_size, &modulus, &modulus_len);
+  } else if (pem_type == PEMTYPE__PUBLIC) {
+    /* SubjectPublicKeyInfo format */
+    result = parse_rsa_public_key_spki (der_buf, der_size, &modulus, &modulus_len);
+  } else {
+    return -1;
+  }
+
+  if (result != 0) {
+    return -1;
+  }
+
+  /* Validate key size */
+  if ((modulus_len != RSA_KEY_MIN_BYTES) && (modulus_len != RSA_KEY_MAX_BYTES)) {
+    printf ("ERROR: Unsupported RSA key size: %zu bytes\n", modulus_len);
+    return -1;
+  }
+
+  if (modulus_len > max_size) {
+    printf ("ERROR: Key buffer too small (%d bytes) for key size (%zu bytes)\n", max_size, modulus_len);
+    return -1;
+  }
+
+  /* Copy modulus to output buffer (keep in big-endian to match OpenSSL) */
+  memcpy (key_buf, modulus, modulus_len);
+  *key_size = modulus_len;
 
   return 0;
 }
@@ -387,25 +582,49 @@ get_key_from_der (
   uint16_t  *key_size
   )
 {
+  /* Handle RSA public keys */
+  if (pem_type == PEMTYPE_RSA_PUBLIC) {
+    /* PKCS#1 format: RSAPublicKey */
+    uint8_t  *modulus;
+    size_t   modulus_len;
 
-  /* For now, only RSA private keys are supported with full parsing */
-  if ((pem_type != PEMTYPE_RSA_PRIVATE) && (pem_type != PEMTYPE__PRIVATE)) {
-    printf ("WARNING: get_key_from_der only supports RSA private keys currently\n");
-    return crypto_general_fail;
+    if (parse_rsa_public_key_pkcs1 (der_buf, der_size, &modulus, &modulus_len) != 0) {
+      printf ("ERROR: Failed to parse RSA public key (PKCS#1)\n");
+      return crypto_general_fail;
+    }
+
+    *key_size = modulus_len;
+    return crypto_ok;
+  } else if (pem_type == PEMTYPE__PUBLIC) {
+    /* SubjectPublicKeyInfo format: generic PUBLIC KEY */
+    uint8_t  *modulus;
+    size_t   modulus_len;
+
+    if (parse_rsa_public_key_spki (der_buf, der_size, &modulus, &modulus_len) != 0) {
+      printf ("ERROR: Failed to parse RSA public key (SubjectPublicKeyInfo)\n");
+      return crypto_general_fail;
+    }
+
+    *key_size = modulus_len;
+    return crypto_ok;
+  } else if ((pem_type == PEMTYPE_RSA_PRIVATE) || (pem_type == PEMTYPE__PRIVATE)) {
+    /* RSA private key */
+    /* Parse the DER structure - this extracts the CRT parameters but doesn't copy to key_buf
+     * The actual key loading is done in rsa_load_private_key_from_file which stores
+     * the DER buffer pointer for later use */
+    rsa_private_key_params  params;
+    if (parse_rsa_private_key_der (der_buf, der_size, &params) != 0) {
+      printf ("ERROR: Failed to parse RSA private key DER structure\n");
+      return crypto_general_fail;
+    }
+
+    /* Return the modulus size as the key size for algorithm detection */
+    *key_size = params.n.size;
+    return crypto_ok;
   }
 
-  /* Parse the DER structure - this extracts the CRT parameters but doesn't copy to key_buf
-   * The actual key loading is done in rsa_load_private_key_from_file which stores
-   * the DER buffer pointer for later use */
-  rsa_private_key_params  params;
-  if (parse_rsa_private_key_der (der_buf, der_size, &params) != 0) {
-    printf ("ERROR: Failed to parse RSA private key DER structure\n");
-    return crypto_general_fail;
-  }
-
-  /* Return the modulus size as the key size for algorithm detection */
-  *key_size = params.n_len;
-  return crypto_ok;
+  printf ("WARNING: get_key_from_der does not support pem_type %d\n", pem_type);
+  return crypto_general_fail;
 }
 
 static uint8_t
@@ -484,21 +703,21 @@ get_der_from_pem (
   }
 
   /* We are either at the first header or skipped past the EC Params section */
-  if (str8cmp ((char *)p_pem_header, "-----BEGIN EC PUBLIC KEY-----") == 0) {
+  if (strcmp ((char *)p_pem_header, "-----BEGIN EC PUBLIC KEY-----") == 0) {
     key_type = PEMTYPE_EC_PUBLIC;
-  } else if (str8cmp ((char *)p_pem_header, "-----BEGIN EC PRIVATE KEY-----") == 0) {
+  } else if (strcmp ((char *)p_pem_header, "-----BEGIN EC PRIVATE KEY-----") == 0) {
     key_type = PEMTYPE_EC_PRIVATE;
-  } else if (str8cmp ((char *)p_pem_header, "-----BEGIN RSA PUBLIC KEY-----") == 0) {
+  } else if (strcmp ((char *)p_pem_header, "-----BEGIN RSA PUBLIC KEY-----") == 0) {
     key_type = PEMTYPE_RSA_PUBLIC;
-  } else if (str8cmp ((char *)p_pem_header, "-----BEGIN RSA PRIVATE KEY-----") == 0) {
+  } else if (strcmp ((char *)p_pem_header, "-----BEGIN RSA PRIVATE KEY-----") == 0) {
     key_type = PEMTYPE_RSA_PRIVATE;
-  } else if (str8cmp ((char *)p_pem_header, "-----BEGIN LMS PUBLIC KEY-----") == 0) {
+  } else if (strcmp ((char *)p_pem_header, "-----BEGIN LMS PUBLIC KEY-----") == 0) {
     key_type = PEMTYPE_LMS_PUBLIC;
-  } else if (str8cmp ((char *)p_pem_header, "-----BEGIN LMS PRIVATE KEY-----") == 0) {
+  } else if (strcmp ((char *)p_pem_header, "-----BEGIN LMS PRIVATE KEY-----") == 0) {
     key_type = PEMTYPE_LMS_PRIVATE;
-  } else if (str8cmp ((char *)p_pem_header, "-----BEGIN PUBLIC KEY-----") == 0) {
+  } else if (strcmp ((char *)p_pem_header, "-----BEGIN PUBLIC KEY-----") == 0) {
     key_type = PEMTYPE__PUBLIC;
-  } else if (str8cmp ((char *)p_pem_header, "-----BEGIN PRIVATE KEY-----") == 0) {
+  } else if (strcmp ((char *)p_pem_header, "-----BEGIN PRIVATE KEY-----") == 0) {
     key_type = PEMTYPE__PRIVATE;
   } else {
     printf ("ERROR: unsupported PEM header %s\n", p_pem_header);
@@ -647,6 +866,11 @@ crypto_read_key (
         case PEMTYPE_LMS_PUBLIC:
           *alg_id = KEY_ALG_TYPE_LMS;
           break;
+        case PEMTYPE__PUBLIC:
+        case PEMTYPE__PRIVATE:
+          /* Generic PEM types - algorithm will be refined by key size detection later */
+          *alg_id = HASH_ALG_TYPE_NULL;
+          break;
         default:
           *alg_id = HASH_ALG_TYPE_NULL;
           break;
@@ -657,6 +881,7 @@ crypto_read_key (
       case PEMTYPE_RSA_PUBLIC:
       case PEMTYPE_EC_PUBLIC:
       case PEMTYPE_LMS_PUBLIC:
+      case PEMTYPE__PUBLIC:
         if (is_private) {
           printf ("ERROR: Wrong key type (%s)\n", filename);
           if (p_der_buf != p_file_data_buf) {
@@ -671,6 +896,7 @@ crypto_read_key (
       case PEMTYPE_EC_PRIVATE:
       case PEMTYPE_RSA_PRIVATE:
       case PEMTYPE_LMS_PRIVATE:
+      case PEMTYPE__PRIVATE:
         if (!is_private) {
           printf ("ERROR: Wrong key type (%s)\n", filename);
           if (p_der_buf != p_file_data_buf) {
@@ -698,6 +924,7 @@ crypto_read_key (
 
   /* Do we have a valid DER? */
   if ((der_size != 0) && (*p_der_buf == 0x30)) {
+    uint16_t  orig_key_buf_size = *key_size;
     status = get_key_from_der (p_der_buf, der_size, pem_type, key_size);
 
     if (alg_id != NULL) {
@@ -711,6 +938,20 @@ crypto_read_key (
     }
 
     if (status == crypto_ok) {
+      /* For RSA public keys, extract the modulus to key_buf */
+      if ((pem_type == PEMTYPE_RSA_PUBLIC) || (pem_type == PEMTYPE__PUBLIC)) {
+        if (extract_rsa_public_key_to_buffer (p_der_buf, der_size, pem_type, key_buf, orig_key_buf_size, key_size) != 0) {
+          printf ("ERROR: Failed to extract RSA public key modulus\n");
+          free ((void *)p_file_data_buf);
+          if ((p_der_buf != p_file_data_buf) && (p_der_buf != NULL)) {
+            free ((void *)p_der_buf);
+          }
+          return crypto_general_fail;
+        }
+      }
+      /* For RSA private keys, the DER parsing just validates and returns size */
+      /* The actual key data will be used later during signing operations */
+
       free ((void *)p_file_data_buf);
       if ((p_der_buf != p_file_data_buf) && (p_der_buf != NULL)) {
         free ((void *)p_der_buf);
@@ -1025,32 +1266,28 @@ rsa_load_private_key_from_file (
   }
 
   /* Calculate key size from p and q */
-  factor_bits_p  = params.p_len * 8;
-  factor_bits_q  = params.q_len * 8;
+  factor_bits_p  = params.p.size * 8;
+  factor_bits_q  = params.q.size * 8;
   *key_size_bits = (factor_bits_p + factor_bits_q);
 
   /* Create BigNum structures from the parsed parameters */
-  if (create_bignum_from_bytes (params.p, params.p_len, &p_bn) != ippStsNoErr) {
+  if (create_bignum_from_bytes (params.p.data, params.p.size, &p_bn) != ippStsNoErr) {
     printf ("ERROR: Failed to create BigNum for p\n");
     goto cleanup;
   }
-
-  if (create_bignum_from_bytes (params.q, params.q_len, &q_bn) != ippStsNoErr) {
+  if (create_bignum_from_bytes (params.q.data, params.q.size, &q_bn) != ippStsNoErr) {
     printf ("ERROR: Failed to create BigNum for q\n");
     goto cleanup;
   }
-
-  if (create_bignum_from_bytes (params.dp, params.dp_len, &dp_bn) != ippStsNoErr) {
+  if (create_bignum_from_bytes (params.dp.data, params.dp.size, &dp_bn) != ippStsNoErr) {
     printf ("ERROR: Failed to create BigNum for dP\n");
     goto cleanup;
   }
-
-  if (create_bignum_from_bytes (params.dq, params.dq_len, &dq_bn) != ippStsNoErr) {
+  if (create_bignum_from_bytes (params.dq.data, params.dq.size, &dq_bn) != ippStsNoErr) {
     printf ("ERROR: Failed to create BigNum for dQ\n");
     goto cleanup;
   }
-
-  if (create_bignum_from_bytes (params.qinv, params.qinv_len, &qinv_bn) != ippStsNoErr) {
+  if (create_bignum_from_bytes (params.qinv.data, params.qinv.size, &qinv_bn) != ippStsNoErr) {
     printf ("ERROR: Failed to create BigNum for qInv\n");
     goto cleanup;
   }

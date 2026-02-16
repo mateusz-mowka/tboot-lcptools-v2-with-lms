@@ -1086,7 +1086,7 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
     memcpy_s((void *) policy_list_data, pollist->KeySignatureOffset, (const void *) pollist, pollist->KeySignatureOffset);
 
     // Use crypto abstraction layer for LMS verification
-    if(!crypto_lms_verify_signature(
+    if (!crypto_lms_verify_signature(
 		policy_list_data,
 		pollist->KeySignatureOffset,
 		lms_sig,
@@ -1847,7 +1847,7 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
 
     c_status = crypto_rsa_sign((crypto_sized_buffer *)sig_block,(crypto_sized_buffer *) digest, sig_alg, hashalg, privkey_file);
 
-    status = (c_status == crypto_general_fail) ? false : true;
+    status = (c_status == crypto_ok) ? true : false;
 
     if (!status) {
         ERROR("Error: failed to sign list data.\n");

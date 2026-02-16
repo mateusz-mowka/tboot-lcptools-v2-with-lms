@@ -21,6 +21,7 @@
 #include "crypto_interface.h"
 #include "safe_lib.h"
 #include "hash-sigs/hss.h"
+#include "lcputils.h"
 #define LOG      printf
 #define ERROR    printf
 #define DISPLAY  printf
@@ -29,53 +30,6 @@
 #define MAJOR_VER(v)  ((v) >> 8)
 #define MINOR_VER(v)  ((v) & 0xff)
 extern bool  verbose;
-
-static void
-dump_hex (
-  const char  *prefix,
-  const void  *data,
-  size_t      n,
-  uint16_t    line_length
-  )
-{
-  unsigned int  i = 0;
-
-  while ( i < n ) {
-    if ((i % line_length == 0) && (prefix != NULL)) {
-      DISPLAY ("%s", prefix);
-    }
-
-    DISPLAY ("%02x ", *(uint8_t *)data++);
-    i++;
-    if ( i % line_length == 0 ) {
-      DISPLAY ("\n");
-    }
-  }
-
-  if ( i % line_length != 0 ) {
-    DISPLAY ("\n");
-  }
-}
-
-static void
-buffer_reverse_byte_order (
-  uint8_t  *buffer,
-  size_t   length
-  )
-/*Works in place, modifies passed buffer*/
-{
-  uint8_t  temp;
-  int      left_index  = 0;
-  int      right_index = length - 1;
-
-  while (right_index > left_index) {
-    temp                = buffer[right_index];
-    buffer[right_index] = buffer[left_index];
-    buffer[left_index]  = temp;
-    left_index++;
-    right_index--;
-  }
-}
 
 crypto_status
 crypto_hash_buffer_internal (
@@ -207,8 +161,12 @@ crypto_read_rsa_pubkey_internal (
   }
 
   // SUCCESS:
-  OPENSSL_free ((void *)pubkey);
-  OPENSSL_free ((void *)modulus);
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  EVP_PKEY_free(pubkey);
+#else
+  RSA_free(pubkey);
+#endif
+  BN_free(modulus);
   return crypto_ok;
 OPENSSL_ERROR:
   printf ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
@@ -222,12 +180,16 @@ ERROR:
     free (*key);
   }
 
-  if (modulus == NULL) {
-    OPENSSL_free ((void *)modulus);
+  if (modulus != NULL) {
+    BN_free(modulus);
   }
 
   if (pubkey != NULL) {
-    OPENSSL_free ((void *)pubkey);
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  EVP_PKEY_free(pubkey);
+#else
+  RSA_free(pubkey);
+#endif
   }
 
   return crypto_general_fail;
@@ -606,15 +568,20 @@ crypto_rsa_sign_internal (
   )
 {
   EVP_PKEY_CTX  *context = NULL;   // Context for openssl functions
-
+  bool sign_status = false;
   // Create context using key
   context = rsa_get_sig_ctx (privkey_file, sig_block->size);
   if ( context == NULL) {
     printf ("ERROR: failed to initialize EVP context.\n");
+    return crypto_general_fail;
   }
 
   // Sign
-  return ((rsa_ssa_pss_sign (sig_block, digest, sig_alg, hash_alg, context)) == true ? crypto_ok : crypto_general_fail);
+  sign_status = rsa_ssa_pss_sign (sig_block, digest, sig_alg, hash_alg, context);
+
+  EVP_PKEY_CTX_free (context);
+
+  return (sign_status == true ? crypto_ok : crypto_general_fail);
 }
 
 static uint16_t
