@@ -618,13 +618,24 @@ http://mpqs.free.fr/h11300-pkcs-1v2-2-rsa-cryptography-standard-wp_EMC_Corporati
   }
 
   data += 2;   // Skip 00 01
+
   // Skip 0xFFs padding and 00 after it
-  do {
+  size_t max_skip = 256;
+  size_t skip_count = 0;
+
+  while (*data == 0xFF && skip_count < max_skip) {
     data++;
-  } while (*data == 0xFF);
+    skip_count++;
+  }
+  
+  // After 0xFFs, expect a 0x00 delimiter
+  if (*data != 0x00) {
+    return TPM_ALG_NULL;
+  }
+  data++; // Move past 0x00
 
   // Then move to der_oid
-  data += 5;
+  data += 4; // Already advanced one for 0x00 above
   if (*data != der_oid) {
     return TPM_ALG_NULL;
   }

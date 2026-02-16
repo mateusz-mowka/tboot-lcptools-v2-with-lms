@@ -72,8 +72,8 @@ LIBS += -lcrypto -llcp -lz $(ROOTDIR)/safestringlib/libsafestring.a
 
 # Add IPPC library if USE_IPPC is set
 ifdef USE_IPPC
-LIBS += -L$(ROOTDIR)/ippc/cryptography-primitives/build/.build/RELEASE/lib -lippcp
-LDFLAGS += -Wl,-rpath,$(ROOTDIR)/ippc/cryptography-primitives/build/.build/RELEASE/lib
+LIBS += -L$(ROOTDIR)/lcptools-v2/ippc/cryptography-primitives/build/.build/RELEASE/lib -lippcp
+LDFLAGS += -Wl,-rpath,$(ROOTDIR)/lcptools-v2/ippc/cryptography-primitives/build/.build/RELEASE/lib
 endif
 
 HASH_SIGS := ./hash-sigs/hss_lib_thread.a ./hash-sigs/hss_verify.a

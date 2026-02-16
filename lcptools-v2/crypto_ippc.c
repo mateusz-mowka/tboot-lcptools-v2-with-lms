@@ -7,8 +7,8 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
-#include "../ippc/cryptography-primitives/include/ippcp.h"
-#include "../ippc/cryptography-primitives/include/ippcpdefs.h"
+#include "ippc/cryptography-primitives/include/ippcp.h"
+#include "ippc/cryptography-primitives/include/ippcpdefs.h"
 #include "../include/hash.h"
 #include "../include/lcp3.h"
 #include "crypto_interface.h"
@@ -1481,13 +1481,23 @@ pkcs_get_hashalg (
   }
 
   data += 2;   /* Skip 00 01 */
-  /* Skip 0xFFs padding and 00 after it */
-  do {
-    data++;
-  } while (*data == 0xFF);
+// Skip 0xFFs padding and 00 after it
+  size_t max_skip = 256;
+  size_t skip_count = 0;
 
-  /* Then move to der_oid */
-  data += 5;
+  while (*data == 0xFF && skip_count < max_skip) {
+    data++;
+    skip_count++;
+  }
+  
+  // After 0xFFs, expect a 0x00 delimiter
+  if (*data != 0x00) {
+    return TPM_ALG_NULL;
+  }
+  data++; // Move past 0x00
+
+  // Then move to der_oid
+  data += 4; // Already advanced one for 0x00 above
   if (*data != der_oid) {
     return TPM_ALG_NULL;
   }

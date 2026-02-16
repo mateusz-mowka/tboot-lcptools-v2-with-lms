@@ -17,11 +17,11 @@ include Config.mk
 
 # Conditionally set SUBDIRS based on USE_IPPC
 ifdef USE_IPPC
-    SUBDIRS := tboot safestringlib ippc lcptools-v2 tb_polgen utils docs
-	CFLAGS += -DUSE_IPPC
-    $(info Building with IPPC support enabled)
+SUBDIRS := tboot safestringlib lcptools-v2/ippc lcptools-v2 tb_polgen utils docs
+CFLAGS += -DUSE_IPPC
+$(info Building with IPPC support enabled)
 else
-    SUBDIRS := tboot safestringlib lcptools-v2 tb_polgen utils docs
+SUBDIRS := tboot safestringlib lcptools-v2 tb_polgen utils docs
 endif
 
 #
@@ -32,6 +32,9 @@ endif
 #    manifest
 #
 .PHONY: manifest
+
+dist-lcptools-v2/ippc:
+	$(MAKE) -C lcptools-v2/ippc dist
 manifest : build
 	lcptools/lcp_mlehash tboot/tboot.gz > mle_file
 	lcptools/lcp_crtpol -t 0 -m mle_file -o policy_file
@@ -81,7 +84,12 @@ dist-% :
 .PHONY: world
 world :
 	$(MAKE) clean
+#
+# Explicit rule for subdir with slash (for recursive make)
+	$(MAKE) -C lcptools-v2/ippc build
 	$(MAKE) dist
+build-lcptools-v2/ippc:
+	$(MAKE) -C lcptools-v2/ippc build
 
 
 #
