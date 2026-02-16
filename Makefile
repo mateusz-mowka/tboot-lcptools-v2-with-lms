@@ -16,6 +16,12 @@ include Config.mk
 # (txt-test is not included because it requires pathing to Linux src)
 SUBDIRS := tboot safestringlib lcptools-v2 tb_polgen utils docs
 
+# Conditionally add ippc if USE_IPPC is set
+ifdef USE_IPPC
+    SUBDIRS += ippc
+    $(info Building with IPPC support enabled)
+endif
+
 #
 # build rules
 #
