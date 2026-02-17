@@ -19,14 +19,25 @@ LCP2_TARGETS := \
 	lcp2_crtpollist \
 	lcp2_crtpolelt  \
 
-lcp2 : $(LCP2_TARGETS)
+# Build IPPC library if USE_IPPC is set (needed for standalone builds)
+ifdef USE_IPPC
+IPPC_DEP := ippc_lib
+else
+IPPC_DEP :=
+endif
+
+.PHONY: ippc_lib
+ippc_lib:
+	$(MAKE) -C ippc build
+
+lcp2 : $(IPPC_DEP) $(LCP2_TARGETS)
 
 
 #
 # universal rules
 #
 
-build : $(LCP2_TARGETS)
+build : $(IPPC_DEP) $(LCP2_TARGETS)
 
 
 dist : install

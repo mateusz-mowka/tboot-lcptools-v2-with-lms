@@ -757,56 +757,274 @@ get_der_from_pem (
   return key_type;
 }
 
-crypto_status
-read_input_file (
-  const char  *filename,
-  uint8_t     **file_data,
-  uint32_t    *file_size
+static crypto_status
+handle_pem_type_validation (
+  uint8_t      pem_type,
+  bool         is_private,
+  const char   *filename,
+  uint16_t     *alg_id
   )
 {
-  FILE    *fp_in;
-  size_t  temp_result;
-
-  /* Validate input parameters */
-  if ((filename == NULL) || (file_data == NULL) || (file_size == NULL)) {
-    printf ("ERROR: NULL pointer passed to read_input_file\n");
-    return crypto_nullptr_error;
+  /* Set algorithm ID based on PEM type */
+  if (alg_id != NULL) {
+    switch (pem_type) {
+      case PEMTYPE_EC_PRIVATE:
+      case PEMTYPE_EC_PUBLIC:
+        *alg_id = KEY_ALG_TYPE_ECC;
+        break;
+      case PEMTYPE_RSA_PRIVATE:
+      case PEMTYPE_RSA_PUBLIC:
+        *alg_id = KEY_ALG_TYPE_RSA;
+        break;
+      case PEMTYPE_LMS_PRIVATE:
+      case PEMTYPE_LMS_PUBLIC:
+        *alg_id = KEY_ALG_TYPE_LMS;
+        break;
+      case PEMTYPE__PUBLIC:
+      case PEMTYPE__PRIVATE:
+        /* Generic PEM types - algorithm will be refined by key size detection later */
+        *alg_id = HASH_ALG_TYPE_NULL;
+        break;
+      default:
+        *alg_id = HASH_ALG_TYPE_NULL;
+        break;
+    }
   }
 
-  /* Open the Input file */
-  if ((fp_in = fopen (filename, "rb")) == NULL) {
-    printf ("ERROR: Unable to open file: %s\n", filename);
-    return crypto_file_io_error;
+  /* Validate that key type matches is_private parameter */
+  switch (pem_type) {
+    case PEMTYPE_RSA_PUBLIC:
+    case PEMTYPE_EC_PUBLIC:
+    case PEMTYPE_LMS_PUBLIC:
+    case PEMTYPE__PUBLIC:
+      if (is_private) {
+        printf ("ERROR: Wrong key type (%s)\n", filename);
+        return crypto_general_fail;
+      }
+      break;
+    case PEMTYPE_EC_PRIVATE:
+    case PEMTYPE_RSA_PRIVATE:
+    case PEMTYPE_LMS_PRIVATE:
+    case PEMTYPE__PRIVATE:
+      if (!is_private) {
+        printf ("ERROR: Wrong key type (%s)\n", filename);
+        return crypto_general_fail;
+      }
+      break;
+    case PEMTYPE_UNKNOWN:
+    case PEMTYPE_INVALID:
+      /* could be binary key */
+      break;
+    default:
+      break;
   }
 
-  /* Get the Input file Size */
-  fseek (fp_in, 0, SEEK_END);
-  *file_size = ftell (fp_in);
-
-  /* Allocate buffer */
-  *file_data = (uint8_t *)malloc (*file_size + 4);
-  if (*file_data == NULL) {
-    printf ("ERROR: Failed to allocate memory for file data\n");
-    fclose (fp_in);
-    return crypto_memory_alloc_fail;
-  }
-
-  memset (*file_data, 0, *file_size + 4);
-
-  /* Read the contents of input file to memory buffer */
-  fseek (fp_in, 0, SEEK_SET);
-  temp_result = fread (*file_data, 1, *file_size, fp_in);
-  if (temp_result != *file_size) {
-    printf ("ERROR: Failed to read complete file\n");
-    free ((void *)*file_data);
-    *file_data = NULL;
-    fclose (fp_in);
-    return crypto_file_io_error;
-  }
-
-  /* Close the input file */
-  fclose (fp_in);
   return crypto_ok;
+}
+
+static crypto_status
+handle_der_format_key (
+  uint8_t      *p_der_buf,
+  uint16_t     der_size,
+  uint8_t      pem_type,
+  uint8_t      *key_buf,
+  uint16_t     *key_size,
+  uint16_t     *alg_id
+  )
+{
+  uint16_t       orig_key_buf_size = *key_size;
+  crypto_status  status;
+
+  status = get_key_from_der (p_der_buf, der_size, pem_type, key_size);
+
+  if (alg_id != NULL) {
+    if ((*key_size == RSA_KEY_MIN_BYTES) || (*key_size == RSA_KEY_MAX_BYTES)) {
+      *alg_id = KEY_ALG_TYPE_RSA;
+    } else if ((*key_size == ECC_KEY_LEN_MIN_BYTES) || (*key_size == ECC_KEY_LEN_MAX_BYTES)) {
+      *alg_id = KEY_ALG_TYPE_ECC;
+    } else {
+      *alg_id = HASH_ALG_TYPE_NULL;
+    }
+  }
+
+  if (status == crypto_ok) {
+    /* For RSA public keys, extract the modulus to key_buf */
+    if ((pem_type == PEMTYPE_RSA_PUBLIC) || (pem_type == PEMTYPE__PUBLIC)) {
+      if (extract_rsa_public_key_to_buffer (p_der_buf, der_size, pem_type, key_buf, orig_key_buf_size, key_size) != 0) {
+        printf ("ERROR: Failed to extract RSA public key modulus\n");
+        return crypto_general_fail;
+      }
+    }
+    /* For RSA private keys, the DER parsing just validates and returns size */
+    /* The actual key data will be used later during signing operations */
+  }
+
+  return status;
+}
+
+static crypto_status
+handle_binary_ecc_private_key (
+  uint8_t   *p_file_data_buf,
+  size_t    file_data_size,
+  uint8_t   *key_buf,
+  uint16_t  *key_size,
+  uint16_t  *alg_id
+  )
+{
+  if (alg_id != NULL) {
+    *alg_id = KEY_ALG_TYPE_ECC;
+  }
+
+  if (*key_size < file_data_size) {
+    printf ("ERROR: Key too large %zu (max: %d)\n", file_data_size, *key_size);
+    *key_size = 0;
+    return crypto_general_fail;
+  }
+
+  memcpy (key_buf, p_file_data_buf, file_data_size);
+  buffer_reverse_byte_order (key_buf, file_data_size);
+  *key_size = file_data_size;
+  return crypto_ok;
+}
+
+static crypto_status
+handle_binary_ecc_public_key (
+  uint8_t   *p_file_data_buf,
+  size_t    file_data_size,
+  uint8_t   *key_buf,
+  uint16_t  *key_size,
+  uint16_t  *alg_id
+  )
+{
+  if (alg_id != NULL) {
+    *alg_id = KEY_ALG_TYPE_ECC;
+  }
+
+  if (*key_size * 2 < file_data_size) {
+    printf ("ERROR: Key too large %zu (max: %d)\n", file_data_size, *key_size);
+    *key_size = 0;
+    return crypto_general_fail;
+  }
+
+  memcpy (key_buf, p_file_data_buf, file_data_size);
+  buffer_reverse_byte_order (key_buf, file_data_size/2);
+  buffer_reverse_byte_order (key_buf + file_data_size/2, file_data_size/2);
+  *key_size = file_data_size/2;
+  return crypto_ok;
+}
+
+static crypto_status
+handle_binary_rsa_key (
+  uint8_t   *p_file_data_buf,
+  size_t    file_data_size,
+  uint8_t   *key_buf,
+  uint16_t  *key_size,
+  uint16_t  *alg_id
+  )
+{
+  if (alg_id != NULL) {
+    *alg_id = KEY_ALG_TYPE_RSA;
+  }
+
+  memcpy (key_buf, p_file_data_buf, file_data_size);
+  /* Note: RSA keys are kept in big-endian format (no byte reversal) */
+  *key_size = file_data_size;
+  return crypto_ok;
+}
+
+static crypto_status
+handle_binary_lms_public_key (
+  uint8_t   *p_file_data_buf,
+  size_t    file_data_size,
+  uint8_t   *key_buf,
+  uint16_t  *key_size,
+  uint16_t  *alg_id
+  )
+{
+  size_t actual_size = file_data_size;
+
+  if (alg_id != NULL) {
+    *alg_id = KEY_ALG_TYPE_LMS;
+  }
+
+  /* Handle optional 4-byte prefix */
+  if (file_data_size == LMS_PUBLIC_KEY_MAX_BYTES + 4) {
+    actual_size -= 4;
+    memcpy (key_buf, p_file_data_buf + 4, actual_size);
+  } else {
+    memcpy (key_buf, p_file_data_buf, actual_size);
+  }
+
+  *key_size = actual_size;
+  return crypto_ok;
+}
+
+static crypto_status
+handle_binary_lms_private_key (
+  uint8_t   *p_file_data_buf,
+  size_t    file_data_size,
+  uint8_t   *key_buf,
+  uint16_t  *key_size,
+  uint16_t  *alg_id
+  )
+{
+  size_t actual_size = file_data_size;
+
+  if (alg_id != NULL) {
+    *alg_id = KEY_ALG_TYPE_LMS;
+  }
+
+  /* Handle optional 4-byte prefix */
+  if (file_data_size == LMS_PRIVATE_KEY_MAX_BYTES + 4) {
+    actual_size -= 4;
+    memcpy (key_buf, p_file_data_buf + 4, actual_size);
+  } else {
+    memcpy (key_buf, p_file_data_buf, actual_size);
+  }
+
+  buffer_reverse_byte_order (key_buf, actual_size);
+  *key_size = actual_size;
+  return crypto_ok;
+}
+
+static crypto_status
+handle_binary_format_key (
+  uint8_t   *p_file_data_buf,
+  size_t    file_data_size,
+  bool      is_private,
+  uint8_t   *key_buf,
+  uint16_t  *key_size,
+  uint16_t  *alg_id
+  )
+{
+  /* Binary ECC private key */
+  if (is_private && ((file_data_size == 32) || (file_data_size == 48))) {
+    return handle_binary_ecc_private_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
+  }
+  
+  /* Binary ECC public key */
+  if (!is_private && ((file_data_size == (2*32)) || (file_data_size == (2*48)))) {
+    return handle_binary_ecc_public_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
+  }
+  
+  /* Binary RSA key */
+  if ((file_data_size == 256) || (file_data_size == 384)) {
+    return handle_binary_rsa_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
+  }
+  
+  /* Binary LMS public key */
+  if ((file_data_size == (LMS_PUBLIC_KEY_MAX_BYTES + 4)) ||
+      (file_data_size == LMS_PUBLIC_KEY_MAX_BYTES)) {
+    return handle_binary_lms_public_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
+  }
+  
+  /* Binary LMS private key */
+  if ((file_data_size == LMS_PRIVATE_KEY_MAX_BYTES) ||
+      (file_data_size == LMS_PRIVATE_KEY_MAX_BYTES + 4)) {
+    return handle_binary_lms_private_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
+  }
+
+  return crypto_general_fail;
 }
 
 crypto_status
@@ -823,28 +1041,22 @@ crypto_read_key (
    */
 
   uint8_t        *p_file_data_buf;
-  uint32_t       file_data_size;
+  size_t         file_data_size;
   crypto_status  status;
   uint8_t        *p_der_buf;
   uint16_t       der_size = 0;
   uint8_t        pem_type = 0;
 
-  status = read_input_file (filename, &p_file_data_buf, &file_data_size);
-  if (status != crypto_ok) {
+  /* Read the key file */
+  p_file_data_buf = (uint8_t *)read_file (filename, &file_data_size, false);
+  if (p_file_data_buf == NULL) {
     printf ("Error reading Key file\n");
     return crypto_general_fail;
   }
 
-  /* First let's see if it is PEM or DER or raw key */
-  /* if PEM, first bytes == '----BEGIN' */
-  /* if DER, first byte == 0x30 */
-  /* else binary */
-
-  if ((memcmp (p_file_data_buf, "-----BEG", 8) != 0) || (file_data_size <= 0x80)) {
-    /* Not a PEM */
-    p_der_buf = p_file_data_buf;
-    der_size  = file_data_size;
-  } else {
+  /* Check if file is PEM format and convert to DER if needed */
+  if ((memcmp (p_file_data_buf, "-----BEG", 8) == 0) && (file_data_size > 0x80)) {
+    /* PEM format - convert to DER */
     pem_type = get_der_from_pem ((char *)p_file_data_buf, file_data_size, &p_der_buf, &der_size);
     if (der_size == 0) {
       printf ("ERROR: Corrupted PEM file\n");
@@ -852,208 +1064,48 @@ crypto_read_key (
       return crypto_general_fail;
     }
 
-    if (alg_id != NULL) {
-      switch (pem_type) {
-        case PEMTYPE_EC_PRIVATE:
-        case PEMTYPE_EC_PUBLIC:
-          *alg_id = KEY_ALG_TYPE_ECC;
-          break;
-        case PEMTYPE_RSA_PRIVATE:
-        case PEMTYPE_RSA_PUBLIC:
-          *alg_id = KEY_ALG_TYPE_RSA;
-          break;
-        case PEMTYPE_LMS_PRIVATE:
-        case PEMTYPE_LMS_PUBLIC:
-          *alg_id = KEY_ALG_TYPE_LMS;
-          break;
-        case PEMTYPE__PUBLIC:
-        case PEMTYPE__PRIVATE:
-          /* Generic PEM types - algorithm will be refined by key size detection later */
-          *alg_id = HASH_ALG_TYPE_NULL;
-          break;
-        default:
-          *alg_id = HASH_ALG_TYPE_NULL;
-          break;
+    /* Validate PEM type and set algorithm ID */
+    status = handle_pem_type_validation (pem_type, is_private, filename, alg_id);
+    if (status != crypto_ok) {
+      if (p_der_buf != p_file_data_buf) {
+        free ((void *)p_der_buf);
       }
+      free ((void *)p_file_data_buf);
+      return status;
     }
-
-    switch (pem_type) {
-      case PEMTYPE_RSA_PUBLIC:
-      case PEMTYPE_EC_PUBLIC:
-      case PEMTYPE_LMS_PUBLIC:
-      case PEMTYPE__PUBLIC:
-        if (is_private) {
-          printf ("ERROR: Wrong key type (%s)\n", filename);
-          if (p_der_buf != p_file_data_buf) {
-            free ((void *)p_der_buf);
-          }
-
-          free ((void *)p_file_data_buf);
-          return crypto_general_fail;
-        }
-
-        break;
-      case PEMTYPE_EC_PRIVATE:
-      case PEMTYPE_RSA_PRIVATE:
-      case PEMTYPE_LMS_PRIVATE:
-      case PEMTYPE__PRIVATE:
-        if (!is_private) {
-          printf ("ERROR: Wrong key type (%s)\n", filename);
-          if (p_der_buf != p_file_data_buf) {
-            free ((void *)p_der_buf);
-          }
-
-          free ((void *)p_file_data_buf);
-          return crypto_general_fail;
-        }
-
-        break;
-      case PEMTYPE_UNKNOWN:
-      case PEMTYPE_INVALID:
-        /* could be binary key */
-        break;
-      default:
-        break;
-    }
+  } else {
+    /* Not PEM format - use raw file data */
+    p_der_buf = p_file_data_buf;
+    der_size  = file_data_size;
   }
 
-  /* We are here because either the file is a valid PEM and we decoded it to a DER
-   * and p_der_buf points to a buffer containing the ASN.1 encoded DER
-   * or it was not a PEM file (and p_der_buf points to original file data)
-   */
-
-  /* Do we have a valid DER? */
+  /* Try to handle as DER format */
   if ((der_size != 0) && (*p_der_buf == 0x30)) {
-    uint16_t  orig_key_buf_size = *key_size;
-    status = get_key_from_der (p_der_buf, der_size, pem_type, key_size);
-
-    if (alg_id != NULL) {
-      if ((*key_size == RSA_KEY_MIN_BYTES) || (*key_size == RSA_KEY_MAX_BYTES)) {
-        *alg_id = KEY_ALG_TYPE_RSA;
-      } else if ((*key_size == ECC_KEY_LEN_MIN_BYTES) || (*key_size == ECC_KEY_LEN_MAX_BYTES)) {
-        *alg_id = KEY_ALG_TYPE_ECC;
-      } else {
-        *alg_id = HASH_ALG_TYPE_NULL;
-      }
-    }
-
+    status = handle_der_format_key (p_der_buf, der_size, pem_type, key_buf, key_size, alg_id);
+    
     if (status == crypto_ok) {
-      /* For RSA public keys, extract the modulus to key_buf */
-      if ((pem_type == PEMTYPE_RSA_PUBLIC) || (pem_type == PEMTYPE__PUBLIC)) {
-        if (extract_rsa_public_key_to_buffer (p_der_buf, der_size, pem_type, key_buf, orig_key_buf_size, key_size) != 0) {
-          printf ("ERROR: Failed to extract RSA public key modulus\n");
-          free ((void *)p_file_data_buf);
-          if ((p_der_buf != p_file_data_buf) && (p_der_buf != NULL)) {
-            free ((void *)p_der_buf);
-          }
-          return crypto_general_fail;
-        }
-      }
-      /* For RSA private keys, the DER parsing just validates and returns size */
-      /* The actual key data will be used later during signing operations */
-
       free ((void *)p_file_data_buf);
       if ((p_der_buf != p_file_data_buf) && (p_der_buf != NULL)) {
         free ((void *)p_der_buf);
       }
-
       return crypto_ok;
     }
   }
 
-  /* We are here because file is not a valid PEM or DER -- let's test for binary */
+  /* Not DER format - clean up DER buffer if separate */
   if (p_der_buf != p_file_data_buf) {
     free ((void *)p_der_buf);
   }
 
-  /* Handle binary key formats */
-  if (is_private && ((file_data_size == 32) || (file_data_size == 48))) {
-    /* Binary ECC private key */
-    if (alg_id != NULL) {
-      *alg_id = KEY_ALG_TYPE_ECC;
-    }
-
-    if (*key_size < file_data_size) {
-      printf ("ERROR: Key too large %d (max: %d)\n", file_data_size, *key_size);
-      *key_size = 0;
-      free ((void *)p_file_data_buf);
-      return crypto_general_fail;
-    }
-
-    memcpy (key_buf, p_file_data_buf, file_data_size);
-    buffer_reverse_byte_order (key_buf, file_data_size);
-    *key_size = file_data_size;
-    free ((void *)p_file_data_buf);
-    return crypto_ok;
-  } else if (!is_private && ((file_data_size == (2*32)) || (file_data_size == (2*48)))) {
-    /* Binary ECC public key */
-    if (alg_id != NULL) {
-      *alg_id = KEY_ALG_TYPE_ECC;
-    }
-
-    if (*key_size * 2 < file_data_size) {
-      printf ("ERROR: Key too large %d (max: %d)\n", file_data_size, *key_size);
-      *key_size = 0;
-      free ((void *)p_file_data_buf);
-      return crypto_general_fail;
-    }
-
-    memcpy (key_buf, p_file_data_buf, file_data_size);
-    buffer_reverse_byte_order (key_buf, file_data_size/2);
-    buffer_reverse_byte_order (key_buf + file_data_size/2, file_data_size/2);
-    *key_size = file_data_size/2;
-    free ((void *)p_file_data_buf);
-    return crypto_ok;
-  } else if (((file_data_size == 256) || (file_data_size == 384))) {
-    /* Binary RSA key - keep in big-endian format to match OpenSSL */
-    if (alg_id != NULL) {
-      *alg_id = KEY_ALG_TYPE_RSA;
-    }
-
-    memcpy (key_buf, p_file_data_buf, file_data_size);
-    /* Note: RSA keys are kept in big-endian format (no byte reversal) */
-    *key_size = file_data_size;
-    free ((void *)p_file_data_buf);
-    return crypto_ok;
-  } else if ((file_data_size == (LMS_PUBLIC_KEY_MAX_BYTES + 4)) ||
-             (file_data_size == LMS_PUBLIC_KEY_MAX_BYTES))
-  {
-    /* Binary LMS public Key */
-    if (alg_id != NULL) {
-      *alg_id = KEY_ALG_TYPE_LMS;
-    }
-
-    if (file_data_size == LMS_PUBLIC_KEY_MAX_BYTES + 4) {
-      file_data_size -= 4;
-      memcpy (key_buf, p_file_data_buf + 4, file_data_size);
-    } else {
-      memcpy (key_buf, p_file_data_buf, file_data_size);
-    }
-
-    *key_size = file_data_size;
-    free ((void *)p_file_data_buf);
-    return crypto_ok;
-  } else if ((file_data_size == LMS_PRIVATE_KEY_MAX_BYTES) ||
-             (file_data_size == LMS_PRIVATE_KEY_MAX_BYTES + 4))
-  {
-    /* Binary LMS private Key */
-    if (alg_id != NULL) {
-      *alg_id = KEY_ALG_TYPE_LMS;
-    }
-
-    if (file_data_size == LMS_PRIVATE_KEY_MAX_BYTES + 4) {
-      file_data_size -= 4;
-      memcpy (key_buf, p_file_data_buf + 4, file_data_size);
-    } else {
-      memcpy (key_buf, p_file_data_buf, file_data_size);
-    }
-
-    buffer_reverse_byte_order (key_buf, file_data_size);
-    *key_size = file_data_size;
+  /* Try to handle as binary format */
+  status = handle_binary_format_key (p_file_data_buf, file_data_size, is_private, key_buf, key_size, alg_id);
+  
+  if (status == crypto_ok) {
     free ((void *)p_file_data_buf);
     return crypto_ok;
   }
 
+  /* No valid format found */
   printf ("ERROR: Invalid Key (%s)\n", filename);
   free ((void *)p_file_data_buf);
   return crypto_general_fail;
@@ -1209,11 +1261,10 @@ rsa_load_private_key_from_file (
   )
 {
   uint8_t                 *file_data = NULL;
-  uint32_t                file_size  = 0;
+  size_t                  file_size  = 0;
   uint8_t                 *der_buf   = NULL;
   uint16_t                der_size   = 0;
   uint8_t                 pem_type   = 0;
-  crypto_status           status;
   rsa_private_key_params  params;
   IppStatus               ipp_status;
   IppsRSAPrivateKeyState  *priv_key = NULL;
@@ -1223,8 +1274,8 @@ rsa_load_private_key_from_file (
   int                     factor_bits_p, factor_bits_q;
 
   /* Read the file */
-  status = read_input_file (privkey_file, &file_data, &file_size);
-  if (status != crypto_ok) {
+  file_data = (uint8_t *)read_file (privkey_file, &file_size, false);
+  if (file_data == NULL) {
     printf ("ERROR: Failed to read RSA private key file\n");
     return NULL;
   }
@@ -2417,77 +2468,43 @@ cleanup:
   return result_ok;
 }
 
-/*
- * LMS signature verification using Intel IPP Crypto library
- * Note: IPPC only supports LMS verification, not signing
- */
-
-/* Helper function to extract LMS algorithm type from signature */
+/* Validate LMS/LMOTS types in the signature and return the IPPC algo type.
+ * Only LMS_SHA256_M32_H20 + LMOTS_SHA256_N32_W4 is supported per CBnT SAS. */
 static IppStatus
-get_lms_algo_type (
+validate_lms_sig_algo_type (
   const unsigned char  *signature,
   size_t               sig_len,
   IppsLMSAlgoType      *algo_type
   )
 {
-  if (sig_len < 12) {
-    printf ("ERROR: LMS signature too short\n");
+  if (sig_len < sizeof(lms_signature_block)) {
+    printf ("ERROR: LMS signature too short: %zu (expected %zu)\n", sig_len, sizeof(lms_signature_block));
     return ippStsSizeErr;
   }
 
-  /* LMS signature format: q (4 bytes) + lmots_signature + lms_type (4 bytes) + path */
-  /* Skip q (4 bytes) + LMOTS type (4 bytes) + seed (24 bytes) + Y (1104 bytes) */
-  /* = skip 1136 bytes to get to LMS type */
+  /* Validate LMOTS type at offset sizeof(uint32_t) (after Q) */
+  uint32_t  lmots_type;
+  memcpy (&lmots_type, signature + sizeof(uint32_t), sizeof(lmots_type));
+  lmots_type = ntohl (lmots_type);
+
+  if (lmots_type != LMOTS_SHA256_N32_W4) {
+    printf ("ERROR: Unsupported LMOTS type in signature: 0x%x (expected LMOTS_SHA256_N32_W4=0x%x)\n",
+            lmots_type, LMOTS_SHA256_N32_W4);
+    return ippStsNotSupportedModeErr;
+  }
+
+  /* Validate LMS type after Q + lmots_signature */
   uint32_t  lms_type;
-
-  if (sig_len < 1140) {
-    printf ("ERROR: LMS signature too short for type extraction\n");
-    return ippStsSizeErr;
-  }
-
-  /* LMS type is at offset 1136 (after q + lmots_signature) */
-  memcpy (&lms_type, signature + 1136, 4);
-
-  /* Convert from big-endian if needed */
+  memcpy (&lms_type, signature + sizeof(uint32_t) + sizeof(lmots_signature), sizeof(lms_type));
   lms_type = ntohl (lms_type);
 
-  /* Map to IppsLMSAlgo type */
-  switch (lms_type) {
-    case 0x5:  /* LMS_SHA256_M32_H5 */
-      algo_type->lmsOIDAlgo = LMS_SHA256_M32_H5;
-      break;
-    case 0x6:  /* LMS_SHA256_M32_H10 */
-      algo_type->lmsOIDAlgo = LMS_SHA256_M32_H10;
-      break;
-    case 0x7:  /* LMS_SHA256_M32_H15 */
-      algo_type->lmsOIDAlgo = LMS_SHA256_M32_H15;
-      break;
-    case 0x8:  /* LMS_SHA256_M32_H20 */
-      algo_type->lmsOIDAlgo = LMS_SHA256_M32_H20;
-      break;
-    case 0x9:  /* LMS_SHA256_M32_H25 */
-      algo_type->lmsOIDAlgo = LMS_SHA256_M32_H25;
-      break;
-    case 0xA:  /* LMS_SHA256_M24_H5 */
-      algo_type->lmsOIDAlgo = LMS_SHA256_M24_H5;
-      break;
-    case 0xB:  /* LMS_SHA256_M24_H10 */
-      algo_type->lmsOIDAlgo = LMS_SHA256_M24_H10;
-      break;
-    case 0xC:  /* LMS_SHA256_M24_H15 */
-      algo_type->lmsOIDAlgo = LMS_SHA256_M24_H15;
-      break;
-    case 0xD:  /* LMS_SHA256_M24_H20 */
-      algo_type->lmsOIDAlgo = LMS_SHA256_M24_H20;
-      break;
-    case 0xE:  /* LMS_SHA256_M24_H25 */
-      algo_type->lmsOIDAlgo = LMS_SHA256_M24_H25;
-      break;
-    default:
-      printf ("ERROR: Unsupported LMS type: 0x%x\n", lms_type);
-      return ippStsNotSupportedModeErr;
+  if (lms_type != LMS_SHA256_M32_H20) {
+    printf ("ERROR: Unsupported LMS type in signature: 0x%x (expected LMS_SHA256_M32_H20=0x%x)\n",
+            lms_type, LMS_SHA256_M32_H20);
+    return ippStsNotSupportedModeErr;
   }
 
+  algo_type->lmsOIDAlgo = LMS_SHA256_M32_H20;
   return ippStsNoErr;
 }
 
@@ -2506,26 +2523,21 @@ crypto_lms_verify_signature_internal (
     return false;
   }
 
-  /* Note: public_key has LEVELS prefix (4 bytes 0x01000000 BE) at start
-   * and signature has NSPK prefix (4 bytes 0x00000000) at start
-   * These were added by the caller (pollist2_1.c).
-   * Skip them to get to the actual LMS data. */
 
-  if (pubkey_len < 4) {
-    printf ("ERROR: Public key too short (no LEVELS prefix): %zu\n", pubkey_len);
+  if (pubkey_len < sizeof(uint32_t) + sizeof(lms_xdr_key_data)) {
+    printf ("ERROR: Public key buffer too short: %zu\n", pubkey_len);
     return false;
   }
 
-  if (sig_len < 4) {
-    printf ("ERROR: Signature too short (no NSPK prefix): %zu\n", sig_len);
+  if (sig_len < sizeof(uint32_t) + sizeof(lms_signature_block)) {
+    printf ("ERROR: Signature buffer too short: %zu\n", sig_len);
     return false;
   }
 
-  /* Skip LEVELS prefix in public key and NSPK prefix in signature */
-  const unsigned char  *actual_pubkey    = public_key + 4;
-  size_t               actual_pubkey_len = pubkey_len - 4;
-  const unsigned char  *actual_sig       = signature + 4;
-  size_t               actual_sig_len    = sig_len - 4;
+  /* Strip LEVELS / NSPK prefixes */
+  const unsigned char  *actual_pubkey = public_key + sizeof(uint32_t);
+  const unsigned char  *actual_sig    = signature + sizeof(uint32_t);
+  size_t               actual_sig_len = sig_len - sizeof(uint32_t);
 
   IppStatus              status        = ippStsNoErr;
   IppsLMSAlgoType        algo_type     = { 0 };
@@ -2538,10 +2550,9 @@ crypto_lms_verify_signature_internal (
   int                    is_valid      = 0;
   bool                   result        = false;
 
-  /* Extract LMS algorithm type from signature */
-  status = get_lms_algo_type (actual_sig, actual_sig_len, &algo_type);
+  /* Validate LMS/LMOTS types in signature and get IPPC algo type */
+  status = validate_lms_sig_algo_type (actual_sig, actual_sig_len, &algo_type);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to determine LMS algorithm type\n");
     goto cleanup;
   }
 
@@ -2583,16 +2594,28 @@ crypto_lms_verify_signature_internal (
     goto cleanup;
   }
 
-  /* Parse public key: I (16 bytes) + K (24 or 32 bytes depending on type) */
-  /* Public key format from lcp3.h: LmsType (4) + LmotsType (4) + I (16) + T1 (24) */
-  if (actual_pubkey_len < 20) {
-    /* At least need LmsType + LmotsType + part of I */
-    printf ("ERROR: Public key too short: %zu\n", actual_pubkey_len);
+  /* Validate LMS and LMOTS types in public key (lms_xdr_key_data) */
+  uint32_t  pubkey_lms_type;
+  uint32_t  pubkey_lmots_type;
+  memcpy (&pubkey_lms_type, actual_pubkey, sizeof(pubkey_lms_type));
+  memcpy (&pubkey_lmots_type, actual_pubkey + sizeof(uint32_t), sizeof(pubkey_lmots_type));
+  pubkey_lms_type = ntohl (pubkey_lms_type);
+  pubkey_lmots_type = ntohl (pubkey_lmots_type);
+
+  if (pubkey_lms_type != LMS_SHA256_M32_H20) {
+    printf ("ERROR: Unsupported LMS type in public key: 0x%x (expected LMS_SHA256_M32_H20=0x%x)\n",
+            pubkey_lms_type, LMS_SHA256_M32_H20);
     goto cleanup;
   }
 
-  const Ipp8u  *pI = actual_pubkey + 8;  /* Skip LmsType (4) + LmotsType (4) */
-  const Ipp8u  *pK = actual_pubkey + 24; /* I is 16 bytes, so K starts at offset 24 */
+  if (pubkey_lmots_type != LMOTS_SHA256_N32_W4) {
+    printf ("ERROR: Unsupported LMOTS type in public key: 0x%x (expected LMOTS_SHA256_N32_W4=0x%x)\n",
+            pubkey_lmots_type, LMOTS_SHA256_N32_W4);
+    goto cleanup;
+  }
+
+  const Ipp8u  *pI = actual_pubkey + 2 * sizeof(uint32_t);       /* Skip LmsType + LmotsType */
+  const Ipp8u  *pK = actual_pubkey + 2 * sizeof(uint32_t) + I_LEN; /* After LmsType + LmotsType + I */
 
   /* Initialize public key state */
   status = ippsLMSSetPublicKeyState (algo_type, pI, pK, pubkey_state);
@@ -2601,21 +2624,17 @@ crypto_lms_verify_signature_internal (
     goto cleanup;
   }
 
-  /* Parse signature components */
-  /* Signature format: q (4) + lmots_signature + lms_type (4) + path */
-  if (actual_sig_len < 1140) {
-    /* Minimum signature size */
-    printf ("ERROR: Signature too short: %zu\n", actual_sig_len);
-    goto cleanup;
-  }
-
+  /* Parse signature components per lcp3.h (lms_signature_block):
+   * lmots_signature = Type + Seed (LMOTS_SIGNATURE_N_SIZE) + Y (LMOTS_SIGNATURE_BLOCK_SIZE)
+   * lms_signature_block = Q + lmots_signature + LmsType + Path (LMS_SIGNATURE_BLOCK_SIZE)
+   * Size already validated by validate_lms_sig_algo_type(). */
   Ipp32u  q;
-  memcpy (&q, actual_sig, 4);
+  memcpy (&q, actual_sig, sizeof(q));
   q = ntohl (q);  /* Convert from big-endian */
 
-  const Ipp8u  *pC        = actual_sig + 8;        /* Skip q (4) + LMOTS type (4) */
-  const Ipp8u  *pY        = actual_sig + 32;       /* C is 24 bytes (SHA256_192) */
-  const Ipp8u  *pAuthPath = actual_sig + 1136 + 4; /* After q + lmots_sig + lms_type */
+  const Ipp8u  *pC        = actual_sig + 2 * sizeof(uint32_t);                                        /* Skip Q + LMOTS Type */
+  const Ipp8u  *pY        = actual_sig + 2 * sizeof(uint32_t) + SHA256_192_DIGEST_SIZE;                /* After Q + LMOTS Type + Seed */
+  const Ipp8u  *pAuthPath = actual_sig + sizeof(uint32_t) + sizeof(lmots_signature) + sizeof(uint32_t); /* After Q + lmots_sig + LmsType */
 
   /* Initialize signature state */
   status = ippsLMSSetSignatureState (algo_type, q, pC, pY, pAuthPath, sig_state);

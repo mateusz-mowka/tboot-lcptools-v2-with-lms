@@ -18,7 +18,6 @@ include Config.mk
 # Conditionally set SUBDIRS based on USE_IPPC
 ifdef USE_IPPC
 SUBDIRS := tboot safestringlib lcptools-v2/ippc lcptools-v2 tb_polgen utils docs
-CFLAGS += -DUSE_IPPC
 $(info Building with IPPC support enabled)
 else
 SUBDIRS := tboot safestringlib lcptools-v2 tb_polgen utils docs
