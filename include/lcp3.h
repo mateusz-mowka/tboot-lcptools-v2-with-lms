@@ -44,6 +44,8 @@
 #define BITN(n) (1 << (n))
 #endif
 
+#include "../lcptools-v2/crypto.h"
+
 /*--------- LCP UUID ------------*/
 #define LCP_POLICY_DATA_UUID   {0xab0d1925, 0xeee7, 0x48eb, 0xa9fc, \
                                {0xb, 0xac, 0x5a, 0x26, 0x2d, 0xe}}
@@ -154,11 +156,6 @@ typedef struct __packed {
     uint32_t    policy_elt_control;
     uint8_t     data[];
 } lcp_policy_element_t;
-
-typedef struct __packed {
-    uuid_t       uuid;
-    uint8_t      data[];
-} lcp_custom_element_t;
 
 /*
     LCP_POLICY_LIST  deprecated, kept to support legacy systems
@@ -308,10 +305,6 @@ typedef struct __packed {
 
 #define LCP_POLELT_TYPE_CUSTOM2    0x13
 #define LCP_POLELT_TYPE_CUSTOM     0x03 //Legacy
-typedef struct __packed {
-    uuid_t       uuid;
-    uint8_t      data[];
-} lcp_custom_element_t2;
 
 #define LCP_POLELT_TYPE_STM2       0x14
 typedef struct __packed {
@@ -370,37 +363,6 @@ typedef struct __packed {
 
 /* LCP POLICY LIST 2.1 and its helper structs */
 #define SIGNATURE_VERSION        0x10
-#define MAX_RSA_KEY_SIZE         0x180
-#define MIN_RSA_KEY_SIZE         0x100
-#define MAX_ECC_KEY_SIZE         0x30
-#define MIN_ECC_KEY_SIZE         0x20
-
-typedef struct __packed {
-    uint8_t  Version;
-    uint16_t KeySize; //IN BITS - 2048 or 3072!
-    uint32_t Exponent;
-    uint8_t  Modulus[MAX_RSA_KEY_SIZE];
-} rsa_public_key;
-
-typedef struct __packed {
-    uint8_t  Version;
-    uint16_t KeySize; //IN BITS - 2048 or 3072!
-    uint16_t HashAlg;
-    uint8_t  Signature[MAX_RSA_KEY_SIZE];
-} rsa_signature;
-
-typedef struct __packed {
-    uint8_t  Version;
-    uint16_t KeySize; //IN BITS - 256 or 384!
-    uint8_t  QxQy[2*MAX_ECC_KEY_SIZE];
-} ecc_public_key;
-
-typedef struct __packed {
-    uint8_t Version;
-    uint16_t KeySize; //IN BITS - 256 or 384!
-    uint16_t HashAlg;
-    uint8_t  sigRsigS[2*MAX_ECC_KEY_SIZE];
-} ecc_signature;
 
 typedef struct __packed {
     uint8_t        Version;
@@ -434,6 +396,10 @@ typedef struct __packed {
 #define LMS_SIGNATURE_BLOCK_SIZE (LMS_SIGNATURE_H_HEIGHT * LMS_SIGNATURE_M_SIZE)
 
 #define LMS_MAX_PUBKEY_SIZE 48
+
+// Maximum LMS signature size (includes all fields of lms_signature with NSPK prefix)
+// Q (4) + lmots_signature (4 + 24 + 1224) + LmsType (4) + Path (480) + overhead = ~4096
+#define LMS_MAX_SIGNATURE_SIZE 4096
 
 typedef struct __packed {
     uint32_t LmsType; //Must be 0xD (LMS_SHA256_M24_H20)

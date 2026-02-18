@@ -19,14 +19,25 @@ LCP2_TARGETS := \
 	lcp2_crtpollist \
 	lcp2_crtpolelt  \
 
-lcp2 : $(LCP2_TARGETS)
+# Build IPPC library if USE_IPPC is set (needed for standalone builds)
+ifdef USE_IPPC
+IPPC_DEP := ippc_lib
+else
+IPPC_DEP :=
+endif
+
+.PHONY: ippc_lib
+ippc_lib:
+	$(MAKE) -C ippc build
+
+lcp2 : $(IPPC_DEP) $(LCP2_TARGETS)
 
 
 #
 # universal rules
 #
 
-build : $(LCP2_TARGETS)
+build : $(IPPC_DEP) $(LCP2_TARGETS)
 
 
 dist : install
@@ -70,9 +81,15 @@ LCP2_LIB := liblcp.a
 
 LIBS += -lcrypto -llcp -lz $(ROOTDIR)/safestringlib/libsafestring.a
 
+# Add IPPC library if USE_IPPC is set
+ifdef USE_IPPC
+LIBS += -L$(ROOTDIR)/lcptools-v2/ippc/cryptography-primitives/build/.build/RELEASE/lib -lippcp
+LDFLAGS += -Wl,-rpath,$(ROOTDIR)/lcptools-v2/ippc/cryptography-primitives/build/.build/RELEASE/lib
+endif
+
 HASH_SIGS := ./hash-sigs/hss_lib_thread.a ./hash-sigs/hss_verify.a
 
-$(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o
+$(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o crypto.o crypto_OpenSSL.o crypto_ippc.o
 	$(AR) rc $@ $^
 
 lcp2_crtpolelt : crtpolelt.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)

@@ -42,12 +42,8 @@
 #include <getopt.h>
 #include <errno.h>
 #include <string.h>
-#include <openssl/rsa.h>
-#include <openssl/engine.h>
-#include <openssl/pem.h>
-#include <openssl/err.h>
-#include <openssl/bn.h>
 #include <safe_lib.h>
+#include <stddef.h>
 #define PRINT   printf
 #include "../../include/config.h"
 #include "../../include/hash.h"

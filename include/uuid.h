@@ -36,6 +36,10 @@
 #ifndef __UUID_H__
 #define __UUID_H__
 
+#ifndef __packed
+#define __packed   __attribute__ ((packed))
+#endif
+
 typedef struct __packed {
   uint32_t    data1;
   uint16_t    data2;
@@ -43,6 +47,17 @@ typedef struct __packed {
   uint16_t    data4;
   uint8_t     data5[6];
 } uuid_t;
+
+typedef struct __packed {
+    uuid_t       uuid;
+    uint8_t      data[];
+} lcp_custom_element_t2;
+
+typedef struct __packed {
+    uuid_t       uuid;
+    uint8_t      data[];
+} lcp_custom_element_t;
+
 
 static inline bool are_uuids_equal(const uuid_t *uuid1, const uuid_t *uuid2)
 {
