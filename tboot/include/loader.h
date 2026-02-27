@@ -62,14 +62,14 @@ typedef struct {
 } memory_map_t;
 #endif
 
-extern void print_loader_ctx(loader_ctx *lctx);
+extern void print_loader_ctx(loader_ctx *const lctx);
 extern bool find_module_by_uuid(loader_ctx *lctx, void **base,
                                 size_t *size, const uuid_t *uuid);
 extern bool find_module_by_file_signature(loader_ctx *lctx,
                                           void **base, size_t *size,
                                           const char* file_signature);
-extern bool find_platform_racm(loader_ctx *lctx, void **base, uint32_t *size);
-extern bool find_platform_sinit_module(loader_ctx *lctx, void **base, 
+extern bool find_platform_racm(loader_ctx *const lctx, void **base, uint32_t *size);
+extern bool find_platform_sinit_module(loader_ctx *const lctx, void **base,
                                        uint32_t *size);
 extern bool find_lcp_module(loader_ctx *lctx, void **base, uint32_t *size);
 
@@ -80,31 +80,33 @@ extern uint32_t find_efi_memmap(loader_ctx *lctx, uint32_t *descr_size,
                                 uint32_t *descr_vers, uint32_t *mmap_size);
 
 extern bool launch_kernel(bool is_measured_launch);
-extern bool verify_loader_context(loader_ctx *lctx);
-extern bool verify_modules(loader_ctx *lctx);
-extern module_t *get_module(loader_ctx *lctx, unsigned int i);
-extern unsigned int get_module_count(loader_ctx *lctx);
-extern bool remove_txt_modules(loader_ctx *lctx);
+extern bool verify_loader_context(loader_ctx *const lctx);
+extern bool verify_modules(loader_ctx *const lctx);
+extern module_t *get_module(loader_ctx *const lctx, unsigned int i);
+extern unsigned int get_module_count(loader_ctx *const lctx);
+extern bool remove_txt_modules(loader_ctx *const lctx);
 
-extern bool	have_loader_memlimits(loader_ctx *lctx);
-extern bool have_loader_memmap(loader_ctx *lctx);
-extern memory_map_t *get_loader_memmap(loader_ctx *lctx);
-extern uint32_t get_loader_memmap_length(loader_ctx *lctx);
-extern uint32_t get_loader_mem_lower(loader_ctx *lctx);
-extern uint32_t	get_loader_mem_upper(loader_ctx *lctx);
-extern char *get_module_cmd(loader_ctx *lctx, module_t *mod);
-extern char *get_cmdline(loader_ctx *lctx);
-extern void determine_loader_type(void *addr, uint32_t magic);
-extern unsigned long get_loader_ctx_end(loader_ctx *lctx);
-extern void replace_e820_map(loader_ctx *lctx);
-extern uint8_t *get_loader_rsdp(loader_ctx *lctx, uint32_t *length);
-extern bool is_loader_launch_efi(loader_ctx *lctx);
-extern bool get_loader_efi_ptr(loader_ctx *lctx, uint32_t *address, 
+extern bool have_loader_memlimits(loader_ctx *const lctx);
+extern bool have_loader_memmap(loader_ctx *const lctx);
+extern memory_map_t *get_loader_memmap(loader_ctx *const lctx);
+extern uint32_t get_loader_memmap_length(loader_ctx *const lctx);
+extern uint32_t get_loader_mem_lower(loader_ctx *const lctx);
+extern uint32_t get_loader_mem_upper(loader_ctx *const lctx);
+extern char *get_module_cmd(loader_ctx *const lctx, module_t *mod);
+extern char *get_cmdline(loader_ctx *const lctx);
+extern void determine_loader_type(loader_ctx *const lctx, void *addr,
+                                  const uint32_t magic);
+extern unsigned long get_loader_ctx_end(loader_ctx *const lctx);
+extern void replace_e820_map(loader_ctx *const lctx);
+extern uint8_t *get_loader_rsdp(loader_ctx *const lctx, uint32_t *length);
+extern bool is_loader_launch_efi(loader_ctx *const lctx);
+extern bool get_loader_efi_ptr(loader_ctx *const lctx, uint32_t *address,
                                uint64_t *long_address);
-extern bool load_framebuffer_info(loader_ctx *lctx, void *vscr, bool efifb);
-extern char *get_first_module_cmd(loader_ctx *lctx);
-extern struct mb2_fb* get_framebuffer_info(loader_ctx *lctx);
-extern void move_modules(loader_ctx *lctx);
+extern bool load_framebuffer_info(loader_ctx *const lctx, void *vscr, bool efifb);
+extern char *get_first_module_cmd(loader_ctx *const lctx);
+extern struct mb2_fb* get_framebuffer_info(loader_ctx *const lctx);
+extern void move_modules(loader_ctx *const lctx);
+extern bool txt_verify_loader_context_protection(loader_ctx *const lctx);
 
 #endif /* __LOADER_H__ */
 

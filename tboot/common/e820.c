@@ -310,8 +310,12 @@ unsigned int get_nr_map()
  *
  * return:  false = error (no table or table too big for new space)
  */
-bool copy_e820_map(loader_ctx *lctx)
-{
+bool copy_e820_map(loader_ctx *const lctx) {
+    if (!txt_verify_loader_context_protection(lctx)) {
+        printk(TBOOT_ERR"e820 memory map copying failed.\n");
+        return false;
+    }
+
     get_tboot_min_ram();
 
     g_nr_map = 0;
