@@ -575,8 +575,7 @@ static void configure_vtd(void)
  * sets up TXT heap
  */
 static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit,
-                                 loader_ctx *const lctx,
-                                 bool *dma_corruption_detected)
+                                 loader_ctx *const lctx)
 {
     txt_heap_t *txt_heap;
     uint64_t *size;
@@ -597,9 +596,8 @@ static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit,
      */
     os_mle_data_t *os_mle_data = get_os_mle_data_start(txt_heap);
 
-    if(!(txt_verify_loader_context_protection(lctx))) {
-        *dma_corruption_detected = true;
-        return NULL;
+    if (!(txt_verify_loader_context_protection(lctx))) {
+        apply_policy(TB_ERR_DMA_CORRUPTION_DETECTED);
     }
 
     size = (uint64_t *)((uint32_t)os_mle_data - sizeof(uint64_t));
@@ -906,11 +904,6 @@ tb_error_t txt_launch_environment(loader_ctx *const lctx)
     // if ( !verify_acmod(g_sinit) )
      //   return TB_ERR_ACMOD_VERIFY_FAILED;
 
-    if (!(txt_verify_loader_context_protection(lctx))) {
-        printk(TBOOT_ERR"Launch TXT environment was aborted.\n");
-        return TB_ERR_DMA_CORRUPTION_DETECTED;
-    }
-
     /* print debug info */
     print_file_info();
     print_mle_hdr(&g_mle_hdr);
@@ -925,16 +918,8 @@ tb_error_t txt_launch_environment(loader_ctx *const lctx)
     configure_vtd();
 
     /* initialize TXT heap */
-    txt_heap = init_txt_heap(mle_ptab_base, g_sinit, lctx,
-                             &dma_corruption_detected);
+    txt_heap = init_txt_heap(mle_ptab_base, g_sinit, lctx);
     if ( txt_heap == NULL ) {
-
-        /* verify if DMA corruption has happened */
-        if (dma_corruption_detected)
-        {
-            return TB_ERR_DMA_CORRUPTION_DETECTED;
-        }
-
         return TB_ERR_TXT_NOT_SUPPORTED;
     }
 
@@ -1519,25 +1504,28 @@ bool txt_verify_loader_context_protection(loader_ctx *const lctx)
     }
 
     heap = get_txt_heap();
-    if (heap != NULL) {
-        os_mle_data = get_os_mle_data_start(heap);
-        if (os_mle_data != NULL) {
-            if (lctx != (loader_ctx *) &os_mle_data->lctx) {
-                printk(TBOOT_ERR"Error: Registered g_ldr_ctx corruption.\n");
-                printk(TBOOT_ERR"g_ldr_ctx should point at the loader ctx address in"
-                                " the OsMleData structure\n");
-                printk(TBOOT_ERR"g_ldr_ctx: 0x%p\n", lctx);
-                printk(TBOOT_ERR"OsMleData loader ctx address: 0x%lX\n",
-                       (unsigned long) &os_mle_data->lctx);
-                return false;
-            }
-            else {
-                return true;
-            }
-        }
+    if (heap == NULL) {
+        printk(TBOOT_ERR"Error: TXT heap does not exist.\n");
+        return false;
     }
 
-    return false;
+    os_mle_data = get_os_mle_data_start(heap);
+    if (os_mle_data == NULL) {
+        printk(TBOOT_ERR"Error: OS MLE data structure does not exist.\n");
+        return false;
+    }
+
+    if (lctx != (loader_ctx *) &os_mle_data->lctx) {
+        printk(TBOOT_ERR"Error: Registered g_ldr_ctx corruption.\n");
+        printk(TBOOT_ERR"g_ldr_ctx should point at the loader ctx address in"
+                        " the OsMleData structure\n");
+        printk(TBOOT_ERR"g_ldr_ctx: 0x%p\n", lctx);
+        printk(TBOOT_ERR"OsMleData loader ctx address: 0x%lX\n",
+               (unsigned long) &os_mle_data->lctx);
+        return false;
+    }
+
+    return true;
 }
 
 

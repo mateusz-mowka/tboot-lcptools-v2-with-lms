@@ -163,7 +163,7 @@ static bool secure_g_ldr_ctx(void)
     if (heap != NULL) {
         os_mle_data = get_os_mle_data_start(heap);
         if (os_mle_data != NULL) {
-            g_ldr_ctx = (loader_ctx *)(unsigned long)&os_mle_data->lctx;
+            g_ldr_ctx = &os_mle_data->lctx;
             return true;
         }
     }
@@ -331,10 +331,6 @@ static void launch_racm(loader_ctx *const lctx)
 {
     tb_error_t err;
 
-    if (!txt_verify_loader_context_protection(lctx)) {
-        apply_policy(TB_ERR_DMA_CORRUPTION_DETECTED);
-    }
-
     /* bsp check & tpm check done by caller */
     /* SMX must be supported */
     if ( !(cpuid_ecx(1) & CPUID_X86_FEATURE_SMX) )
@@ -434,7 +430,7 @@ void begin_launch(void *addr, uint32_t magic)
     */
 
     if (is_lctx_secured) {
-        printk("Loader context has been secured by TBOOT.\n");
+        printk(TBOOT_INFO"Loader context has been secured by TBOOT.\n");
     }
 
     printk(TBOOT_INFO"Loader context at: %p\n", g_ldr_ctx);
