@@ -176,9 +176,6 @@ static bool secure_nr_map_ptr(void)
     /* Set g_nr_map to point at the num_of_e820_entries member of the */
     /* OsMleData struct */
     set_nr_map_ptr(&os_mle_data->num_of_e820_entries);
-
-    /* set to num of e820 entries invalid value to detect corruption */
-    *get_nr_map_ptr() = (uint32_t) -1;
     return true;
 }
 

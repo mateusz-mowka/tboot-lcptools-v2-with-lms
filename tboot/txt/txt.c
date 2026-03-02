@@ -575,7 +575,7 @@ static void configure_vtd(void)
  * sets up TXT heap
  */
 static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit,
-                                 loader_ctx *lctx, bool *global_ptr_corrupted)
+                                 loader_ctx *lctx)
 {
     uint32_t   tmp_num_of_e820_entries = 0;
 
@@ -598,13 +598,11 @@ static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit,
     os_mle_data_t *os_mle_data = get_os_mle_data_start(txt_heap);
 
     if (!verify_g_nr_map_ptr(get_nr_map_ptr())) {
-        *global_ptr_corrupted = true;
-        return NULL;
+        apply_policy(TB_ERR_DMA_CORRUPTION_DETECTED);
     }
 
     if (!e820_verify_num_of_entries()) {
-        *global_ptr_corrupted = true;
-        return NULL;
+        apply_policy(TB_ERR_DMA_CORRUPTION_DETECTED);
     }
 
     size = (uint64_t *)((uint32_t)os_mle_data - sizeof(uint64_t));
@@ -897,7 +895,6 @@ tb_error_t txt_launch_environment(loader_ctx *lctx)
     void          *mle_ptab_base       = NULL;
     os_mle_data_t *os_mle_data         = NULL;
     txt_heap_t    *txt_heap            = NULL;
-    bool          global_ptr_corrupted = false;
 
     /*
      * find correct SINIT AC module in modules list
@@ -926,14 +923,8 @@ tb_error_t txt_launch_environment(loader_ctx *lctx)
     configure_vtd();
 
     /* initialize TXT heap */
-    txt_heap = init_txt_heap(mle_ptab_base, g_sinit, lctx, &global_ptr_corrupted);
+    txt_heap = init_txt_heap(mle_ptab_base, g_sinit, lctx);
     if ( txt_heap == NULL ) {
-        /* verify if any of the global ptrs were corrupted by an unauthorized */
-        /* DMA device */
-        if (global_ptr_corrupted) {
-            return TB_ERR_DMA_CORRUPTION_DETECTED;
-        }
-
         return TB_ERR_TXT_NOT_SUPPORTED;
     }
 

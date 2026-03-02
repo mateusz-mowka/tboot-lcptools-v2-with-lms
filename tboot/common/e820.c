@@ -315,14 +315,14 @@ bool copy_e820_map(loader_ctx *lctx, uint32_t *const nr_map)
 {
     get_tboot_min_ram();
 
-    /* Verify nr_map pointer*/
+    /* Verify nr_map pointer */
     if (nr_map == NULL) {
-        printk(TBOOT_ERR"nr_map pointer is NULL");
+        printk(TBOOT_ERR"e820: nr_map pointer is NULL.\n");
         return false;
     }
 
     if (!verify_g_nr_map_ptr(nr_map)) {
-        printk(TBOOT_ERR"e820 memory map copying failed.\n");
+        printk(TBOOT_ERR"e820: memory map copying failed.\n");
         return false;
     }
 
