@@ -143,7 +143,6 @@ typedef struct {
 #define TBOOT_LOG_UUID   {0xc0192526, 0x6b30, 0x4db4, 0x844c, \
                              {0xa3, 0xe9, 0x53, 0xb8, 0x81, 0x74 }}
 
-extern uint32_t memlog_get_base(void);
 extern tboot_shared_t *g_tboot_shared;
 
 static inline bool tboot_in_measured_env(void)

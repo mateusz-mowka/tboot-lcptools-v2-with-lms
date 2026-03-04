@@ -35,6 +35,7 @@
  */
 
 #include <config.h>
+#include <memlog.h>
 #include <types.h>
 #include <stdbool.h>
 #include <stdarg.h>

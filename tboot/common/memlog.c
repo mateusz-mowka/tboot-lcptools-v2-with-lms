@@ -45,10 +45,10 @@
 
 
 /* Memory-mapped tboot log header at the fixed log region base address. */
-#define TBOOT_LOG_HDR           ((tboot_log_t *)TBOOT_SERIAL_LOG_ADDR)
+#define TBOOT_LOG_HDR ((tboot_log_t *)TBOOT_SERIAL_LOG_ADDR)
 
 /* UUID for the tboot log */
-const uuid_t       tboot_log_uuid = TBOOT_LOG_UUID;
+static const uuid_t tboot_log_uuid = TBOOT_LOG_UUID;
 
 /**
  * @brief Check if the tboot log UUID is valid.
@@ -68,7 +68,8 @@ static int check_tboot_log_uuid(void)
  * @brief Get the base physical address of the tboot memory log region.
  *
  * Validates that the UUID stored in the log header matches the expected
- * tboot log UUID. This way we can verify, if TBOOT LOG was initialized properly.
+ * tboot log UUID. This way we can verify that the TBOOT log was initialized
+ * properly.
  *
  * @return uint32_t TBOOT_SERIAL_LOG_ADDR if the header is valid; otherwise 0.
  */
@@ -89,8 +90,7 @@ void memlog_init(void)
         tb_memcpy((void *) &TBOOT_LOG_HDR->uuid, (const void *) &uuid, sizeof(uuid_t));
         TBOOT_LOG_HDR->curr_pos = 0;
         TBOOT_LOG_HDR->zip_count = 0;
-        for (uint8_t i = 0; i < ZIP_COUNT_MAX; i++)
-        {
+        for (uint8_t i = 0; i < ZIP_COUNT_MAX; i++) {
             TBOOT_LOG_HDR->zip_pos[i] = 0;
             TBOOT_LOG_HDR->zip_size[i] = 0;
         }
@@ -100,30 +100,44 @@ void memlog_init(void)
     /* could compromise environment */
     TBOOT_LOG_HDR->max_size = TBOOT_SERIAL_LOG_SIZE - sizeof(tboot_log_t);
 
-    /* if we're calling this post-launch, verify that curr_pos is valid */
-    if ( TBOOT_LOG_HDR->zip_pos[TBOOT_LOG_HDR->zip_count] > TBOOT_LOG_HDR->max_size)
+    if ( TBOOT_LOG_HDR->zip_count >= ZIP_COUNT_MAX )
     {
+        /* Corrupted zip_count; reset the log to a safe state. */
         TBOOT_LOG_HDR->curr_pos = 0;
-
-        /* Match TBOOT LOG UUID as corrupted, when TBOOT LOG exceeds */
-        /* it's maximal size */
-        tb_memset(((void *) &TBOOT_LOG_HDR->uuid), 0, sizeof(uuid_t));
+        /* Mark TBOOT LOG UUID as corrupted so it will be reinitialized. */
+        tb_memset((void *)&TBOOT_LOG_HDR->uuid, 0, sizeof(uuid_t));
         for ( uint8_t i = 0; i < ZIP_COUNT_MAX; i++ )
         {
             TBOOT_LOG_HDR->zip_pos[i] = 0;
             TBOOT_LOG_HDR->zip_size[i] = 0;
         }
+        /* Ensure zip_count is within bounds for any subsequent use. */
+        TBOOT_LOG_HDR->zip_count = 0;
     }
 
-    if ( TBOOT_LOG_HDR->curr_pos > TBOOT_LOG_HDR->max_size )
-    {
+    /* if we're calling this post-launch, verify that curr_pos is valid */
+    if (TBOOT_LOG_HDR->zip_pos[TBOOT_LOG_HDR->zip_count] >
+        TBOOT_LOG_HDR->max_size) {
+        TBOOT_LOG_HDR->curr_pos = 0;
+
+        /* Match TBOOT LOG UUID as corrupted, when TBOOT LOG exceeds */
+        /* its maximum size */
+        tb_memset(((void *) &TBOOT_LOG_HDR->uuid), 0, sizeof(uuid_t));
+        for ( uint8_t i = 0; i < ZIP_COUNT_MAX; i++ ) {
+            TBOOT_LOG_HDR->zip_pos[i] = 0;
+            TBOOT_LOG_HDR->zip_size[i] = 0;
+        }
+    }
+
+    if (TBOOT_LOG_HDR->curr_pos > TBOOT_LOG_HDR->max_size) {
         TBOOT_LOG_HDR->curr_pos = TBOOT_LOG_HDR->zip_pos[TBOOT_LOG_HDR->zip_count];
     }
 }
 
 void memlog_write(const char *str, unsigned int count)
 {
-    if ( check_tboot_log_uuid() != 0 || count > TBOOT_LOG_HDR->max_size ) {
+    if (check_tboot_log_uuid() != 0 || count > TBOOT_LOG_HDR->max_size ||
+        count == 0) {
         return;
     }
 
@@ -136,8 +150,9 @@ void memlog_write(const char *str, unsigned int count)
     TBOOT_LOG_HDR->curr_pos += count;
 
     /* if the string wasn't NULL-terminated, then NULL-terminate the log */
-    if ( str[count-1] != '\0' )
+    if (str[count-1] != '\0') {
         TBOOT_LOG_HDR->buf[TBOOT_LOG_HDR->curr_pos] = '\0';
+    }
     else {
         /* so that curr_pos will point to the NULL and be overwritten */
         /* on next copy */
@@ -154,7 +169,8 @@ void memlog_compress(uint32_t required_space)
     uint32_t zip_pos;
     bool log_reset_flag;
 
-    if (required_space == 0 && TBOOT_LOG_HDR->curr_pos < TBOOT_LOG_HDR->max_size / 2) {
+    if (required_space == 0 && TBOOT_LOG_HDR->curr_pos <
+        TBOOT_LOG_HDR->max_size / 2) {
         /* Flush was requested, but we have over half buffer free, skip it */
         return;
     }
@@ -163,24 +179,29 @@ void memlog_compress(uint32_t required_space)
     log_reset_flag = false;
 
     /* Check if there is space to add another compressed chunk */
-    if(TBOOT_LOG_HDR->zip_count >= ZIP_COUNT_MAX)
+    if (TBOOT_LOG_HDR->zip_count >= ZIP_COUNT_MAX) {
         log_reset_flag = true;
-    else{
+    }
+    else {
         /* Get the start position of the new compressed chunk */
         zip_pos = TBOOT_LOG_HDR->zip_pos[TBOOT_LOG_HDR->zip_count];
 
         /*  Compress the last part of the log buffer that is not compressed,
             and put the compressed output in out (buf) */
-        zip_size = LZ_Compress(&TBOOT_LOG_HDR->buf[zip_pos], out, (TBOOT_LOG_HDR->curr_pos - zip_pos), sizeof(buf) );
+        zip_size = LZ_Compress(&TBOOT_LOG_HDR->buf[zip_pos], out,
+                               (TBOOT_LOG_HDR->curr_pos - zip_pos), sizeof(buf));
 
         /* Check if buf was large enough for LZ_compress to succeed */
-        if( zip_size < 0 )
+        if (zip_size < 0) {
             log_reset_flag = true;
-        else{
+        }
+        else {
             /*  Check if there is space to add the compressed string, the
                 new string and a null terminator to the log */
-            if( (zip_pos + zip_size + required_space + 1) > TBOOT_LOG_HDR->max_size )
+            if ((zip_pos + zip_size + required_space + 1) >
+               TBOOT_LOG_HDR->max_size) {
                 log_reset_flag = true;
+            }
             else{
                 /*  Add the new compressed chunk to the log buffer,
                     over-writing the last part of the log that was just
@@ -195,18 +216,17 @@ void memlog_compress(uint32_t required_space)
 
                 /*  Only if there is space to add another compressed chunk,
                     prepare its start position. */
-                if( TBOOT_LOG_HDR->zip_count < ZIP_COUNT_MAX )
+                if( TBOOT_LOG_HDR->zip_count < ZIP_COUNT_MAX ) {
                     TBOOT_LOG_HDR->zip_pos[TBOOT_LOG_HDR->zip_count] = TBOOT_LOG_HDR->curr_pos;
+                }
             }
         }
     }
 
     /* There was some space-shortage problem. Reset the log. */
-    if ( log_reset_flag )
-    {
+    if (log_reset_flag) {
         TBOOT_LOG_HDR->curr_pos = 0;
-        for (uint8_t i = 0; i < ZIP_COUNT_MAX; i++ )
-        {
+        for (uint8_t i = 0; i < ZIP_COUNT_MAX; i++ ) {
             TBOOT_LOG_HDR->zip_pos[i]  = 0;
             TBOOT_LOG_HDR->zip_size[i] = 0;
         }
