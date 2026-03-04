@@ -988,9 +988,12 @@ void fixup_loader_ctx(loader_ctx *const lctx, size_t offset)
     multiboot_info_t *mbi = lctx->addr;
 
     if ( moving_ctx ) {
-        printk(TBOOT_INFO"loader context was moved from %p to ", lctx->addr);
+        printk(TBOOT_INFO"Relocating loader context metadata above tboot memory"
+               " from %p to: ", lctx->addr);
         lctx->addr += offset;
         printk(TBOOT_INFO"%p\n", lctx->addr);
+        printk(TBOOT_INFO"Loader context pointer after relocation: %p\n",
+               lctx->addr);
     }
 
     if (0 < get_module_count(lctx)) {

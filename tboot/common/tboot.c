@@ -443,7 +443,8 @@ void begin_launch(void *addr, uint32_t magic)
     if (!is_launched()) {
         printk(TBOOT_INFO"move modules above tboot.\n");
         move_modules(g_ldr_ctx);
-        printk(TBOOT_INFO"Loader context after moving modules%p\n", g_ldr_ctx);
+        printk(TBOOT_INFO"Module relocation complete.\n");
+        printk(TBOOT_INFO"Loader context snapshot at %p\n", g_ldr_ctx);
         print_loader_ctx(g_ldr_ctx);
     }
 
