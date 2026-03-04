@@ -889,7 +889,6 @@ tb_error_t txt_launch_environment(loader_ctx *const lctx)
     void          *mle_ptab_base          = NULL;
     os_mle_data_t *os_mle_data            = NULL;
     txt_heap_t    *txt_heap               = NULL;
-    bool          dma_corruption_detected = false;
 
     /*
      * find correct SINIT AC module in modules list
