@@ -83,7 +83,7 @@ typedef struct {
 
 extern memory_map_t *get_e820_copy(void);
 extern unsigned int get_nr_map(void);
-extern bool copy_e820_map(loader_ctx *lctx);
+extern bool copy_e820_map(loader_ctx *const lctx);
 extern bool e820_protect_region(uint64_t addr, uint64_t size, uint32_t type);
 extern bool e820_reserve_ram(uint64_t base, uint64_t length);
 extern void print_e820_map(void);

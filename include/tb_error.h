@@ -40,6 +40,7 @@ typedef enum {
     TB_ERR_NONE                = 0,         /* succeed */
     TB_ERR_FIXED               = 1,         /* previous error has been fixed */
     TB_ERR_GENERIC,                         /* non-fatal generic error */
+    TB_ERR_DMA_CORRUPTION_DETECTED,         /* DMA corruption detected */
     TB_ERR_TPM_NOT_READY,                   /* tpm not ready */
     TB_ERR_SMX_NOT_SUPPORTED,               /* smx not supported */
     TB_ERR_VMX_NOT_SUPPORTED,               /* vmx not supported */

@@ -95,9 +95,9 @@ extern atomic_t ap_wfs_count;
 extern struct mutex ap_lock;
 
 /* loader context struct saved so that post_launch() can use it */
-__data loader_ctx g_loader_ctx = { NULL, 0 };
-__data loader_ctx *g_ldr_ctx = &g_loader_ctx;
-__data uint32_t g_mb_orig_size = 0;
+__data loader_ctx g_loader_ctx   = { NULL, 0 };
+__data loader_ctx *g_ldr_ctx     = &g_loader_ctx;
+__data uint32_t   g_mb_orig_size = 0;
 
 
 /* MLE/kernel shared data page (in boot.S) */
@@ -152,6 +152,23 @@ static void restore_saved_s3_wakeup_page(void)
     /* restore saved page */
     tb_memcpy((void *)TBOOT_S3_WAKEUP_ADDR, g_saved_s3_wakeup_page,
            s3_wakeup_end - s3_wakeup_16);
+}
+
+static bool secure_g_ldr_ctx(void)
+{
+    txt_heap_t    *heap           = NULL;
+    os_mle_data_t *os_mle_data    = NULL;
+
+    heap = get_txt_heap();
+    if (heap != NULL) {
+        os_mle_data = get_os_mle_data_start(heap);
+        if (os_mle_data != NULL) {
+            g_ldr_ctx = &os_mle_data->lctx;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static inline void print_tboot_shared(const tboot_shared_t *tboot_shared)
@@ -310,7 +327,7 @@ void startup_rlps(void)
     writel(apicbase + ICR_LOW, 0xc0500);
 }
 
-void launch_racm(void)
+static void launch_racm(loader_ctx *const lctx)
 {
     tb_error_t err;
 
@@ -334,11 +351,12 @@ void launch_racm(void)
     startup_rlps();
 
     /* Verify loader context */
-    if ( !verify_loader_context(g_ldr_ctx) )
+    if (!verify_loader_context(lctx)) {
         apply_policy(TB_ERR_FATAL);
-    
+    }
+
     /* load racm */
-    err = txt_launch_racm(g_ldr_ctx);
+    err = txt_launch_racm(lctx);
     apply_policy(err);
 }
 
@@ -351,11 +369,16 @@ void check_racm_result(void)
 
 void begin_launch(void *addr, uint32_t magic)
 {
-    tb_error_t err;
+    tb_error_t    err;
+    bool is_lctx_secured = false;
 
-    if (g_ldr_ctx->type == 0)
-        determine_loader_type(addr, magic);
+    if (supports_txt() == TB_ERR_NONE) {
+        is_lctx_secured = secure_g_ldr_ctx();
+    }
 
+    if (g_ldr_ctx->type == 0) {
+        determine_loader_type(g_ldr_ctx, addr, magic);
+    }
     /* on pre-SENTER boot, copy command line to buffer in tboot image
        (so that it will be measured); buffer must be 0 -filled */
     if ( !is_launched() && !s3_flag ) {
@@ -406,6 +429,10 @@ void begin_launch(void *addr, uint32_t magic)
        print_loader_ctx(g_ldr_ctx);
     */
 
+    if (is_lctx_secured) {
+        printk(TBOOT_INFO"Loader context has been secured by TBOOT.\n");
+    }
+
     printk(TBOOT_INFO"Loader context at: %p\n", g_ldr_ctx);
     print_loader_ctx(g_ldr_ctx);
 
@@ -416,7 +443,8 @@ void begin_launch(void *addr, uint32_t magic)
     if (!is_launched()) {
         printk(TBOOT_INFO"move modules above tboot.\n");
         move_modules(g_ldr_ctx);
-        printk(TBOOT_INFO"Loader context after moving modules%p\n", g_ldr_ctx);
+        printk(TBOOT_INFO"Module relocation complete.\n");
+        printk(TBOOT_INFO"Loader context snapshot at %p\n", g_ldr_ctx);
         print_loader_ctx(g_ldr_ctx);
     }
 
@@ -478,8 +506,9 @@ void begin_launch(void *addr, uint32_t magic)
     apply_policy(err);
 
     /* if telled to call revocation acm, go with simplified path */
-    if ( get_tboot_call_racm() )
-        launch_racm(); /* never return */
+    if (get_tboot_call_racm()) {
+        launch_racm(g_ldr_ctx); /* never return */
+    }
 
     /* need to verify that platform supports TXT before we can check error */
     /* (this includes TPM support) */
@@ -502,8 +531,10 @@ void begin_launch(void *addr, uint32_t magic)
         printk(TBOOT_INFO"g_ldr_ctx: %p\n", g_ldr_ctx);
         print_loader_ctx(g_ldr_ctx);
     }
-    if ( !s3_flag && !verify_loader_context(g_ldr_ctx) )
+
+    if (!s3_flag && !verify_loader_context(g_ldr_ctx)) {
         apply_policy(TB_ERR_FATAL);
+    }
 
     /* this is being called post-measured launch */
     if ( is_launched() ){
