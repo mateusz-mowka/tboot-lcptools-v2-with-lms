@@ -22,6 +22,9 @@
 #define LMS_PUBLIC_KEY_MAX_BYTES   1372
 #define LMS_PRIVATE_KEY_MAX_BYTES  1372
 
+/* LMS tree identifier length in bytes */
+#define I_LEN  16
+
 /* Offset to leaf index in hash-sigs LMS private key file format:
  * 4 bytes (levels) + 4 bytes (LMOTS algo) + 4 bytes (LMS algo) + 16 bytes (key_id) */
 #define LMS_LEAF_INDEX_OFFSET  28

@@ -15,7 +15,6 @@
 #include "safe_lib.h"
 #include "lcputils.h"
 #include "crypto_ippc_defines.h"
-#include "hash-sigs/hss.h"
 
 static const IppsHashMethod *
 get_ipp_hash_method (
@@ -2469,7 +2468,7 @@ cleanup:
 }
 
 /* Validate LMS/LMOTS types in the signature and return the IPPC algo type.
- * Only LMS_SHA256_M32_H20 + LMOTS_SHA256_N32_W4 is supported per CBnT SAS. */
+ * Only LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4 is supported. */
 static IppStatus
 validate_lms_sig_algo_type (
   const unsigned char  *signature,
@@ -2487,9 +2486,9 @@ validate_lms_sig_algo_type (
   memcpy (&lmots_type, signature + sizeof(uint32_t), sizeof(lmots_type));
   lmots_type = ntohl (lmots_type);
 
-  if (lmots_type != LMOTS_SHA256_N32_W4) {
-    printf ("ERROR: Unsupported LMOTS type in signature: 0x%x (expected LMOTS_SHA256_N32_W4=0x%x)\n",
-            lmots_type, LMOTS_SHA256_N32_W4);
+  if (lmots_type != LMOTS_SHA256_N24_W4) {
+    printf ("ERROR: Unsupported LMOTS type in signature: 0x%x (expected LMOTS_SHA256_N24_W4=0x%x)\n",
+            lmots_type, LMOTS_SHA256_N24_W4);
     return ippStsNotSupportedModeErr;
   }
 
@@ -2498,13 +2497,14 @@ validate_lms_sig_algo_type (
   memcpy (&lms_type, signature + sizeof(uint32_t) + sizeof(lmots_signature), sizeof(lms_type));
   lms_type = ntohl (lms_type);
 
-  if (lms_type != LMS_SHA256_M32_H20) {
-    printf ("ERROR: Unsupported LMS type in signature: 0x%x (expected LMS_SHA256_M32_H20=0x%x)\n",
-            lms_type, LMS_SHA256_M32_H20);
+  if (lms_type != LMS_SHA256_M24_H20) {
+    printf ("ERROR: Unsupported LMS type in signature: 0x%x (expected LMS_SHA256_M24_H20=0x%x)\n",
+            lms_type, LMS_SHA256_M24_H20);
     return ippStsNotSupportedModeErr;
   }
 
-  algo_type->lmsOIDAlgo = LMS_SHA256_M32_H20;
+  algo_type->lmsOIDAlgo   = LMS_SHA256_M24_H20;
+  algo_type->lmotsOIDAlgo = LMOTS_SHA256_N24_W4;
   return ippStsNoErr;
 }
 
@@ -2569,9 +2569,9 @@ crypto_lms_verify_signature_internal (
     goto cleanup;
   }
 
-  status = ippsLMSBufferGetSize (&buffer_size, (Ipp32s)msg_len, algo_type);
+  status = ippsLMSVerifyBufferGetSize (&buffer_size, (Ipp32s)msg_len, algo_type);
   if (status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSBufferGetSize failed: %d\n", status);
+    printf ("ERROR: ippsLMSVerifyBufferGetSize failed: %d\n", status);
     goto cleanup;
   }
 
@@ -2602,15 +2602,15 @@ crypto_lms_verify_signature_internal (
   pubkey_lms_type = ntohl (pubkey_lms_type);
   pubkey_lmots_type = ntohl (pubkey_lmots_type);
 
-  if (pubkey_lms_type != LMS_SHA256_M32_H20) {
-    printf ("ERROR: Unsupported LMS type in public key: 0x%x (expected LMS_SHA256_M32_H20=0x%x)\n",
-            pubkey_lms_type, LMS_SHA256_M32_H20);
+  if (pubkey_lms_type != LMS_SHA256_M24_H20) {
+    printf ("ERROR: Unsupported LMS type in public key: 0x%x (expected LMS_SHA256_M24_H20=0x%x)\n",
+            pubkey_lms_type, LMS_SHA256_M24_H20);
     goto cleanup;
   }
 
-  if (pubkey_lmots_type != LMOTS_SHA256_N32_W4) {
-    printf ("ERROR: Unsupported LMOTS type in public key: 0x%x (expected LMOTS_SHA256_N32_W4=0x%x)\n",
-            pubkey_lmots_type, LMOTS_SHA256_N32_W4);
+  if (pubkey_lmots_type != LMOTS_SHA256_N24_W4) {
+    printf ("ERROR: Unsupported LMOTS type in public key: 0x%x (expected LMOTS_SHA256_N24_W4=0x%x)\n",
+            pubkey_lmots_type, LMOTS_SHA256_N24_W4);
     goto cleanup;
   }
 
@@ -2678,83 +2678,133 @@ cleanup:
 }
 
 /*
- * Callback for hss_load_private_key to read private key file
+ * Mirror of IPPC internal _cpLMOTSSignatureState.
+ * Must match the layout in sources/include/stateful_sig/lms_internal/lmots.h.
  */
-static bool
-read_private_key (
-  unsigned char  *buffer,
-  size_t         len_buffer,
-  void           *context
+typedef struct {
+  IppsLMOTSAlgo  _lmotsOIDAlgo;
+  Ipp8u          *pC;
+  Ipp8u          *pY;
+} lms_ots_sig_mirror;
+
+/*
+ * Mirror of IPPC internal _cpLMSSignatureState.
+ * Must match the layout in sources/include/stateful_sig/lms_internal/lms.h.
+ */
+typedef struct {
+  Ipp32u              _idCtx;
+  Ipp32u              _q;
+  lms_ots_sig_mirror  _lmotsSig;
+  IppsLMSAlgo         _lmsOIDAlgo;
+  Ipp8u               *_pAuthPath;
+} lms_sig_state_mirror;
+
+/*
+ * Mirror of IPPC internal _cpLMSPrivateKeyState.
+ * Must match the layout in sources/include/stateful_sig/lms_internal/lms.h.
+ */
+typedef struct {
+  Ipp32u         _idCtx;
+  IppsLMSAlgo    lmsOIDAlgo;
+  IppsLMOTSAlgo  lmotsOIDAlgo;
+  Ipp32u         q;
+  Ipp32s         extraBufSize;
+  Ipp8u          *pSecretSeed;
+  Ipp8u          *pI;
+  Ipp8u          *pExtraBuf;
+} lms_privkey_mirror;
+
+/*
+ * Context for providing a deterministic seed/I to ippsLMSKeyGen
+ * instead of random generation.
+ */
+typedef struct {
+  const uint8_t  *seed;
+  const uint8_t  *identifier;
+  int            call_count;
+} lms_keygen_rng_ctx;
+
+/*
+ * Custom RNG callback for ippsLMSKeyGen that feeds known seed and I values.
+ * First call produces the secret seed, second call produces the I identifier.
+ */
+static IppStatus
+lms_keygen_rng_callback (
+  Ipp32u  *pRand,
+  int     nBits,
+  void    *pCtx
   )
 {
-  const char  *filename = (const char *)context;
-  FILE        *fp       = fopen (filename, "rb");
+  lms_keygen_rng_ctx  *ctx    = (lms_keygen_rng_ctx *)pCtx;
+  int                 nBytes  = nBits / 8;
 
-  if (NULL == fp) {
-    printf ("Failed to open private key file: %s\n", filename);
-    return false;
+  if (ctx->call_count == 0) {
+    /* First call: provide the secret seed */
+    memcpy (pRand, ctx->seed, nBytes);
+  } else if (ctx->call_count == 1) {
+    /* Second call: provide the I identifier */
+    memcpy (pRand, ctx->identifier, nBytes);
+  } else {
+    return ippStsErr;
   }
 
-  size_t  bytes_read = fread (buffer, 1, len_buffer, fp);
-  fclose (fp);
-
-  if (bytes_read != len_buffer) {
-    printf ("Failed to read %zu bytes from private key file (got %zu)\n", len_buffer, bytes_read);
-    return false;
-  }
-
-  return true;
+  ctx->call_count++;
+  return ippStsNoErr;
 }
 
 /*
- * Callback for hss_generate_signature to update private key file
+ * Supported LMS algorithm: LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4
+ *
+ * Parameters:
+ *   n = 24  (LMOTS hash output size, SHA256/192)
+ *   p = 51  (number of Winternitz hash chains)
+ *   h = 20  (Merkle tree height)
+ *   m = 24  (LMS tree node hash size, SHA256/192)
  */
-static bool
-update_private_key (
-  unsigned char  *buffer,
-  size_t         len_buffer,
-  void           *context
-  )
-{
-  const char  *filename = (const char *)context;
-
-  /* Try to open for update (read/write without truncating) */
-  FILE  *fp = fopen (filename, "r+");
-
-  if (NULL == fp) {
-    /* If r+ fails, fall back to creating new file */
-    printf ("Cannot open private key for update with r+ mode: %s\n", filename);
-    fp = fopen (filename, "wb");
-    if (NULL == fp) {
-      printf ("Cannot open private key for update with wb mode: %s\n", filename);
-      return false;
-    }
-  }
-
-  /* Write the entire buffer as one item */
-  size_t  written = fwrite (buffer, len_buffer, 1, fp);
-
-  if (written != 1) {
-    printf ("Cannot write to private key for update: %s\n", filename);
-    fclose (fp);
-    return false;
-  }
-
-  if (fclose (fp) != 0) {
-    printf ("Cannot close the private key after update: %s\n", filename);
-    return false;
-  }
-
-  if (verbose) {
-    printf ("LMS private key successfully updated.\n");
-  }
-
-  return true;
-}
+#define LMS_SIGN_N   LMOTS_SIGNATURE_N_SIZE    /* 24 */
+#define LMS_SIGN_P   LMOTS_SIGNATURE_P_SIZE    /* 51 */
+#define LMS_SIGN_H   LMS_SIGNATURE_H_HEIGHT    /* 20 */
+#define LMS_SIGN_M   LMS_SIGNATURE_M_SIZE      /* 24 */
 
 /*
- * LMS signature generation using hash-sigs library
- * IPPC library currently only supports verification, so we use hash-sigs for signing
+ * Hash-sigs private key file format for LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4:
+ *
+ * Offset  0: 8 bytes  - sequence counter (leaf index q, big-endian uint64)
+ * Offset  8: 16 bytes - compressed parameter sets (2 bytes per HSS level, 0xFF padding)
+ * Offset 24: 24 bytes - master secret seed (n = 24 for SHA256/192)
+ * Offset 48: 16 bytes - I value (Merkle tree identifier)
+ * Total:  64 bytes
+ *
+ * Expected compressed params: LM type = 0x09 (LMS_SHA256_M24_H20 - 4),
+ *                             LMOTS type = 0x07 (LMOTS_SHA256_N24_W4)
+ */
+#define HASHSIGS_PRV_COUNTER_OFFSET     0
+#define HASHSIGS_PRV_COUNTER_SIZE       8
+#define HASHSIGS_PRV_PARAMS_OFFSET      8
+#define HASHSIGS_PRV_SEED_OFFSET        24
+#define HASHSIGS_PRV_I_SIZE             16
+#define HASHSIGS_PRV_EXPECTED_SIZE      (HASHSIGS_PRV_SEED_OFFSET + LMS_SIGN_N + HASHSIGS_PRV_I_SIZE) /* 64 */
+#define HASHSIGS_PRV_COMPRESSED_LM      0x09  /* LMS_SHA256_M24_H20 enum(13) - 4 */
+#define HASHSIGS_PRV_COMPRESSED_LMOTS   0x07  /* LMOTS_SHA256_N24_W4 enum(7) */
+
+/*
+ * Total serialized LMS signature size (including HSS NSPK prefix):
+ * NSPK (4) + Q (4) + LMOTS_type (4) + C (24) + Y (24*51=1224) + LMS_type (4) + Path (20*24=480)
+ * = 1744 bytes
+ */
+#define LMS_SIGN_TOTAL_SIZE  (sizeof (uint32_t)                          /* NSPK */  \
+                              + sizeof (uint32_t)                        /* Q */     \
+                              + sizeof (uint32_t)                        /* LMOTS type */ \
+                              + LMS_SIGN_N                               /* C */     \
+                              + (size_t)LMS_SIGN_N * LMS_SIGN_P          /* Y */     \
+                              + sizeof (uint32_t)                        /* LMS type */ \
+                              + (size_t)LMS_SIGN_H * LMS_SIGN_M)        /* Path */
+
+/*
+ * LMS signature generation using IPPC library.
+ * Reads a hash-sigs format private key (LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4),
+ * reconstructs the IPPC key state, signs the message, and serializes the signature
+ * in wire format with HSS NSPK prefix.
  */
 crypto_status
 crypto_lms_sign_data_internal (
@@ -2772,82 +2822,276 @@ crypto_lms_sign_data_internal (
     return crypto_nullptr_error;
   }
 
-  struct hss_working_key  *working_key   = NULL;
-  unsigned char           *aux_data_copy = NULL;
-  size_t                  aux_data_len   = aux_len;
+  IppStatus               ipp_status    = ippStsNoErr;
+  crypto_status           result        = crypto_general_fail;
+  uint8_t                 *file_data    = NULL;
+  size_t                  file_size     = 0;
+  IppsLMSPrivateKeyState  *priv_key     = NULL;
+  IppsLMSPublicKeyState   *pub_key      = NULL;
+  IppsLMSSignatureState   *sig_state    = NULL;
+  Ipp8u                   *keygen_buf   = NULL;
+  Ipp8u                   *sign_buf     = NULL;
+  Ipp32s                  priv_key_size = 0;
+  Ipp32s                  pub_key_size  = 0;
+  Ipp32s                  sig_size      = 0;
+  Ipp32s                  keygen_buf_sz = 0;
+  Ipp32s                  sign_buf_sz   = 0;
+  uint32_t                leaf_q;
+  Ipp32s                  extra_buf_sz  = 0;
 
-  /* Load auxiliary data if provided */
-  if ((aux_data != NULL) && (aux_len > 0)) {
-    aux_data_copy = malloc (aux_len);
-    if (NULL == aux_data_copy) {
-      printf ("Failed to allocate memory for aux data\n");
-      return crypto_memory_alloc_fail;
-    }
+  /* Fixed algorithm type: LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4 */
+  IppsLMSAlgoType  algo_type = {
+    .lmsOIDAlgo   = LMS_SHA256_M24_H20,
+    .lmotsOIDAlgo = LMOTS_SHA256_N24_W4
+  };
 
-    memcpy (aux_data_copy, aux_data, aux_len);
+  /* Read private key file */
+  file_data = (uint8_t *)read_file (privkey_file, &file_size, false);
+  if (NULL == file_data) {
+    printf ("ERROR: Failed to read LMS private key file: %s\n", privkey_file);
+    return crypto_file_io_error;
   }
 
-  /* Load private key into working key structure */
-  working_key = hss_load_private_key (
-                                      read_private_key,
-                                      (void *)privkey_file,
-                                      0, /* memory_target: 0 = minimize memory */
-                                      aux_data_copy,
-                                      aux_data_len,
-                                      NULL /* info parameter */
-                                      );
-
-  if (aux_data_copy != NULL) {
-    free (aux_data_copy);
+  /* Validate exact file size */
+  if (file_size != HASHSIGS_PRV_EXPECTED_SIZE) {
+    printf ("ERROR: Invalid LMS private key file size: %zu (expected %d)\n",
+            file_size, HASHSIGS_PRV_EXPECTED_SIZE);
+    free (file_data);
+    return crypto_general_fail;
   }
 
-  if (NULL == working_key) {
-    printf ("Failed to load LMS private key from %s\n", privkey_file);
-    return crypto_invalid_key;
+  /* Validate compressed parameter sets match LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4 */
+  if (file_data[HASHSIGS_PRV_PARAMS_OFFSET] != HASHSIGS_PRV_COMPRESSED_LM) {
+    printf ("ERROR: Unsupported LMS type in private key: 0x%02x (expected 0x%02x for LMS_SHA256_M24_H20)\n",
+            file_data[HASHSIGS_PRV_PARAMS_OFFSET], HASHSIGS_PRV_COMPRESSED_LM);
+    free (file_data);
+    return crypto_general_fail;
   }
 
-  /* Query signature length */
-  size_t  sig_buffer_len = hss_get_signature_len_from_working_key (working_key);
-  if (sig_buffer_len == 0) {
-    printf ("Failed to get signature length\n");
-    hss_free_working_key (working_key);
-    return crypto_crypto_operation_fail;
+  if (file_data[HASHSIGS_PRV_PARAMS_OFFSET + 1] != HASHSIGS_PRV_COMPRESSED_LMOTS) {
+    printf ("ERROR: Unsupported LMOTS type in private key: 0x%02x (expected 0x%02x for LMOTS_SHA256_N24_W4)\n",
+            file_data[HASHSIGS_PRV_PARAMS_OFFSET + 1], HASHSIGS_PRV_COMPRESSED_LMOTS);
+    free (file_data);
+    return crypto_general_fail;
   }
 
-  /* Check if provided buffer is large enough */
-  if (*sig_len < sig_buffer_len) {
-    printf ("Signature buffer too small: need %zu, have %zu\n", sig_buffer_len, *sig_len);
-    hss_free_working_key (working_key);
+  /* Extract sequence counter (leaf index) - big-endian uint64 in first 8 bytes */
+  uint64_t  seq_counter = 0;
+  for (int i = 0; i < HASHSIGS_PRV_COUNTER_SIZE; i++) {
+    seq_counter = (seq_counter << 8) | file_data[HASHSIGS_PRV_COUNTER_OFFSET + i];
+  }
+
+  leaf_q = (uint32_t)seq_counter;
+
+  /* Check if key is exhausted (2^20 = 1048576 leaves for H20) */
+  if (seq_counter >= ((uint64_t)1 << LMS_SIGN_H)) {
+    printf ("ERROR: LMS private key is exhausted (q=%lu, max=%lu)\n",
+            (unsigned long)seq_counter, (unsigned long)((uint64_t)1 << LMS_SIGN_H));
+    free (file_data);
+    return crypto_general_fail;
+  }
+
+  /* Pointers into file data for seed and I */
+  const uint8_t  *seed  = file_data + HASHSIGS_PRV_SEED_OFFSET;
+  const uint8_t  *I_val = file_data + HASHSIGS_PRV_SEED_OFFSET + LMS_SIGN_N;
+
+  /* Check output buffer size */
+  if (*sig_len < LMS_SIGN_TOTAL_SIZE) {
+    printf ("ERROR: Signature buffer too small: need %zu, have %zu\n",
+            (size_t)LMS_SIGN_TOTAL_SIZE, *sig_len);
+    free (file_data);
     return crypto_buffer_too_small;
   }
 
-  /* Generate signature directly into output buffer */
-  bool  result = hss_generate_signature (
-                                         working_key,
-                                         update_private_key,
-                                         (void *)privkey_file,
-                                         msg,
-                                         msg_len,
-                                         signature,
-                                         sig_buffer_len,
-                                         NULL /* info parameter */
-                                         );
-
-  if (!result) {
-    printf ("LMS signature generation failed\n");
-    hss_free_working_key (working_key);
-    return crypto_crypto_operation_fail;
+  /* Determine extra buffer size for tree node caching.
+   * The extra buffer stores Merkle tree nodes (each LMS_SIGN_N bytes) to speed up signing.
+   * It must be a multiple of LMS_SIGN_N (24). Round down any provided aux_len. */
+  if ((aux_data != NULL) && (aux_len >= LMS_SIGN_N)) {
+    extra_buf_sz = (Ipp32s)((aux_len / LMS_SIGN_N) * LMS_SIGN_N);
+  } else {
+    extra_buf_sz = (Ipp32s)(LMS_SIGN_N * LMS_SIGN_H);
   }
 
-  *sig_len = sig_buffer_len;
+  /* Get required IPPC state sizes */
+  ipp_status = ippsLMSPrivateKeyStateGetSize (&priv_key_size, algo_type, extra_buf_sz);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsLMSPrivateKeyStateGetSize failed: %d\n", ipp_status);
+    goto cleanup;
+  }
 
-  hss_free_working_key (working_key);
+  ipp_status = ippsLMSPublicKeyStateGetSize (&pub_key_size, algo_type);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsLMSPublicKeyStateGetSize failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  ipp_status = ippsLMSSignatureStateGetSize (&sig_size, algo_type);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsLMSSignatureStateGetSize failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  ipp_status = ippsLMSKeyGenBufferGetSize (&keygen_buf_sz, algo_type);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsLMSKeyGenBufferGetSize failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  ipp_status = ippsLMSSignBufferGetSize (&sign_buf_sz, (Ipp32s)msg_len, algo_type);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsLMSSignBufferGetSize failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  /* Allocate IPPC states and working buffers */
+  priv_key   = (IppsLMSPrivateKeyState *)malloc (priv_key_size);
+  pub_key    = (IppsLMSPublicKeyState *)malloc (pub_key_size);
+  sig_state  = (IppsLMSSignatureState *)malloc (sig_size);
+  keygen_buf = (Ipp8u *)malloc (keygen_buf_sz);
+  sign_buf   = (Ipp8u *)malloc (sign_buf_sz);
+
+  if (!priv_key || !pub_key || !sig_state || !keygen_buf || !sign_buf) {
+    printf ("ERROR: Failed to allocate LMS buffers\n");
+    result = crypto_memory_alloc_fail;
+    goto cleanup;
+  }
+
+  /* Initialize key pair states */
+  ipp_status = ippsLMSInitKeyPair (algo_type, extra_buf_sz, priv_key, pub_key);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsLMSInitKeyPair failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  /* Reconstruct the key pair from the saved seed/I values using a custom RNG.
+   * This feeds the known seed and I into ippsLMSKeyGen, reproducing the exact
+   * key and computing the Merkle tree for the extra buffer cache. */
+  lms_keygen_rng_ctx  rng_ctx = {
+    .seed       = seed,
+    .identifier = I_val,
+    .call_count = 0
+  };
+
+  ipp_status = ippsLMSKeyGen (priv_key, pub_key, lms_keygen_rng_callback, &rng_ctx, keygen_buf);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsLMSKeyGen failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  /* ippsLMSKeyGen sets q=0. Restore the correct leaf index from the private key file. */
+  lms_privkey_mirror  *priv_mirror = (lms_privkey_mirror *)priv_key;
+  priv_mirror->q = leaf_q;
+
+  /* Initialize signature state */
+  ipp_status = ippsLMSInitSignature (algo_type, sig_state);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsLMSInitSignature failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  /* Sign the message */
+  ipp_status = ippsLMSSign (msg, (Ipp32s)msg_len, priv_key, sig_state, NULL, NULL, sign_buf);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsLMSSign failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  /* Extract signature components via mirror struct and serialize into wire format */
+  lms_sig_state_mirror  *sig_mirror = (lms_sig_state_mirror *)sig_state;
+  unsigned char         *p_out      = signature;
+
+  /* NSPK prefix: u32str(0) for single-level HSS tree */
+  uint32_t  nspk = htonl (0);
+  memcpy (p_out, &nspk, sizeof (uint32_t));
+  p_out += sizeof (uint32_t);
+
+  /* Q: leaf index (big-endian) */
+  uint32_t  q_be = htonl (sig_mirror->_q);
+  memcpy (p_out, &q_be, sizeof (uint32_t));
+  p_out += sizeof (uint32_t);
+
+  /* LMOTS type (big-endian) */
+  uint32_t  lmots_type_be = htonl ((uint32_t)sig_mirror->_lmotsSig._lmotsOIDAlgo);
+  memcpy (p_out, &lmots_type_be, sizeof (uint32_t));
+  p_out += sizeof (uint32_t);
+
+  /* C randomizer (24 bytes) */
+  memcpy (p_out, sig_mirror->_lmotsSig.pC, LMS_SIGN_N);
+  p_out += LMS_SIGN_N;
+
+  /* Y array (24 * 51 = 1224 bytes) */
+  memcpy (p_out, sig_mirror->_lmotsSig.pY, (size_t)LMS_SIGN_N * LMS_SIGN_P);
+  p_out += (size_t)LMS_SIGN_N * LMS_SIGN_P;
+
+  /* LMS type (big-endian) */
+  uint32_t  lms_type_be = htonl ((uint32_t)sig_mirror->_lmsOIDAlgo);
+  memcpy (p_out, &lms_type_be, sizeof (uint32_t));
+  p_out += sizeof (uint32_t);
+
+  /* Auth path (20 * 24 = 480 bytes) */
+  memcpy (p_out, sig_mirror->_pAuthPath, (size_t)LMS_SIGN_H * LMS_SIGN_M);
+  p_out += (size_t)LMS_SIGN_H * LMS_SIGN_M;
+
+  *sig_len = LMS_SIGN_TOTAL_SIZE;
+
+  /* Update the private key file: increment the sequence counter */
+  seq_counter = (uint64_t)leaf_q + 1;
+  {
+    FILE  *fp = fopen (privkey_file, "r+b");
+    if (NULL == fp) {
+      fp = fopen (privkey_file, "wb");
+    }
+
+    if (fp != NULL) {
+      uint8_t  counter_bytes[HASHSIGS_PRV_COUNTER_SIZE];
+      uint64_t temp_counter = seq_counter;
+      for (int i = HASHSIGS_PRV_COUNTER_SIZE - 1; i >= 0; i--) {
+        counter_bytes[i] = (uint8_t)(temp_counter & 0xFF);
+        temp_counter >>= 8;
+      }
+
+      if (fwrite (counter_bytes, HASHSIGS_PRV_COUNTER_SIZE, 1, fp) != 1) {
+        printf ("WARNING: Failed to update LMS private key counter\n");
+      }
+
+      fclose (fp);
+    } else {
+      printf ("WARNING: Cannot open private key for counter update: %s\n", privkey_file);
+    }
+  }
 
   if (verbose) {
-    printf ("LMS signature generation succeeded, signature length: %zu\n", *sig_len);
+    printf ("LMS signature generation succeeded (IPPC), signature length: %zu\n", *sig_len);
   }
 
-  return crypto_ok;
+  result = crypto_ok;
+
+cleanup:
+  if (keygen_buf) {
+    free (keygen_buf);
+  }
+
+  if (sign_buf) {
+    free (sign_buf);
+  }
+
+  if (sig_state) {
+    free (sig_state);
+  }
+
+  if (pub_key) {
+    free (pub_key);
+  }
+
+  if (priv_key) {
+    free (priv_key);
+  }
+
+  if (file_data) {
+    free (file_data);
+  }
+
+  return result;
 }
 
 #endif /* USE_IPPC */

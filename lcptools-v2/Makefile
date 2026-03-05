@@ -59,7 +59,9 @@ $(INST_TARGET) : $(notdir $(INST_TARGET))
 
 clean :
 	rm -f *~ *.a *.so *.o *.rpm $(DEP_FILES) $(LCP2_TARGETS)
+ifndef USE_IPPC
 	$(MAKE) -C hash-sigs clean
+endif
 
 mrproper : clean
 
@@ -87,7 +89,11 @@ LIBS += -L$(ROOTDIR)/lcptools-v2/ippc/cryptography-primitives/build/.build/RELEA
 LDFLAGS += -Wl,-rpath,$(ROOTDIR)/lcptools-v2/ippc/cryptography-primitives/build/.build/RELEASE/lib
 endif
 
+ifndef USE_IPPC
 HASH_SIGS := ./hash-sigs/hss_lib_thread.a ./hash-sigs/hss_verify.a
+else
+HASH_SIGS :=
+endif
 
 $(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o crypto.o crypto_OpenSSL.o crypto_ippc.o
 	$(AR) rc $@ $^
@@ -104,8 +110,10 @@ lcp2_crtpol : crtpol.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)
 lcp2_mlehash : mlehash.o $(LCP2_LIB) $(HASH_SIGS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
+ifndef USE_IPPC
 hash_sigs : 
 	$(MAKE) -C hash-sigs
+endif
 
 #
 # implicit rules
