@@ -133,3 +133,52 @@ crypto_lms_sign_data (
 
   return crypto_lms_sign_data_internal (msg, msg_len, signature, sig_len, privkey_file, aux_data, aux_len);
 }
+
+bool
+crypto_mldsa_keygen (
+  const char  *pubkey_file,
+  const char  *privkey_file
+  )
+{
+  if ((NULL == pubkey_file) || (NULL == privkey_file)) {
+    printf ("crypto_mldsa_keygen called with NULL parameter\n");
+    return false;
+  }
+
+  return crypto_mldsa_keygen_internal (pubkey_file, privkey_file);
+}
+
+bool
+crypto_mldsa_verify_signature (
+  const unsigned char  *msg,
+  size_t               msg_len,
+  const unsigned char  *signature,
+  size_t               sig_len,
+  const unsigned char  *public_key,
+  size_t               pubkey_len
+  )
+{
+  if ((NULL == msg) || (NULL == signature) || (NULL == public_key)) {
+    printf ("crypto_mldsa_verify_signature called with NULL parameter\n");
+    return false;
+  }
+
+  return crypto_mldsa_verify_signature_internal (msg, msg_len, signature, sig_len, public_key, pubkey_len);
+}
+
+crypto_status
+crypto_mldsa_sign_data (
+  const unsigned char  *msg,
+  size_t               msg_len,
+  unsigned char        *signature,
+  size_t               *sig_len,
+  const char           *privkey_file
+  )
+{
+  if ((NULL == msg) || (NULL == signature) || (NULL == sig_len) || (NULL == privkey_file)) {
+    printf ("crypto_mldsa_sign_data called with NULL parameter\n");
+    return crypto_nullptr_error;
+  }
+
+  return crypto_mldsa_sign_data_internal (msg, msg_len, signature, sig_len, privkey_file);
+}

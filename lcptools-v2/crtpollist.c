@@ -86,7 +86,7 @@ static const char help[] =
     "        [ELT FILES]...           policy element file(s)\n"
     "\n--sign\n"
     "Signs policy list file\n"
-    "        --sigalg                 <rsa|rsapss|ecdsa|sm2|lms> signature algorithm\n"
+    "        --sigalg                 <rsa|rsapss|ecdsa|sm2|lms|mldsa> signature algorithm\n"
     "        [--hashalg]              LCP_POLICY_LIST2_1 option:\n"
     "                                 <sha1|sha256|sha384|sha512|sm2> hash algorithm\n"
     "        --pub <key file>         PEM file of public key\n"
@@ -115,7 +115,11 @@ static const char help[] =
     "  openssl rsa -pubout -in privkey.pem -out pubkey.pem\n"
     "LMS private and public keys with Winternitz coefficient of 4 and Merkle tree height of 20\n"
     "can be generated as follows:\n"
-    "  demo lms_key SHA192,20/4\n";
+    "  demo lms_key SHA192,20/4\n"
+    "\n--keygen\n"
+    "Generates ML-DSA-87 key pair.\n"
+    "        --pub <key file>         output public key file (raw binary)\n"
+    "        --priv <key file>        output private key file (raw binary)\n";
 
 bool verbose = false;
 
@@ -130,6 +134,7 @@ static struct option long_opts[] =
     {"show",           no_argument,          NULL,     'W'},
     {"verify",         no_argument,          NULL,     'V'},
     {"version",        no_argument,          NULL,     'v'},
+    {"keygen",         no_argument,          NULL,     'K'},
     /* options */
     {"out",            required_argument,    NULL,     'o'},
     {"sigalg",         required_argument,    NULL,     'a'},
@@ -283,6 +288,31 @@ static int create(void)
 
     free(pollist);
     return write_ok ? 0 : 1;
+}
+
+static int keygen(void)
+{
+    LOG("[keygen]\n");
+
+    if ( *pubkey_file == '\0' ) {
+        ERROR("Error: no public key output file specified\n");
+        return 1;
+    }
+    if ( *privkey_file == '\0' ) {
+        ERROR("Error: no private key output file specified\n");
+        return 1;
+    }
+
+    DISPLAY("Generating ML-DSA-87 key pair...\n");
+    if (!crypto_mldsa_keygen(pubkey_file, privkey_file)) {
+        ERROR("Error: ML-DSA-87 key generation failed.\n");
+        return 1;
+    }
+
+    DISPLAY("ML-DSA-87 key pair generated successfully:\n");
+    DISPLAY("  Public key:  %s (%d bytes)\n", pubkey_file, MLDSA87_PUBKEY_SIZE);
+    DISPLAY("  Private key: %s (%d bytes)\n", privkey_file, MLDSA87_PRIVKEY_SIZE);
+    return 0;
 }
 
 static int sign(void)
@@ -571,6 +601,7 @@ int main(int argc, char *argv[])
         case 'V':          /* verify */
         case 'v':          /* version */
         case 'L':          /* lms */
+        case 'K':          /* keygen */
             if ( prev_cmd ) {
                 ERROR("Error: only one command can be specified\n");
                 return 1;
@@ -714,7 +745,8 @@ int main(int argc, char *argv[])
                 sigalg_type != TPM_ALG_SM3_256 &&
                 sigalg_type != LCP_POLSALG_RSA_PKCS_15 &&
                 sigalg_type != TPM_ALG_SM2 &&
-                sigalg_type != TPM_ALG_LMS) {
+                sigalg_type != TPM_ALG_LMS &&
+                sigalg_type != TCG_ALG_MLDSA) {
                 ERROR("Error: Signature algorithm 0x%x unsupported.\n", sigalg_type);
                 return 1;
             }
@@ -750,6 +782,9 @@ int main(int argc, char *argv[])
         DISPLAY("lcp2_crtpollist version: %i.%i", TOOL_VER_MAJOR,
                                                   TOOL_VER_MINOR);
         return 0;
+    }
+    else if ( cmd == 'K' ) { /* --keygen */
+        return keygen();
     }
 
     ERROR("Error: unknown command\n");

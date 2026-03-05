@@ -94,7 +94,7 @@ CFLAGS += -I$(ROOTDIR)/safestringlib/include
 
 # Add IPPC feature flags when building with IPPC
 ifdef USE_IPPC
-CFLAGS += -DUSE_IPPC -DIPPCP_PREVIEW_LMS
+CFLAGS += -DUSE_IPPC -DIPPCP_PREVIEW_LMS -DIPPCP_PREVIEW_ML_DSA
 endif
 
 export CFLAGS

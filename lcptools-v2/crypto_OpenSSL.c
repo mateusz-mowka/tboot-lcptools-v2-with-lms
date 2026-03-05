@@ -1721,4 +1721,61 @@ crypto_lms_sign_data_internal (
   return crypto_ok;
 }
 
+/*
+ * ML-DSA stubs for OpenSSL backend.
+ * OpenSSL does not support ML-DSA (FIPS 204). These stubs emit a compile-time
+ * info message and return failure at runtime.
+ */
+#pragma message("ML-DSA is not supported with OpenSSL backend")
+
+bool
+crypto_mldsa_keygen_internal (
+  const char  *pubkey_file,
+  const char  *privkey_file
+  )
+{
+  (void)pubkey_file;
+  (void)privkey_file;
+  printf ("ERROR: ML-DSA key generation is not supported with OpenSSL backend\n");
+  return false;
+}
+
+crypto_status
+crypto_mldsa_sign_data_internal (
+  const unsigned char  *msg,
+  size_t               msg_len,
+  unsigned char        *signature,
+  size_t               *sig_len,
+  const char           *privkey_file
+  )
+{
+  (void)msg;
+  (void)msg_len;
+  (void)signature;
+  (void)sig_len;
+  (void)privkey_file;
+  printf ("ERROR: ML-DSA signing is not supported with OpenSSL backend\n");
+  return crypto_general_fail;
+}
+
+bool
+crypto_mldsa_verify_signature_internal (
+  const unsigned char  *msg,
+  size_t               msg_len,
+  const unsigned char  *signature,
+  size_t               sig_len,
+  const unsigned char  *public_key,
+  size_t               pubkey_len
+  )
+{
+  (void)msg;
+  (void)msg_len;
+  (void)signature;
+  (void)sig_len;
+  (void)public_key;
+  (void)pubkey_len;
+  printf ("ERROR: ML-DSA verification is not supported with OpenSSL backend\n");
+  return false;
+}
+
 #endif /* !USE_IPPC */

@@ -3094,4 +3094,389 @@ cleanup:
   return result;
 }
 
+/* ========================================================================== */
+/*                         ML-DSA-87 Implementation                           */
+/* ========================================================================== */
+
+/*
+ * ML-DSA-87 key generation using IPPC library.
+ * Generates a key pair and writes raw binary public/private key files.
+ *
+ * ML-DSA-87 parameters (NIST FIPS 204, security level 5):
+ *   Public key:  2592 bytes
+ *   Private key: 4896 bytes
+ *   Signature:   4627 bytes
+ */
+bool
+crypto_mldsa_keygen_internal (
+  const char  *pubkey_file,
+  const char  *privkey_file
+  )
+{
+  IppStatus         ipp_status   = ippStsNoErr;
+  bool              result       = false;
+  IppsMLDSAState    *state       = NULL;
+  Ipp8u             *keygen_buf  = NULL;
+  Ipp8u             *pub_key     = NULL;
+  Ipp8u             *prv_key     = NULL;
+  Ipp32s            state_size   = 0;
+  Ipp32s            keygen_buf_sz = 0;
+  IppsMLDSAInfo     info;
+  FILE              *fp          = NULL;
+
+  /* Get required IPPC state size for ML-DSA-87 */
+  ipp_status = ippsMLDSA_GetSize (&state_size);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_GetSize failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  state = (IppsMLDSAState *)malloc (state_size);
+  if (NULL == state) {
+    printf ("ERROR: Failed to allocate ML-DSA state\n");
+    goto cleanup;
+  }
+
+  /* Initialize state for ML-DSA-87, maxMessageLength >= 1 required */
+  ipp_status = ippsMLDSA_Init (state, 1, ML_DSA_87);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_Init failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  /* Get key sizes */
+  ipp_status = ippsMLDSA_GetInfo (&info, ML_DSA_87);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_GetInfo failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  if (verbose) {
+    printf ("ML-DSA-87 key sizes: pub=%d, prv=%d, sig=%d\n",
+            info.publicKeySize, info.privateKeySize, info.signatureSize);
+  }
+
+  /* Allocate key buffers */
+  pub_key = (Ipp8u *)malloc (info.publicKeySize);
+  prv_key = (Ipp8u *)malloc (info.privateKeySize);
+  if (!pub_key || !prv_key) {
+    printf ("ERROR: Failed to allocate ML-DSA key buffers\n");
+    goto cleanup;
+  }
+
+  /* Get keygen scratch buffer size */
+  ipp_status = ippsMLDSA_KeyGenBufferGetSize (&keygen_buf_sz, state);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_KeyGenBufferGetSize failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  keygen_buf = (Ipp8u *)malloc (keygen_buf_sz);
+  if (NULL == keygen_buf) {
+    printf ("ERROR: Failed to allocate ML-DSA keygen scratch buffer\n");
+    goto cleanup;
+  }
+
+  /* Generate key pair (rndFunc=NULL uses RDRAND) */
+  ipp_status = ippsMLDSA_KeyGen (pub_key, prv_key, state, keygen_buf, NULL, NULL);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_KeyGen failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  /* Write public key to file */
+  fp = fopen (pubkey_file, "wb");
+  if (NULL == fp) {
+    printf ("ERROR: Cannot open public key file for writing: %s\n", pubkey_file);
+    goto cleanup;
+  }
+
+  if (fwrite (pub_key, info.publicKeySize, 1, fp) != 1) {
+    printf ("ERROR: Failed to write public key to %s\n", pubkey_file);
+    fclose (fp);
+    goto cleanup;
+  }
+
+  fclose (fp);
+  fp = NULL;
+
+  /* Write private key to file */
+  fp = fopen (privkey_file, "wb");
+  if (NULL == fp) {
+    printf ("ERROR: Cannot open private key file for writing: %s\n", privkey_file);
+    goto cleanup;
+  }
+
+  if (fwrite (prv_key, info.privateKeySize, 1, fp) != 1) {
+    printf ("ERROR: Failed to write private key to %s\n", privkey_file);
+    fclose (fp);
+    goto cleanup;
+  }
+
+  fclose (fp);
+  fp = NULL;
+
+  if (verbose) {
+    printf ("ML-DSA-87 key pair generated: %s (pub), %s (prv)\n", pubkey_file, privkey_file);
+  }
+
+  result = true;
+
+cleanup:
+  if (keygen_buf) {
+    free (keygen_buf);
+  }
+
+  if (pub_key) {
+    free (pub_key);
+  }
+
+  if (prv_key) {
+    free (prv_key);
+  }
+
+  if (state) {
+    free (state);
+  }
+
+  return result;
+}
+
+/*
+ * ML-DSA-87 signature generation using IPPC library.
+ * Reads a raw binary private key file and signs the message.
+ */
+crypto_status
+crypto_mldsa_sign_data_internal (
+  const unsigned char  *msg,
+  size_t               msg_len,
+  unsigned char        *signature,
+  size_t               *sig_len,
+  const char           *privkey_file
+  )
+{
+  IppStatus         ipp_status    = ippStsNoErr;
+  crypto_status     result        = crypto_general_fail;
+  IppsMLDSAState    *state        = NULL;
+  Ipp8u             *sign_buf     = NULL;
+  Ipp8u             *prv_key      = NULL;
+  Ipp32s            state_size    = 0;
+  Ipp32s            sign_buf_sz   = 0;
+  IppsMLDSAInfo     info;
+  FILE              *fp           = NULL;
+
+  /* Get key sizes */
+  ipp_status = ippsMLDSA_GetInfo (&info, ML_DSA_87);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_GetInfo failed: %d\n", ipp_status);
+    return crypto_general_fail;
+  }
+
+  /* Check output buffer size */
+  if (*sig_len < (size_t)info.signatureSize) {
+    printf ("ERROR: ML-DSA signature buffer too small: need %d, have %zu\n",
+            info.signatureSize, *sig_len);
+    return crypto_buffer_too_small;
+  }
+
+  /* Read private key file */
+  prv_key = (Ipp8u *)malloc (info.privateKeySize);
+  if (NULL == prv_key) {
+    printf ("ERROR: Failed to allocate ML-DSA private key buffer\n");
+    return crypto_memory_alloc_fail;
+  }
+
+  fp = fopen (privkey_file, "rb");
+  if (NULL == fp) {
+    printf ("ERROR: Cannot open ML-DSA private key file: %s\n", privkey_file);
+    free (prv_key);
+    return crypto_file_io_error;
+  }
+
+  if (fread (prv_key, info.privateKeySize, 1, fp) != 1) {
+    printf ("ERROR: Failed to read ML-DSA private key from %s\n", privkey_file);
+    fclose (fp);
+    free (prv_key);
+    return crypto_file_io_error;
+  }
+
+  fclose (fp);
+
+  /* Get IPPC state size */
+  ipp_status = ippsMLDSA_GetSize (&state_size);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_GetSize failed: %d\n", ipp_status);
+    free (prv_key);
+    return crypto_general_fail;
+  }
+
+  state = (IppsMLDSAState *)malloc (state_size);
+  if (NULL == state) {
+    printf ("ERROR: Failed to allocate ML-DSA state\n");
+    free (prv_key);
+    return crypto_memory_alloc_fail;
+  }
+
+  /* Initialize state for ML-DSA-87, maxMessageLength must be >= msg_len */
+  ipp_status = ippsMLDSA_Init (state, (Ipp32s)msg_len, ML_DSA_87);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_Init failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  /* Get sign scratch buffer size */
+  ipp_status = ippsMLDSA_SignBufferGetSize (&sign_buf_sz, state);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_SignBufferGetSize failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  sign_buf = (Ipp8u *)malloc (sign_buf_sz);
+  if (NULL == sign_buf) {
+    printf ("ERROR: Failed to allocate ML-DSA sign scratch buffer\n");
+    result = crypto_memory_alloc_fail;
+    goto cleanup;
+  }
+
+  /* Sign the message (ctx=NULL, ctxLen=0, rndFunc=NULL uses RDRAND) */
+  ipp_status = ippsMLDSA_Sign (
+    (const Ipp8u *)msg, (Ipp32s)msg_len,
+    NULL, 0,                          /* no context string */
+    prv_key, signature,
+    state, sign_buf,
+    NULL, NULL                        /* use RDRAND */
+  );
+
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_Sign failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  *sig_len = (size_t)info.signatureSize;
+
+  if (verbose) {
+    printf ("ML-DSA-87 signature generation succeeded, signature length: %zu\n", *sig_len);
+  }
+
+  result = crypto_ok;
+
+cleanup:
+  if (sign_buf) {
+    free (sign_buf);
+  }
+
+  if (state) {
+    free (state);
+  }
+
+  if (prv_key) {
+    free (prv_key);
+  }
+
+  return result;
+}
+
+/*
+ * ML-DSA-87 signature verification using IPPC library.
+ */
+bool
+crypto_mldsa_verify_signature_internal (
+  const unsigned char  *msg,
+  size_t               msg_len,
+  const unsigned char  *signature,
+  size_t               sig_len,
+  const unsigned char  *public_key,
+  size_t               pubkey_len
+  )
+{
+  IppStatus         ipp_status    = ippStsNoErr;
+  bool              result        = false;
+  IppsMLDSAState    *state        = NULL;
+  Ipp8u             *verify_buf   = NULL;
+  Ipp32s            state_size    = 0;
+  Ipp32s            verify_buf_sz = 0;
+  IppsMLDSAInfo     info;
+  Ipp32s            is_valid      = 0;
+
+  (void)sig_len;    /* ML-DSA-87 signature has a fixed size */
+  (void)pubkey_len; /* ML-DSA-87 pubkey has a fixed size */
+
+  /* Get key sizes for validation */
+  ipp_status = ippsMLDSA_GetInfo (&info, ML_DSA_87);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_GetInfo failed: %d\n", ipp_status);
+    return false;
+  }
+
+  /* Get IPPC state size */
+  ipp_status = ippsMLDSA_GetSize (&state_size);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_GetSize failed: %d\n", ipp_status);
+    return false;
+  }
+
+  state = (IppsMLDSAState *)malloc (state_size);
+  if (NULL == state) {
+    printf ("ERROR: Failed to allocate ML-DSA state\n");
+    return false;
+  }
+
+  /* Initialize state for ML-DSA-87, maxMessageLength must be >= msg_len */
+  ipp_status = ippsMLDSA_Init (state, (Ipp32s)msg_len, ML_DSA_87);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_Init failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  /* Get verify scratch buffer size */
+  ipp_status = ippsMLDSA_VerifyBufferGetSize (&verify_buf_sz, state);
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_VerifyBufferGetSize failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  verify_buf = (Ipp8u *)malloc (verify_buf_sz);
+  if (NULL == verify_buf) {
+    printf ("ERROR: Failed to allocate ML-DSA verify scratch buffer\n");
+    goto cleanup;
+  }
+
+  /* Verify the signature (ctx=NULL, ctxLen=0) */
+  ipp_status = ippsMLDSA_Verify (
+    (const Ipp8u *)msg, (Ipp32s)msg_len,
+    NULL, 0,                          /* no context string */
+    (const Ipp8u *)public_key,
+    (const Ipp8u *)signature,
+    &is_valid,
+    state, verify_buf
+  );
+
+  if (ipp_status != ippStsNoErr) {
+    printf ("ERROR: ippsMLDSA_Verify failed: %d\n", ipp_status);
+    goto cleanup;
+  }
+
+  if (is_valid != 1) {
+    printf ("ERROR: ML-DSA-87 signature verification failed (invalid signature)\n");
+    goto cleanup;
+  }
+
+  if (verbose) {
+    printf ("ML-DSA-87 signature verification succeeded\n");
+  }
+
+  result = true;
+
+cleanup:
+  if (verify_buf) {
+    free (verify_buf);
+  }
+
+  if (state) {
+    free (state);
+  }
+
+  return result;
+}
+
 #endif /* USE_IPPC */

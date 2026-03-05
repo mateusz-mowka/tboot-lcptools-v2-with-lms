@@ -219,6 +219,7 @@ typedef struct __packed {
 #define TPM_ALG_SM3_256	0x0012
 #define TPM_ALG_ECC     0x0023
 #define TPM_ALG_LMS     0x0070
+#define TCG_ALG_MLDSA   0x00A1
 
 #define TPM_ALG_MASK_NULL	    0x0000
 #define TPM_ALG_MASK_SHA1	    0x0001
@@ -239,6 +240,7 @@ typedef struct __packed {
 #define SIGN_ALG_MASK_LMS_P56B              BITN(14) //Public key size 56 bytes
 #define SIGN_ALG_MASK_SM2                   BITN(16) //ok
 #define SIGN_ALG_MASK_LMS_SHA256_M32_H20    BITN(17) //LMS LMOTS_SHA256_N32_W4 is used with
+#define SIGN_ALG_MASK_MLDSA_87              BITN(18) //ML-DSA-87 (NIST level 5)
 
 
 /*--------- Signature algs ------------*/
@@ -247,6 +249,7 @@ typedef struct __packed {
 #define TPM_ALG_ECDSA   0x0018
 #define TPM_ALG_SM2     0x001B
 #define TPM_ALG_LMS     0x0070
+#define TCG_ALG_MLDSA   0x00A1
 
 typedef union {
     uint8_t    sha1[SHA1_DIGEST_SIZE];
@@ -442,10 +445,36 @@ typedef struct __packed {
     lms_signature Signature;
 } lms_key_and_signature;
 
+/* ML-DSA-87 sizes (NIST FIPS 204, security level 5) */
+#define MLDSA87_PUBKEY_SIZE   2592
+#define MLDSA87_PRIVKEY_SIZE  4896
+#define MLDSA87_SIGNATURE_SIZE 4627
+
+typedef struct __packed {
+    uint8_t  Version;
+    uint16_t KeySize; /* In bytes: MLDSA87_PUBKEY_SIZE = 2592 */
+    uint8_t  PubKey[MLDSA87_PUBKEY_SIZE];
+} mldsa_public_key;
+
+typedef struct __packed {
+    uint8_t  Version;
+    uint16_t KeySize; /* In bytes: MLDSA87_SIGNATURE_SIZE = 4627 */
+    uint8_t  Signature[MLDSA87_SIGNATURE_SIZE];
+} mldsa_signature;
+
+typedef struct __packed {
+    uint8_t          Version;
+    uint16_t         KeyAlg;
+    mldsa_public_key Key;
+    uint16_t         SigScheme;
+    mldsa_signature  Signature;
+} mldsa_key_and_signature;
+
 typedef union __packed {
     rsa_key_and_signature     RsaKeyAndSignature;
     ecc_key_and_signature     EccKeyAndSignature;
     lms_key_and_signature     LmsKeyAndSignature;
+    mldsa_key_and_signature   MldsaKeyAndSignature;
 } lcp_key_and_sig;
 
 typedef struct __packed {

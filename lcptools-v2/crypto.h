@@ -143,3 +143,28 @@ crypto_lms_sign_data (
   const unsigned char  *aux_data,
   size_t               aux_len
   );
+
+bool
+crypto_mldsa_keygen (
+  const char  *pubkey_file,
+  const char  *privkey_file
+  );
+
+bool
+crypto_mldsa_verify_signature (
+  const unsigned char  *msg,
+  size_t               msg_len,
+  const unsigned char  *signature,
+  size_t               sig_len,
+  const unsigned char  *public_key,
+  size_t               pubkey_len
+  );
+
+crypto_status
+crypto_mldsa_sign_data (
+  const unsigned char  *msg,
+  size_t               msg_len,
+  unsigned char        *signature,
+  size_t               *sig_len,
+  const char           *privkey_file
+  );

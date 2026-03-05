@@ -298,6 +298,8 @@ const char *key_alg_to_str(uint16_t alg)
         return "TPM_ALG_ECC";
     case TPM_ALG_LMS:
         return "TPM_ALG_LMS";
+    case TCG_ALG_MLDSA:
+        return "TCG_ALG_MLDSA";
     default:
         return "";
     }
@@ -323,6 +325,8 @@ const char *sig_alg_to_str(uint16_t alg)
         return "LCP_POLSALG_RSA_PKCS_15";
     case TPM_ALG_LMS:
         return "TPM_ALG_LMS";
+    case TCG_ALG_MLDSA:
+        return "TCG_ALG_MLDSA";
     default:
         snprintf_s_i(buf, sizeof(buf), "unknown (%u)", alg);
         return buf;
@@ -376,6 +380,8 @@ uint16_t str_to_sig_alg(const char *str) {
         return TPM_ALG_RSAPSS;
     if (strcmp(str,"lms") == 0)
         return TPM_ALG_LMS;
+    if (strcmp(str,"mldsa") == 0)
+        return TCG_ALG_MLDSA;
     else {
         LOG("Unrecognized signature alg, assuming TPM_ALG_NULL");
         return TPM_ALG_NULL;
@@ -413,6 +419,9 @@ uint32_t str_to_sig_alg_mask(const char *str, const uint16_t version, size_t siz
         }
         else if (strncmp(str, "lms", size) == 0) {
             return (SIGN_ALG_MASK_LMS_P56B | SIGN_ALG_MASK_LMS_SHA256_M32_H20);
+        }
+        else if (strncmp(str, "mldsa", size) == 0) {
+            return SIGN_ALG_MASK_MLDSA_87;
         }
         else if(strncmp(str, "0X", 2) || strncmp(str, "0x", 2)){
             return strtoul(str, NULL, 0);

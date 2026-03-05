@@ -12,12 +12,22 @@ ROOTDIR ?= $(CURDIR)/..
 include $(ROOTDIR)/Config.mk
 
 
+ifndef USE_IPPC
 LCP2_TARGETS := \
 	hash_sigs	\
 	lcp2_mlehash    \
 	lcp2_crtpol    \
 	lcp2_crtpollist \
 	lcp2_crtpolelt  \
+
+else
+LCP2_TARGETS := \
+	lcp2_mlehash    \
+	lcp2_crtpol    \
+	lcp2_crtpollist \
+	lcp2_crtpolelt  \
+
+endif
 
 # Build IPPC library if USE_IPPC is set (needed for standalone builds)
 ifdef USE_IPPC

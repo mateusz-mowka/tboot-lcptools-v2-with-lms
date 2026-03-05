@@ -22,6 +22,11 @@
 #define LMS_PUBLIC_KEY_MAX_BYTES   1372
 #define LMS_PRIVATE_KEY_MAX_BYTES  1372
 
+/* ML-DSA key file types */
+#define PEMTYPE_MLDSA_PRIVATE      13
+#define PEMTYPE_MLDSA_PUBLIC       14
+#define KEY_ALG_TYPE_MLDSA         0xA1
+
 /* LMS tree identifier length in bytes */
 #define I_LEN  16
 
