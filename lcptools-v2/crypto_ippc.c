@@ -69,11 +69,6 @@ crypto_hash_buffer_internal (
     return crypto_nullptr_error;
   }
 
-  if (size == 0) {
-    printf ("ERROR: Invalid size (0) passed to crypto_hash_buffer_internal\n");
-    return crypto_invalid_size;
-  }
-
   method = get_ipp_hash_method (hash_alg);
   if (method == NULL) {
     return crypto_unknown_hashalg;
@@ -101,12 +96,14 @@ crypto_hash_buffer_internal (
     return crypto_crypto_operation_fail;
   }
 
-  /* Update with message data */
-  status = ippsHashUpdate_rmf (buf, size, p_ctx);
-  if (status != ippStsNoErr) {
-    printf ("ERROR: Hash update failed: %d\n", status);
-    free (p_ctx);
-    return crypto_crypto_operation_fail;
+  /* Update with message data (skip when size is 0 — hashing empty input is valid) */
+  if (size > 0) {
+    status = ippsHashUpdate_rmf (buf, size, p_ctx);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Hash update failed: %d\n", status);
+      free (p_ctx);
+      return crypto_crypto_operation_fail;
+    }
   }
 
   /* Finalize and get digest */
@@ -126,7 +123,8 @@ uint16_t
 base64_decode (
   const uint8_t  *src,
   uint32_t       src_len,
-  uint8_t        *dst
+  uint8_t        *dst,
+  uint32_t       dst_max_len
   )
 {
   static const uint8_t  d[] = {
@@ -165,18 +163,38 @@ base64_decode (
         break;
       }
 
+      if (src[i] > 127) {
+        printf ("ERROR: base64_decode: invalid byte 0x%02X at offset %u\n", src[i], i);
+        return 0;
+      }
+
       c[k] = d[src[i++]];
     }
 
     if (k >= 2) {
+      if (j >= dst_max_len) {
+        printf ("ERROR: base64_decode output buffer overflow\n");
+        return 0;
+      }
+
       dst[j++] = (c[0] << 2) | (c[1] >> 4);
     }
 
     if (k >= 3) {
+      if (j >= dst_max_len) {
+        printf ("ERROR: base64_decode output buffer overflow\n");
+        return 0;
+      }
+
       dst[j++] = (c[1] << 4) | (c[2] >> 2);
     }
 
     if (k >= 4) {
+      if (j >= dst_max_len) {
+        printf ("ERROR: base64_decode output buffer overflow\n");
+        return 0;
+      }
+
       dst[j++] = (c[2] << 6) | c[3];
     }
   }
@@ -572,6 +590,201 @@ extract_rsa_public_key_to_buffer (
   return 0;
 }
 
+/* Parse EC public key from SubjectPublicKeyInfo DER format (BEGIN PUBLIC KEY with EC OID) */
+static int
+parse_ec_public_key_spki (
+  const uint8_t  *der_buf,
+  size_t         der_size,
+  uint8_t        *key_buf,
+  uint16_t       key_buf_size,
+  uint16_t       *key_size
+  )
+{
+  size_t  offset = 0;
+  size_t  seq_len, alg_seq_len, bitstring_len;
+  size_t  alg_seq_end;
+  size_t  coord_size;
+
+  /* id-ecPublicKey OID: 1.2.840.10045.2.1 */
+  static const uint8_t  ec_oid[] = {
+    0x06, 0x07, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01
+  };
+
+  /* Parse outer SEQUENCE */
+  if (offset >= der_size || der_buf[offset] != 0x30) {
+    return -1;
+  }
+
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &seq_len) != 0) {
+    return -1;
+  }
+
+  /* Parse algorithm identifier SEQUENCE */
+  if (offset >= der_size || der_buf[offset] != 0x30) {
+    return -1;
+  }
+
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &alg_seq_len) != 0) {
+    return -1;
+  }
+
+  alg_seq_end = offset + alg_seq_len;
+
+  /* Check for id-ecPublicKey OID */
+  if ((alg_seq_len < sizeof (ec_oid)) || (alg_seq_end > der_size)) {
+    return -1;
+  }
+
+  if (memcmp (&der_buf[offset], ec_oid, sizeof (ec_oid)) != 0) {
+    return -1;
+  }
+
+  /* Skip past the full AlgorithmIdentifier SEQUENCE content (EC OID + curve OID) */
+  offset = alg_seq_end;
+
+  /* Parse BIT STRING containing the public key point */
+  if (offset >= der_size || der_buf[offset] != 0x03) {
+    printf ("ERROR: Expected BIT STRING tag for EC public key\n");
+    return -1;
+  }
+
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &bitstring_len) != 0) {
+    return -1;
+  }
+
+  /* Skip unused bits byte (must be 0) */
+  if (offset >= der_size || der_buf[offset] != 0x00) {
+    return -1;
+  }
+
+  offset++;
+  bitstring_len--;
+
+  /* Check for uncompressed point marker (0x04) */
+  if (offset >= der_size || der_buf[offset] != 0x04) {
+    printf ("ERROR: Only uncompressed EC points are supported\n");
+    return -1;
+  }
+
+  offset++;
+  bitstring_len--;
+
+  /* Remaining bytes are qx || qy */
+  if ((bitstring_len == 0) || (bitstring_len % 2 != 0)) {
+    printf ("ERROR: Invalid EC point data length\n");
+    return -1;
+  }
+
+  coord_size = bitstring_len / 2;
+
+  if ((coord_size != ECC_KEY_LEN_MIN_BYTES) && (coord_size != ECC_KEY_LEN_MAX_BYTES)) {
+    printf ("ERROR: Unsupported EC coordinate size: %zu\n", coord_size);
+    return -1;
+  }
+
+  if (key_buf_size < bitstring_len) {
+    printf ("ERROR: Key buffer too small for EC public key\n");
+    return -1;
+  }
+
+  /* Copy qx || qy to key_buf */
+  memcpy (key_buf, &der_buf[offset], bitstring_len);
+
+  /* Reverse each coordinate to LE (match binary key format used by IPPC) */
+  buffer_reverse_byte_order (key_buf, coord_size);
+  buffer_reverse_byte_order (key_buf + coord_size, coord_size);
+
+  *key_size = (uint16_t)coord_size;
+
+  return 0;
+}
+
+/* Parse EC private key from SEC1 DER format (BEGIN EC PRIVATE KEY) */
+static int
+parse_ec_private_key_sec1 (
+  const uint8_t  *der_buf,
+  size_t         der_size,
+  uint8_t        *key_buf,
+  uint16_t       key_buf_size,
+  uint16_t       *key_size
+  )
+{
+  size_t  offset = 0;
+  size_t  seq_len, int_len, octet_len;
+
+  /* Parse outer SEQUENCE */
+  if (offset >= der_size || der_buf[offset] != 0x30) {
+    return -1;
+  }
+
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &seq_len) != 0) {
+    return -1;
+  }
+
+  /* Parse version INTEGER (must be 1) */
+  if (offset >= der_size || der_buf[offset] != 0x02) {
+    return -1;
+  }
+
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &int_len) != 0) {
+    return -1;
+  }
+
+  if ((int_len != 1) || (offset >= der_size) || (der_buf[offset] != 0x01)) {
+    printf ("ERROR: EC private key version must be 1\n");
+    return -1;
+  }
+
+  offset++;
+
+  /* Parse private key OCTET STRING */
+  if (offset >= der_size || der_buf[offset] != 0x04) {
+    printf ("ERROR: Expected OCTET STRING for EC private key\n");
+    return -1;
+  }
+
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &octet_len) != 0) {
+    return -1;
+  }
+
+  if ((octet_len != ECC_KEY_LEN_MIN_BYTES) && (octet_len != ECC_KEY_LEN_MAX_BYTES)) {
+    printf ("ERROR: Unsupported EC private key size: %zu\n", octet_len);
+    return -1;
+  }
+
+  if (offset + octet_len > der_size) {
+    printf ("ERROR: EC private key data extends beyond buffer\n");
+    return -1;
+  }
+
+  if (key_buf_size < octet_len) {
+    printf ("ERROR: Key buffer too small for EC private key\n");
+    return -1;
+  }
+
+  /* Copy private key scalar to key_buf */
+  memcpy (key_buf, &der_buf[offset], octet_len);
+
+  /* Reverse to LE (match binary key format used by IPPC) */
+  buffer_reverse_byte_order (key_buf, octet_len);
+
+  *key_size = (uint16_t)octet_len;
+
+  return 0;
+}
+
 /* DER key extraction with ASN.1 parsing */
 static uint8_t
 get_key_from_der (
@@ -738,14 +951,15 @@ get_der_from_pem (
   b64_length = (uint8_t *)pem_data_buf + i - p_b64_string;
 
   /* Allocate DER buffer (3 bytes for every 4 Base64 bytes) actual size will be less */
-  *p_der_buf = (uint8_t *)malloc ((3*b64_length)/4);
+  uint32_t  der_buf_size = (3*b64_length)/4;
+  *p_der_buf = (uint8_t *)malloc (der_buf_size);
   if (*p_der_buf == NULL) {
     printf ("ERROR: Failed to allocate DER buffer\n");
     return PEMTYPE_UNKNOWN;
   }
 
   /* Decode PEM Base64 to DER */
-  *p_der_size = base64_decode (p_b64_string, b64_length, *p_der_buf);
+  *p_der_size = base64_decode (p_b64_string, b64_length, *p_der_buf, der_buf_size);
   if (*p_der_size == 0) {
     printf ("ERROR: Failed to decode PEM\n");
     free (*p_der_buf);
@@ -834,6 +1048,41 @@ handle_der_format_key (
   uint16_t       orig_key_buf_size = *key_size;
   crypto_status  status;
 
+  /* Handle EC public key from SPKI format (BEGIN PUBLIC KEY with EC OID) */
+  if (pem_type == PEMTYPE__PUBLIC) {
+    if (parse_ec_public_key_spki (p_der_buf, der_size, key_buf, orig_key_buf_size, key_size) == 0) {
+      if (alg_id != NULL) {
+        *alg_id = KEY_ALG_TYPE_ECC;
+      }
+      return crypto_ok;
+    }
+    /* Not an EC key - fall through to RSA parsing */
+  }
+
+  /* Handle EC private key from SEC1 format (BEGIN EC PRIVATE KEY) */
+  if (pem_type == PEMTYPE_EC_PRIVATE) {
+    if (parse_ec_private_key_sec1 (p_der_buf, der_size, key_buf, orig_key_buf_size, key_size) == 0) {
+      if (alg_id != NULL) {
+        *alg_id = KEY_ALG_TYPE_ECC;
+      }
+      return crypto_ok;
+    }
+    return crypto_general_fail;
+  }
+
+  /* Handle EC public key (BEGIN EC PUBLIC KEY - rare but supported) */
+  if (pem_type == PEMTYPE_EC_PUBLIC) {
+    /* EC PUBLIC KEY PEM is not standard SPKI, but try SPKI parsing anyway */
+    if (parse_ec_public_key_spki (p_der_buf, der_size, key_buf, orig_key_buf_size, key_size) == 0) {
+      if (alg_id != NULL) {
+        *alg_id = KEY_ALG_TYPE_ECC;
+      }
+      return crypto_ok;
+    }
+    return crypto_general_fail;
+  }
+
+  /* RSA key handling */
   status = get_key_from_der (p_der_buf, der_size, pem_type, key_size);
 
   if (alg_id != NULL) {
@@ -881,7 +1130,8 @@ handle_binary_ecc_private_key (
   }
 
   memcpy (key_buf, p_file_data_buf, file_data_size);
-  buffer_reverse_byte_order (key_buf, file_data_size);
+  /* Binary ECC private keys are stored in LE (TPM convention).
+   * crypto_read_key returns ECC keys in LE — no reversal needed. */
   *key_size = file_data_size;
   return crypto_ok;
 }
@@ -906,8 +1156,8 @@ handle_binary_ecc_public_key (
   }
 
   memcpy (key_buf, p_file_data_buf, file_data_size);
-  buffer_reverse_byte_order (key_buf, file_data_size/2);
-  buffer_reverse_byte_order (key_buf + file_data_size/2, file_data_size/2);
+  /* Binary ECC public keys are stored as qx_LE || qy_LE (TPM convention).
+   * crypto_read_key returns ECC keys in LE — no reversal needed. */
   *key_size = file_data_size/2;
   return crypto_ok;
 }
@@ -1210,6 +1460,307 @@ crypto_read_ecdsa_pubkey_internal (
   return crypto_ok;
 }
 
+/* ========================================================================== */
+/*  secp256k1 curve initialization helper                                     */
+/*                                                                            */
+/*  IPPC does not provide a built-in secp256k1 curve.  We initialise it       */
+/*  manually via ippsGFpInit (arbitrary prime) + ippsGFpECInit + the standard */
+/*  Koblitz parameters.                                                       */
+/*  y^2 = x^3 + 7  over  F_p  where                                          */
+/*    p  = FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE     */
+/*         FFFFFC2F                                                           */
+/*    a  = 0                                                                  */
+/*    b  = 7                                                                  */
+/*    Gx = 79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B     */
+/*         16F81798                                                           */
+/*    Gy = 483ADA77 26A3C465 5DA4FBFC 0E1108A8 FD17B448 A6855419 9C47D08F     */
+/*         FB10D4B8                                                           */
+/*    n  = FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE BAAEDCE6 AF48A03B BFD25E8C     */
+/*         D0364141                                                           */
+/*    h  = 1                                                                  */
+/* ========================================================================== */
+
+/* secp256k1 domain parameters (big-endian byte arrays, 32 bytes each) */
+static const uint8_t secp256k1_p[] = {
+  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+  0xFF, 0xFF, 0xFF, 0xFE, 0xFF, 0xFF, 0xFC, 0x2F
+};
+
+static const uint8_t secp256k1_b[] = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07
+};
+
+static const uint8_t secp256k1_Gx[] = {
+  0x79, 0xBE, 0x66, 0x7E, 0xF9, 0xDC, 0xBB, 0xAC,
+  0x55, 0xA0, 0x62, 0x95, 0xCE, 0x87, 0x0B, 0x07,
+  0x02, 0x9B, 0xFC, 0xDB, 0x2D, 0xCE, 0x28, 0xD9,
+  0x59, 0xF2, 0x81, 0x5B, 0x16, 0xF8, 0x17, 0x98
+};
+
+static const uint8_t secp256k1_Gy[] = {
+  0x48, 0x3A, 0xDA, 0x77, 0x26, 0xA3, 0xC4, 0x65,
+  0x5D, 0xA4, 0xFB, 0xFC, 0x0E, 0x11, 0x08, 0xA8,
+  0xFD, 0x17, 0xB4, 0x48, 0xA6, 0x85, 0x54, 0x19,
+  0x9C, 0x47, 0xD0, 0x8F, 0xFB, 0x10, 0xD4, 0xB8
+};
+
+static const uint8_t secp256k1_n[] = {
+  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE,
+  0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B,
+  0xBF, 0xD2, 0x5E, 0x8C, 0xD0, 0x36, 0x41, 0x41
+};
+
+static const uint8_t secp256k1_cofactor[] = {
+  0x00, 0x00, 0x00, 0x01
+};
+
+/*
+ * Initialise GFp + EC context for secp256k1 using arbitrary-prime IPPC API.
+ *
+ * On success, *pp_gfp and *pp_ec point to malloc'd contexts that the caller
+ * must free.  Returns ippStsNoErr on success.
+ */
+static IppStatus
+init_secp256k1 (
+  IppsGFpState    **pp_gfp,
+  IppsGFpECState  **pp_ec
+  )
+{
+  IppStatus         status;
+  IppsGFpState      *gfp      = NULL;
+  IppsGFpECState    *ec       = NULL;
+  IppsBigNumState   *prime_bn = NULL;
+  IppsBigNumState   *order_bn = NULL;
+  IppsBigNumState   *cofac_bn = NULL;
+  IppsGFpElement    *elem_a   = NULL;
+  IppsGFpElement    *elem_b   = NULL;
+  IppsGFpElement    *elem_gx  = NULL;
+  IppsGFpElement    *elem_gy  = NULL;
+  int               gfp_size  = 0;
+  int               ec_size   = 0;
+  int               elem_size = 0;
+  int               bn_size   = 0;
+
+  *pp_gfp = NULL;
+  *pp_ec  = NULL;
+
+  /* --- Allocate BigNum for secp256k1 prime --- */
+  status = ippsBigNumGetSize (32, &bn_size);
+  if (status != ippStsNoErr) {
+    return status;
+  }
+
+  prime_bn = (IppsBigNumState *)malloc (bn_size);
+  if (prime_bn == NULL) {
+    return ippStsMemAllocErr;
+  }
+
+  status = ippsBigNumInit (32, prime_bn);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  status = ippsSetOctString_BN (secp256k1_p, 32, prime_bn);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  /* --- Initialise GFp with arbitrary prime --- */
+  status = ippsGFpGetSize (256, &gfp_size);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  gfp = (IppsGFpState *)malloc (gfp_size);
+  if (gfp == NULL) {
+    status = ippStsMemAllocErr;
+    goto fail;
+  }
+
+  status = ippsGFpInit (prime_bn, 256, ippsGFpMethod_pArb (), gfp);
+  if (status != ippStsNoErr) {
+    printf ("ERROR: ippsGFpInit for secp256k1 failed: %d\n", status);
+    goto fail;
+  }
+
+  /* --- Create GFp elements for curve coefficients a=0, b=7 --- */
+  status = ippsGFpElementGetSize (gfp, &elem_size);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  elem_a  = (IppsGFpElement *)malloc (elem_size);
+  elem_b  = (IppsGFpElement *)malloc (elem_size);
+  elem_gx = (IppsGFpElement *)malloc (elem_size);
+  elem_gy = (IppsGFpElement *)malloc (elem_size);
+  if (!elem_a || !elem_b || !elem_gx || !elem_gy) {
+    status = ippStsMemAllocErr;
+    goto fail;
+  }
+
+  /* a = 0 (use Ipp32u value 0) */
+  {
+    Ipp32u  zero = 0;
+    status = ippsGFpElementInit (&zero, 1, elem_a, gfp);
+    if (status != ippStsNoErr) {
+      goto fail;
+    }
+  }
+
+  /* b = 7 — set via octet string */
+  status = ippsGFpElementInit (NULL, 0, elem_b, gfp);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  status = ippsGFpSetElementOctString (secp256k1_b, 32, elem_b, gfp);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  /* --- Initialise EC context with (a, b) --- */
+  status = ippsGFpECGetSize (gfp, &ec_size);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  ec = (IppsGFpECState *)malloc (ec_size);
+  if (ec == NULL) {
+    status = ippStsMemAllocErr;
+    goto fail;
+  }
+
+  status = ippsGFpECInit (gfp, elem_a, elem_b, ec);
+  if (status != ippStsNoErr) {
+    printf ("ERROR: ippsGFpECInit for secp256k1 failed: %d\n", status);
+    goto fail;
+  }
+
+  /* --- Set the generator point (Gx, Gy), order n and cofactor h --- */
+  status = ippsGFpElementInit (NULL, 0, elem_gx, gfp);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  status = ippsGFpSetElementOctString (secp256k1_Gx, 32, elem_gx, gfp);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  status = ippsGFpElementInit (NULL, 0, elem_gy, gfp);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  status = ippsGFpSetElementOctString (secp256k1_Gy, 32, elem_gy, gfp);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  /* Order n */
+  status = ippsBigNumGetSize (32, &bn_size);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  order_bn = (IppsBigNumState *)malloc (bn_size);
+  if (order_bn == NULL) {
+    status = ippStsMemAllocErr;
+    goto fail;
+  }
+
+  status = ippsBigNumInit (32, order_bn);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  status = ippsSetOctString_BN (secp256k1_n, 32, order_bn);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  /* Cofactor h = 1 */
+  status = ippsBigNumGetSize (4, &bn_size);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  cofac_bn = (IppsBigNumState *)malloc (bn_size);
+  if (cofac_bn == NULL) {
+    status = ippStsMemAllocErr;
+    goto fail;
+  }
+
+  status = ippsBigNumInit (4, cofac_bn);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  status = ippsSetOctString_BN (secp256k1_cofactor, 4, cofac_bn);
+  if (status != ippStsNoErr) {
+    goto fail;
+  }
+
+  status = ippsGFpECSetSubgroup (elem_gx, elem_gy, order_bn, cofac_bn, ec);
+  if (status != ippStsNoErr) {
+    printf ("ERROR: ippsGFpECSetSubgroup for secp256k1 failed: %d\n", status);
+    goto fail;
+  }
+
+  /* Success — transfer ownership to caller */
+  *pp_gfp = gfp;
+  *pp_ec  = ec;
+  gfp     = NULL;
+  ec      = NULL;
+  status  = ippStsNoErr;
+
+fail:
+  /* Free temporaries (always) and contexts (on error) */
+  if (elem_a) {
+    free (elem_a);
+  }
+
+  if (elem_b) {
+    free (elem_b);
+  }
+
+  if (elem_gx) {
+    free (elem_gx);
+  }
+
+  if (elem_gy) {
+    free (elem_gy);
+  }
+
+  if (prime_bn) {
+    free (prime_bn);
+  }
+
+  if (order_bn) {
+    free (order_bn);
+  }
+
+  if (cofac_bn) {
+    free (cofac_bn);
+  }
+
+  if (gfp) {
+    free (gfp);
+  }
+
+  if (ec) {
+    free (ec);
+  }
+
+  return status;
+}
+
 /* Helper function to create BigNum from byte array */
 static IppStatus
 create_bignum_from_bytes (
@@ -1375,8 +1926,9 @@ rsa_load_private_key_from_file (
   }
 
 cleanup:
-  /* Free temporary resources */
+  /* Free temporary resources — zero key material first */
   if (der_buf) {
+    memset (der_buf, 0, der_size);
     free (der_buf);
   }
 
@@ -1431,25 +1983,28 @@ crypto_rsa_sign_internal (
     return crypto_general_fail;
   }
 
+  crypto_status  result_code = crypto_general_fail;
+
   /* Get hash method */
   hash_method = get_ipp_hash_method (hash_alg);
   if (hash_method == NULL) {
     printf ("ERROR: Unsupported hash algorithm\n");
-    return crypto_unknown_hashalg;
+    result_code = crypto_unknown_hashalg;
+    goto rsa_sign_cleanup;
   }
 
   /* Get buffer size for signing operation */
   status = ippsRSA_GetBufferSizePrivateKey (&buffer_size, priv_key);
   if (status != ippStsNoErr) {
     printf ("ERROR: Failed to get RSA buffer size: %d\n", status);
-    return crypto_general_fail;
+    goto rsa_sign_cleanup;
   }
 
   /* Allocate scratch buffer */
   scratch_buffer = (uint8_t *)malloc (buffer_size);
   if (scratch_buffer == NULL) {
     printf ("ERROR: Failed to allocate scratch buffer\n");
-    return crypto_general_fail;
+    goto rsa_sign_cleanup;
   }
 
   /* Perform signing based on signature algorithm */
@@ -1466,7 +2021,8 @@ crypto_rsa_sign_internal (
                                        );
   } else if (sig_alg == TPM_ALG_RSAPSS) {
     /* PSS signing - requires salt */
-    int  salt_len = 0; /* Salt length, typically hash output length */
+    int      salt_len  = 0; /* Salt length, typically hash output length */
+    uint8_t  *pss_salt = NULL;
 
     /* Determine salt length based on hash algorithm */
     switch (hash_alg) {
@@ -1488,10 +2044,44 @@ crypto_rsa_sign_internal (
         break;
     }
 
+    /* IPPC requires a non-NULL salt buffer — generate random bytes */
+    pss_salt = (uint8_t *)malloc (salt_len);
+    if (pss_salt == NULL) {
+      printf ("ERROR: Failed to allocate PSS salt buffer\n");
+      goto rsa_sign_cleanup;
+    }
+
+    {
+      /* Use ippsTRNGenRDSEED_BN to generate random salt via a temporary BigNum */
+      IppsBigNumState  *salt_bn   = NULL;
+      int              salt_bn_sz = 0;
+
+      if (ippsBigNumGetSize (salt_len, &salt_bn_sz) != ippStsNoErr) {
+        free (pss_salt);
+        goto rsa_sign_cleanup;
+      }
+
+      salt_bn = (IppsBigNumState *)malloc (salt_bn_sz);
+      if (salt_bn == NULL) {
+        free (pss_salt);
+        goto rsa_sign_cleanup;
+      }
+
+      if (ippsBigNumInit (salt_len, salt_bn) != ippStsNoErr ||
+          ippsTRNGenRDSEED_BN (salt_bn, salt_len * 8, NULL) != ippStsNoErr ||
+          ippsGetOctString_BN (pss_salt, salt_len, salt_bn) != ippStsNoErr) {
+        free (salt_bn);
+        free (pss_salt);
+        goto rsa_sign_cleanup;
+      }
+
+      free (salt_bn);
+    }
+
     status = ippsRSASign_PSS_rmf (
                                   digest->data,
                                   digest->size,
-                                  NULL, /* Salt - NULL for auto-generated */
+                                  pss_salt,
                                   salt_len,
                                   sig_block->data,
                                   priv_key,
@@ -1499,20 +2089,23 @@ crypto_rsa_sign_internal (
                                   hash_method,
                                   scratch_buffer
                                   );
+    free (pss_salt);
   } else {
     printf ("ERROR: Unsupported RSA signature algorithm: 0x%04X\n", sig_alg);
-    free (scratch_buffer);
-    return crypto_general_fail;
+    goto rsa_sign_cleanup;
   }
-
-  free (scratch_buffer);
 
   if (status != ippStsNoErr) {
     printf ("ERROR: RSA signing failed with status: %d\n", status);
-    return crypto_general_fail;
+    goto rsa_sign_cleanup;
   }
 
-  return crypto_ok;
+  result_code = crypto_ok;
+
+rsa_sign_cleanup:
+  free (priv_key);
+  free (scratch_buffer);
+  return result_code;
 }
 
 /* Helper function to extract hash algorithm from PKCS#1 padded signature
@@ -1559,7 +2152,10 @@ pkcs_get_hashalg (
     return TPM_ALG_SHA1;     /* Only SHA1 has this size */
   }
 
-  /* Move to the last byte to see what alg is used */
+  /* Move to the last byte of the OID to determine hash algorithm.
+   * SHA-2 OIDs end with 01 (SHA-256), 02 (SHA-384), 03 (SHA-512).
+   * data currently points to the OID length byte; advance oid_size
+   * to land on the last byte of the OID content. */
   data += oid_size;
   switch (*data) {
     case 0x01:
@@ -1588,8 +2184,6 @@ crypto_verify_rsa_signature_internal (
   IppsBigNumState        *exp_bn      = NULL;
   const IppsHashMethod   *hash_method = NULL;
   IppStatus              status;
-  uint8_t                digest[SHA512_LENGTH];   /* Large enough for any hash */
-  size_t                 digest_size;
   int                    key_size_bits;
   int                    pub_exp_bits     = 32; /* Typical public exponent is 65537 (0x010001) */
   int                    pub_key_size     = 0;
@@ -1598,7 +2192,6 @@ crypto_verify_rsa_signature_internal (
   int                    is_valid         = 0;
   bool                   result           = false;
   uint8_t                pub_exp[]        = { 0x01, 0x00, 0x01 }; /* 65537 in big-endian */
-  uint16_t               original_hashAlg = hashAlg;              /* Save original */
 
   if ((data == NULL) || (pubkey == NULL) || (signature == NULL)) {
     printf ("ERROR: crypto_verify_rsa_signature_internal called with NULL pointer\n");
@@ -1639,8 +2232,16 @@ crypto_verify_rsa_signature_internal (
               if ((ippsRSA_InitPublicKey (pubkey->size * 8, 32, temp_key, temp_key_size) == ippStsNoErr) &&
                   (ippsRSA_SetPublicKey (temp_mod_bn, temp_exp_bn, temp_key) == ippStsNoErr))
               {
+                /* Allocate scratch buffer for RSA operation */
+                int temp_buf_size = 0;
+                uint8_t *temp_scratch = NULL;
+                if (ippsRSA_GetBufferSizePublicKey (&temp_buf_size, temp_key) == ippStsNoErr) {
+                  temp_scratch = (uint8_t *)malloc (temp_buf_size);
+                }
+
                 /* Perform encryption (which is sig^e mod n = original padded message) */
-                if (ippsRSA_Encrypt (sig_bn, result_bn, temp_key, NULL) == ippStsNoErr) {
+                IppStatus enc_st = ippsRSA_Encrypt (sig_bn, result_bn, temp_key, temp_scratch);
+                if (enc_st == ippStsNoErr) {
                   /* Extract result to byte array */
                   if (ippsGetOctString_BN (decrypted_sig, pubkey->size, result_bn) == ippStsNoErr) {
                     /* Extract hash algorithm from decrypted signature */
@@ -1649,6 +2250,10 @@ crypto_verify_rsa_signature_internal (
                       printf ("INFO: Extracted hash algorithm 0x%04X from signature (old list format)\n", hashAlg);
                     }
                   }
+                }
+
+                if (temp_scratch) {
+                  free (temp_scratch);
                 }
               }
 
@@ -1674,40 +2279,14 @@ crypto_verify_rsa_signature_internal (
 
       free (decrypted_sig);
 
-      if ((hashAlg == TPM_ALG_NULL) || (hashAlg == original_hashAlg)) {
+      if (hashAlg == TPM_ALG_NULL) {
         printf ("ERROR: Failed to extract hash algorithm from signature\n");
         return false;
       }
     }
   }
 
-  /* Determine digest size based on hash algorithm */
-  switch (hashAlg) {
-    case TB_HALG_SHA1:
-    case TB_HALG_SHA1_LG:
-      digest_size = SHA1_LENGTH;
-      break;
-    case TB_HALG_SHA256:
-      digest_size = SHA256_LENGTH;
-      break;
-    case TB_HALG_SHA384:
-      digest_size = SHA384_LENGTH;
-      break;
-    case TB_HALG_SHA512:
-      digest_size = SHA512_LENGTH;
-      break;
-    default:
-      printf ("ERROR: Unsupported hash algorithm: 0x%04X\n", hashAlg);
-      return false;
-  }
-
-  /* Hash the data */
-  if (crypto_hash_buffer_internal (data->data, data->size, digest, hashAlg) != crypto_ok) {
-    printf ("ERROR: Failed to hash data for verification\n");
-    return false;
-  }
-
-  /* Get hash method for IPPC */
+  /* Get hash method for IPPC — the _rmf verify functions hash internally */
   hash_method = get_ipp_hash_method (hashAlg);
   if (hash_method == NULL) {
     printf ("ERROR: Failed to get hash method\n");
@@ -1771,12 +2350,22 @@ crypto_verify_rsa_signature_internal (
     goto cleanup;
   }
 
-  /* Verify signature based on signature algorithm */
+  /* Verify signature based on signature algorithm.
+   *
+   * IMPORTANT: ippsRSAVerify_*_rmf functions accept a MESSAGE and hash it
+   * internally using the specified hash method.  We must pass the raw data
+   * (not a pre-computed digest) so that only a single hash is performed,
+   * matching the signing convention used by OpenSSL (EVP_PKEY_sign takes
+   * a pre-hashed digest, i.e. single hash).
+   *
+   * Previously this code pre-hashed the data and then passed the digest,
+   * causing IPPC to double-hash and producing signatures incompatible
+   * with OpenSSL. */
   if (sig_alg == TPM_ALG_RSASSA) {
     /* PKCS#1 v1.5 verification */
     status = ippsRSAVerify_PKCS1v15_rmf (
-                                         digest,
-                                         digest_size,
+                                         data->data,
+                                         (int)data->size,
                                          signature->data,
                                          &is_valid,
                                          pub_key,
@@ -1786,8 +2375,8 @@ crypto_verify_rsa_signature_internal (
   } else if (sig_alg == TPM_ALG_RSAPSS) {
     /* PSS verification */
     status = ippsRSAVerify_PSS_rmf (
-                                    digest,
-                                    digest_size,
+                                    data->data,
+                                    (int)data->size,
                                     signature->data,
                                     &is_valid,
                                     pub_key,
@@ -1878,10 +2467,9 @@ crypto_verify_ec_signature_internal (
       break;
     case TB_HALG_SHA256:
       digest_size = SHA256_LENGTH;
-      /* OpenSSL uses secp256k1 for SHA-256, but IPPC doesn't have it built-in */
-      /* Fall back to P-256 (secp256r1) - this is a known limitation */
+      /* secp256k1 curve (matches OpenSSL backend) */
       if (pubkey_x->size != 32) {
-        printf ("ERROR: SHA-256 requires 32-byte EC key (P-256)\n");
+        printf ("ERROR: SHA-256 requires 32-byte EC key (secp256k1)\n");
         return false;
       }
 
@@ -1925,63 +2513,73 @@ crypto_verify_ec_signature_internal (
   /* Select GFp method based on curve */
   if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
     gfp_method = ippsGFpMethod_p256sm2 ();
-  } else if (pubkey_x->size == 32) {
-    gfp_method = ippsGFpMethod_p256r1 ();
   } else if (pubkey_x->size == 48) {
     gfp_method = ippsGFpMethod_p384r1 ();
+  } else if (pubkey_x->size == 32) {
+    /* secp256k1 — no built-in method, use init_secp256k1 helper */
+    gfp_method = NULL;
   } else {
     printf ("ERROR: Unsupported EC key size: %zu bytes\n", pubkey_x->size);
     return false;
   }
 
-  /* Get size for GFp context */
-  status = ippsGFpGetSize (pubkey_x->size * 8, &gfp_size);
-  if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get GFp size: %d\n", status);
-    return false;
-  }
-
-  /* Allocate GFp context */
-  gfp = (IppsGFpState *)malloc (gfp_size);
-  if (gfp == NULL) {
-    printf ("ERROR: Failed to allocate GFp context\n");
-    return false;
-  }
-
-  /* Initialize GFp context */
-  status = ippsGFpInitFixed (pubkey_x->size * 8, gfp_method, gfp);
-  if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to initialize GFp context: %d\n", status);
-    goto cleanup;
-  }
-
-  /* Get size for EC context */
-  status = ippsGFpECGetSize (gfp, &ec_size);
-  if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get EC size: %d\n", status);
-    goto cleanup;
-  }
-
-  /* Allocate EC context */
-  ec = (IppsGFpECState *)malloc (ec_size);
-  if (ec == NULL) {
-    printf ("ERROR: Failed to allocate EC context\n");
-    goto cleanup;
-  }
-
-  /* Initialize EC context with standard curve */
-  if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
-    status = ippsGFpECInitStdSM2 (gfp, ec);
-  } else if (pubkey_x->size == 32) {
-    status = ippsGFpECInitStd256r1 (gfp, ec);
+  if ((gfp_method == NULL) && !((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2))) {
+    /* secp256k1 — use arbitrary-curve initialisation */
+    status = init_secp256k1 (&gfp, &ec);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to initialise secp256k1 curve: %d\n", status);
+      return false;
+    }
   } else {
-    status = ippsGFpECInitStd384r1 (gfp, ec);
-  }
+    /* Standard built-in curve */
 
-  if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to initialize EC curve: %d\n", status);
-    goto cleanup;
-  }
+    /* Get size for GFp context */
+    status = ippsGFpGetSize (pubkey_x->size * 8, &gfp_size);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to get GFp size: %d\n", status);
+      return false;
+    }
+
+    /* Allocate GFp context */
+    gfp = (IppsGFpState *)malloc (gfp_size);
+    if (gfp == NULL) {
+      printf ("ERROR: Failed to allocate GFp context\n");
+      return false;
+    }
+
+    /* Initialize GFp context */
+    status = ippsGFpInitFixed (pubkey_x->size * 8, gfp_method, gfp);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to initialize GFp context: %d\n", status);
+      goto cleanup;
+    }
+
+    /* Get size for EC context */
+    status = ippsGFpECGetSize (gfp, &ec_size);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to get EC size: %d\n", status);
+      goto cleanup;
+    }
+
+    /* Allocate EC context */
+    ec = (IppsGFpECState *)malloc (ec_size);
+    if (ec == NULL) {
+      printf ("ERROR: Failed to allocate EC context\n");
+      goto cleanup;
+    }
+
+    /* Initialize EC context with standard curve */
+    if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
+      status = ippsGFpECInitStdSM2 (gfp, ec);
+    } else {
+      status = ippsGFpECInitStd384r1 (gfp, ec);
+    }
+
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to initialize EC curve: %d\n", status);
+      goto cleanup;
+    }
+  }  /* end standard built-in curve */
 
   /* Create BigNum structures */
   if (create_bignum_from_bytes (digest, digest_size, &msg_digest_bn) != ippStsNoErr) {
@@ -2036,8 +2634,8 @@ crypto_verify_ec_signature_internal (
     goto cleanup;
   }
 
-  /* Get scratch buffer size */
-  status = ippsGFpECScratchBufferSize (1, ec, &scratch_size);
+  /* Get scratch buffer size — ECDSA verify uses 2 scalar multiplications */
+  status = ippsGFpECScratchBufferSize (2, ec, &scratch_size);
   if (status != ippStsNoErr) {
     printf ("ERROR: Failed to get scratch buffer size: %d\n", status);
     goto cleanup;
@@ -2137,6 +2735,7 @@ crypto_ec_sign_data_internal (
   IppsGFpECPoint       *pub_point     = NULL;
   IppsBigNumState      *msg_digest_bn = NULL;
   IppsBigNumState      *priv_key_bn   = NULL;
+  IppsBigNumState      *eph_key_bn    = NULL;
   IppsBigNumState      *sig_r_bn      = NULL;
   IppsBigNumState      *sig_s_bn      = NULL;
   IppStatus            status;
@@ -2189,7 +2788,7 @@ crypto_ec_sign_data_internal (
     case TB_HALG_SHA256:
       digest_size = SHA256_LENGTH;
       if (priv_key_size != 32) {
-        printf ("ERROR: SHA-256 requires 32-byte EC key (P-256)\n");
+        printf ("ERROR: SHA-256 requires 32-byte EC key (secp256k1)\n");
         return false;
       }
 
@@ -2233,69 +2832,84 @@ crypto_ec_sign_data_internal (
   /* Select GFp method based on curve */
   if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
     gfp_method = ippsGFpMethod_p256sm2 ();
-  } else if (priv_key_size == 32) {
-    gfp_method = ippsGFpMethod_p256r1 ();
   } else if (priv_key_size == 48) {
     gfp_method = ippsGFpMethod_p384r1 ();
+  } else if (priv_key_size == 32) {
+    /* secp256k1 — no built-in method, use init_secp256k1 helper */
+    gfp_method = NULL;
   } else {
     printf ("ERROR: Unsupported EC key size: %d bytes\n", priv_key_size);
     return false;
   }
 
-  /* Get size for GFp context */
-  status = ippsGFpGetSize (priv_key_size * 8, &gfp_size);
-  if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get GFp size: %d\n", status);
-    return false;
-  }
-
-  /* Allocate GFp context */
-  gfp = (IppsGFpState *)malloc (gfp_size);
-  if (gfp == NULL) {
-    printf ("ERROR: Failed to allocate GFp context\n");
-    return false;
-  }
-
-  /* Initialize GFp context */
-  status = ippsGFpInitFixed (priv_key_size * 8, gfp_method, gfp);
-  if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to initialize GFp context: %d\n", status);
-    goto cleanup;
-  }
-
-  /* Get size for EC context */
-  status = ippsGFpECGetSize (gfp, &ec_size);
-  if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get EC size: %d\n", status);
-    goto cleanup;
-  }
-
-  /* Allocate EC context */
-  ec = (IppsGFpECState *)malloc (ec_size);
-  if (ec == NULL) {
-    printf ("ERROR: Failed to allocate EC context\n");
-    goto cleanup;
-  }
-
-  /* Initialize EC context with standard curve */
-  if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
-    status = ippsGFpECInitStdSM2 (gfp, ec);
-  } else if (priv_key_size == 32) {
-    status = ippsGFpECInitStd256r1 (gfp, ec);
+  if ((gfp_method == NULL) && !((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2))) {
+    /* secp256k1 — use arbitrary-curve initialisation */
+    status = init_secp256k1 (&gfp, &ec);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to initialise secp256k1 curve: %d\n", status);
+      return false;
+    }
   } else {
-    status = ippsGFpECInitStd384r1 (gfp, ec);
-  }
+    /* Standard built-in curve */
 
-  if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to initialize EC curve: %d\n", status);
-    goto cleanup;
-  }
+    /* Get size for GFp context */
+    status = ippsGFpGetSize (priv_key_size * 8, &gfp_size);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to get GFp size: %d\n", status);
+      return false;
+    }
+
+    /* Allocate GFp context */
+    gfp = (IppsGFpState *)malloc (gfp_size);
+    if (gfp == NULL) {
+      printf ("ERROR: Failed to allocate GFp context\n");
+      return false;
+    }
+
+    /* Initialize GFp context */
+    status = ippsGFpInitFixed (priv_key_size * 8, gfp_method, gfp);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to initialize GFp context: %d\n", status);
+      goto cleanup;
+    }
+
+    /* Get size for EC context */
+    status = ippsGFpECGetSize (gfp, &ec_size);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to get EC size: %d\n", status);
+      goto cleanup;
+    }
+
+    /* Allocate EC context */
+    ec = (IppsGFpECState *)malloc (ec_size);
+    if (ec == NULL) {
+      printf ("ERROR: Failed to allocate EC context\n");
+      goto cleanup;
+    }
+
+    /* Initialize EC context with standard curve */
+    if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
+      status = ippsGFpECInitStdSM2 (gfp, ec);
+    } else {
+      status = ippsGFpECInitStd384r1 (gfp, ec);
+    }
+
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to initialize EC curve: %d\n", status);
+      goto cleanup;
+    }
+  }  /* end standard built-in curve */
 
   /* Create BigNum structures */
   if (create_bignum_from_bytes (digest, digest_size, &msg_digest_bn) != ippStsNoErr) {
     printf ("ERROR: Failed to create BigNum for message digest\n");
     goto cleanup;
   }
+
+  /* crypto_read_key returns EC private keys in little-endian byte order,
+   * but ippsSetOctString_BN (used by create_bignum_from_bytes) expects
+   * big-endian.  Reverse back to BE before creating the BigNum. */
+  buffer_reverse_byte_order (priv_key_buf, priv_key_size);
 
   if (create_bignum_from_bytes (priv_key_buf, priv_key_size, &priv_key_bn) != ippStsNoErr) {
     printf ("ERROR: Failed to create BigNum for private key\n");
@@ -2375,13 +2989,41 @@ crypto_ec_sign_data_internal (
     goto cleanup;
   }
 
+  /* Generate ephemeral private key for ECDSA/SM2 signing.
+   * IPPC requires a caller-provided random ephemeral key k in [1, n-1]
+   * where n is the EC subgroup order. Uses hardware TRNG (RDSEED). */
+  {
+    int  eph_bn_size = 0;
+    status = ippsBigNumGetSize (priv_key_size, &eph_bn_size);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to get BigNum size for ephemeral key: %d\n", status);
+      goto cleanup;
+    }
+
+    eph_key_bn = (IppsBigNumState *)malloc (eph_bn_size);
+    if (eph_key_bn == NULL) {
+      printf ("ERROR: Failed to allocate ephemeral key BigNum\n");
+      goto cleanup;
+    }
+
+    status = ippsBigNumInit (priv_key_size, eph_key_bn);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to initialize ephemeral key BigNum: %d\n", status);
+      goto cleanup;
+    }
+
+    status = ippsTRNGenRDSEED_BN (eph_key_bn, priv_key_size * 8, NULL);
+    if (status != ippStsNoErr) {
+      printf ("ERROR: Failed to generate ephemeral key via RDSEED: %d\n", status);
+      goto cleanup;
+    }
+  }
+
   /* Sign the digest with ECDSA or SM2 */
   if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
-    /* Use SM2 signing - requires ephemeral private key (NULL to let IPPC generate) */
-    status = ippsGFpECSignSM2 (msg_digest_bn, priv_key_bn, NULL, sig_r_bn, sig_s_bn, ec, scratch_buffer);
+    status = ippsGFpECSignSM2 (msg_digest_bn, priv_key_bn, eph_key_bn, sig_r_bn, sig_s_bn, ec, scratch_buffer);
   } else {
-    /* Use standard ECDSA signing */
-    status = ippsGFpECSignDSA (msg_digest_bn, priv_key_bn, NULL, sig_r_bn, sig_s_bn, ec, scratch_buffer);
+    status = ippsGFpECSignDSA (msg_digest_bn, priv_key_bn, eph_key_bn, sig_r_bn, sig_s_bn, ec, scratch_buffer);
   }
 
   if (status != ippStsNoErr) {
@@ -2424,6 +3066,9 @@ crypto_ec_sign_data_internal (
   result_ok = true;
 
 cleanup:
+  /* Zero private key material from stack */
+  memset (priv_key_buf, 0, sizeof (priv_key_buf));
+
   if (r_data) {
     free (r_data);
   }
@@ -2454,6 +3099,10 @@ cleanup:
 
   if (priv_key_bn) {
     free (priv_key_bn);
+  }
+
+  if (eph_key_bn) {
+    free (eph_key_bn);
   }
 
   if (sig_r_bn) {
@@ -3034,15 +3683,18 @@ crypto_lms_sign_data_internal (
 
   *sig_len = LMS_SIGN_TOTAL_SIZE;
 
-  /* Update the private key file: increment the sequence counter */
+  /* Update the private key file: increment the sequence counter.
+   * This MUST succeed — failure risks LMS one-time key reuse. */
   seq_counter = (uint64_t)leaf_q + 1;
   {
     FILE  *fp = fopen (privkey_file, "r+b");
     if (NULL == fp) {
-      fp = fopen (privkey_file, "wb");
+      printf ("ERROR: Cannot open private key for counter update: %s\n", privkey_file);
+      result = crypto_crypto_operation_fail;
+      goto cleanup;
     }
 
-    if (fp != NULL) {
+    {
       uint8_t  counter_bytes[HASHSIGS_PRV_COUNTER_SIZE];
       uint64_t temp_counter = seq_counter;
       for (int i = HASHSIGS_PRV_COUNTER_SIZE - 1; i >= 0; i--) {
@@ -3051,12 +3703,13 @@ crypto_lms_sign_data_internal (
       }
 
       if (fwrite (counter_bytes, HASHSIGS_PRV_COUNTER_SIZE, 1, fp) != 1) {
-        printf ("WARNING: Failed to update LMS private key counter\n");
+        printf ("ERROR: Failed to update LMS private key counter — risk of key reuse\n");
+        fclose (fp);
+        result = crypto_crypto_operation_fail;
+        goto cleanup;
       }
 
       fclose (fp);
-    } else {
-      printf ("WARNING: Cannot open private key for counter update: %s\n", privkey_file);
     }
   }
 

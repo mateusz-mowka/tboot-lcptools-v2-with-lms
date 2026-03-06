@@ -39,7 +39,8 @@ extern uint16_t
 base64_decode (
   const uint8_t  *src,
   uint32_t       src_len,
-  uint8_t        *dst
+  uint8_t        *dst,
+  uint32_t       dst_max_len
   );
 
 extern int

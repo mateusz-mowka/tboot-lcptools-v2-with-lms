@@ -20,7 +20,6 @@
 #include "../include/lcp3.h"
 #include "crypto_interface.h"
 #include "safe_lib.h"
-#include "hash-sigs/hss.h"
 #include "lcputils.h"
 #define LOG      printf
 #define ERROR    printf
@@ -46,6 +45,10 @@ crypto_hash_buffer_internal (
   EVP_MD_CTX    *ctx = EVP_MD_CTX_create ();
   const EVP_MD  *md;
 
+  if (ctx == NULL) {
+    return crypto_general_fail;
+  }
+
   switch (hash_alg) {
     case TB_HALG_SHA1_LG:
     case TB_HALG_SHA1:
@@ -64,8 +67,8 @@ crypto_hash_buffer_internal (
       md = EVP_sm3 ();
       break;
     default:
+      EVP_MD_CTX_destroy (ctx);
       return crypto_unknown_hashalg;
-      break;
   }
 
   EVP_DigestInit (ctx, md);
@@ -91,6 +94,8 @@ crypto_read_rsa_pubkey_internal (
   RSA  *pubkey = NULL;
  #endif
 
+  *key = NULL;
+
   printf ("read_rsa_pubkey_file_2_1\n");
   fp = fopen (file, "rb");
   if ( fp == NULL ) {
@@ -110,6 +115,7 @@ crypto_read_rsa_pubkey_internal (
   }
 
   if ( !OSSL_DECODER_from_fp (dctx, fp)) {
+    OSSL_DECODER_CTX_free (dctx);
     goto OPENSSL_ERROR;
   }
 
@@ -163,10 +169,10 @@ crypto_read_rsa_pubkey_internal (
   // SUCCESS:
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
   EVP_PKEY_free(pubkey);
+  BN_free(modulus);  /* owned copy from EVP_PKEY_get_bn_param */
 #else
-  RSA_free(pubkey);
+  RSA_free(pubkey);  /* also frees borrowed modulus */
 #endif
-  BN_free(modulus);
   return crypto_ok;
 OPENSSL_ERROR:
   printf ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
@@ -180,9 +186,12 @@ ERROR:
     free (*key);
   }
 
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
   if (modulus != NULL) {
-    BN_free(modulus);
+    BN_free(modulus);  /* owned copy from EVP_PKEY_get_bn_param */
   }
+#endif
+  /* Pre-3.0: modulus is borrowed from pubkey — freed by RSA_free below */
 
   if (pubkey != NULL) {
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
@@ -213,8 +222,11 @@ crypto_read_ecdsa_pubkey_internal (
   const EC_GROUP  *pubgroup = NULL;
   BN_CTX          *ctx      = NULL;
  #else
-  EVP_PKEY  *pubkey;
+  EVP_PKEY  *pubkey = NULL;
  #endif
+
+  *qx = NULL;
+  *qy = NULL;
 
   LOG ("read ecdsa pubkey file for list signature.\n");
   fp = fopen (file, "rb");
@@ -231,6 +243,7 @@ crypto_read_ecdsa_pubkey_internal (
   }
 
   if ( !OSSL_DECODER_from_fp (dctx, fp)) {
+    OSSL_DECODER_CTX_free (dctx);
     goto OPENSSL_ERROR;
   }
 
@@ -275,6 +288,7 @@ crypto_read_ecdsa_pubkey_internal (
     goto OPENSSL_ERROR;
   }
 
+  int  result;
   result = EC_POINT_get_affine_coordinates_GFp (pubgroup, pubpoint, x, y, ctx);
   if (result <= 0) {
     goto OPENSSL_ERROR;
@@ -322,14 +336,15 @@ crypto_read_ecdsa_pubkey_internal (
   buffer_reverse_byte_order ((uint8_t *)*qx, (*key_size_bytes));
   buffer_reverse_byte_order ((uint8_t *)*qy, (*key_size_bytes));
 
-  OPENSSL_free ((void *)pubkey);
-  OPENSSL_free ((void *)x);
-  OPENSSL_free ((void *)y);
- #if OPENSSL_VERSION_NUMBER < 0x30000000L
-  OPENSSL_free ((void *)pubpoint);
-  OPENSSL_free ((void *)pubgroup);
-  OPENSSL_free ((void *)ctx);
+ #if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  EVP_PKEY_free (pubkey);
+ #else
+  EC_KEY_free ((EC_KEY *)pubkey);
+  BN_CTX_free (ctx);
+  /* pubpoint and pubgroup are borrowed via get0 — do not free */
  #endif
+  BN_free (x);
+  BN_free (y);
   return crypto_ok;
 
   // Errors:
@@ -352,28 +367,25 @@ ERROR:
   }
 
   if (pubkey != NULL) {
-    OPENSSL_free ((void *)pubkey);
+ #if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    EVP_PKEY_free (pubkey);
+ #else
+    EC_KEY_free ((EC_KEY *)pubkey);
+ #endif
   }
 
   if (x != NULL) {
-    OPENSSL_free ((void *)x);
+    BN_free (x);
   }
 
   if (y != NULL) {
-    OPENSSL_free ((void *)y);
+    BN_free (y);
   }
 
  #if OPENSSL_VERSION_NUMBER < 0x30000000L
-  if (pubpoint != NULL) {
-    OPENSSL_free ((void *)pubpoint);
-  }
-
-  if (pubgroup != NULL) {
-    OPENSSL_free ((void *)pubgroup);
-  }
-
+  /* pubpoint and pubgroup are borrowed via get0 — do not free */
   if (ctx != NULL) {
-    OPENSSL_free ((void *)ctx);
+    BN_CTX_free (ctx);
   }
 
  #endif
@@ -414,7 +426,7 @@ rsa_get_sig_ctx (
     goto OPENSSL_ERROR;
   }
 
-  OPENSSL_free (evp_priv);
+  EVP_PKEY_free (evp_priv);
   return context;
 
 OPENSSL_ERROR:
@@ -427,11 +439,11 @@ ERROR:
   }
 
   if (evp_priv != NULL) {
-    OPENSSL_free (evp_priv);
+    EVP_PKEY_free (evp_priv);
   }
 
   if (context != NULL) {
-    OPENSSL_free (context);
+    EVP_PKEY_CTX_free (context);
   }
 
   return NULL;
@@ -449,8 +461,9 @@ rsa_ssa_pss_sign (
 /*
     This function: signs data using rsa private key context
 
-    In: pointer to a correctly sized buffer to hold signature block, digest of
-    lcp list data, hash alg used to hash data, Openssl private key context
+    In: pointer to a correctly sized buffer to hold signature block, raw data
+    to sign (will be hashed internally), hash alg used to hash data,
+    Openssl private key context
 
     Out: true on success, false on failure. Also signature_block gets signature block data
 
@@ -460,9 +473,25 @@ rsa_ssa_pss_sign (
   int           result; // For openssl return codes
   size_t        siglen; // Holds length of signature returned by openssl must be 256 or 384
   const EVP_MD  *evp_hash_alg;
+  uint8_t       hash_buf[SHA512_DIGEST_SIZE];
+  size_t        digest_len;
 
   if ((signature_block == NULL) || (data_to_sign == NULL) || (private_key_context == NULL)) {
     printf ("Error: one or more data buffers is not defined.\n");
+    return false;
+  }
+
+  /* Hash the raw data internally — callers now pass raw list data
+   * instead of a pre-computed digest, for cross-backend compatibility. */
+  digest_len = get_hash_size (hash_alg);
+  if (digest_len == 0) {
+    printf ("ERROR: unsupported hash algorithm 0x%04X\n", hash_alg);
+    return false;
+  }
+
+  if (!hash_buffer (data_to_sign->data, data_to_sign->size,
+                    (tb_hash_t *)hash_buf, hash_alg)) {
+    printf ("ERROR: failed to hash data for RSA signing\n");
     return false;
   }
 
@@ -482,7 +511,6 @@ rsa_ssa_pss_sign (
     default:
       printf ("ERROR: unsupported signature algorithm.\n");
       return false;
-      break;
   }
 
   if (result <= 0) {
@@ -523,8 +551,8 @@ rsa_ssa_pss_sign (
                           private_key_context,
                           NULL,
                           &siglen,
-                          data_to_sign->data,
-                          get_hash_size (hash_alg)
+                          hash_buf,
+                          digest_len
                           );
   if (result <= 0) {
     goto OPENSSL_ERROR;
@@ -540,14 +568,15 @@ rsa_ssa_pss_sign (
                           private_key_context,
                           signature_block->data,
                           &siglen,
-                          data_to_sign->data,
-                          get_hash_size (hash_alg)
+                          hash_buf,
+                          digest_len
                           );
   if (result <= 0) {
     goto OPENSSL_ERROR;
   }
 
   // All good, function end
+  OPENSSL_cleanse (hash_buf, sizeof (hash_buf));
   return true;
 
   // Error handling
@@ -555,6 +584,7 @@ OPENSSL_ERROR:
   ERR_load_crypto_strings ();
   printf ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
   ERR_free_strings ();
+  OPENSSL_cleanse (hash_buf, sizeof (hash_buf));
   return false;
 }
 
@@ -681,7 +711,9 @@ crypto_verify_rsa_signature_internal (
   unsigned char  *decrypted_sig = NULL;
 
  #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-  size_t  dcpt_sig_len;
+  size_t           dcpt_sig_len;
+  OSSL_PARAM_BLD  *params_build = NULL;
+  OSSL_PARAM      *params       = NULL;
  #else
   RSA  *rsa_pubkey = NULL;
  #endif
@@ -706,7 +738,7 @@ crypto_verify_rsa_signature_internal (
     goto OPENSSL_ERROR;
   }
 
-  OSSL_PARAM_BLD  *params_build = OSSL_PARAM_BLD_new ();
+  params_build = OSSL_PARAM_BLD_new ();
   if ( params_build == NULL ) {
     ERROR ("Error: failed to set up parameter builder.\n");
     goto OPENSSL_ERROR;
@@ -727,7 +759,7 @@ crypto_verify_rsa_signature_internal (
     goto OPENSSL_ERROR;
   }
 
-  OSSL_PARAM  *params = OSSL_PARAM_BLD_to_param (params_build);
+  params = OSSL_PARAM_BLD_to_param (params_build);
   if ( params == NULL ) {
     ERROR ("Error: failed to construct parameters from builder.\n");
     goto OPENSSL_ERROR;
@@ -744,7 +776,9 @@ crypto_verify_rsa_signature_internal (
   }
 
   OSSL_PARAM_free (params);
+  params = NULL;
   OSSL_PARAM_BLD_free (params_build);
+  params_build = NULL;
   EVP_PKEY_CTX_free (evp_context);
   evp_context = NULL;
  #else
@@ -762,6 +796,8 @@ crypto_verify_rsa_signature_internal (
   rsa_pubkey->e = exponent;
   rsa_pubkey->d = rsa_pubkey->p = rsa_pubkey->q = NULL;
  #endif
+  modulus  = NULL;  /* ownership transferred to rsa_pubkey */
+  exponent = NULL;  /* ownership transferred to rsa_pubkey */
  #endif
 
   if (MAJOR_VER (list_ver) != MAJOR_VER (LCP_TPM20_POLICY_LIST2_1_VERSION_300)) {
@@ -809,6 +845,12 @@ crypto_verify_rsa_signature_internal (
     evp_context = NULL;
  #else
     decrypted_sig = OPENSSL_malloc (pubkey->size);
+    if (decrypted_sig == NULL) {
+      ERROR ("Error: failed to allocate memory for decrypted signature.\n");
+      status = 0;
+      goto EXIT;
+    }
+
     status        = RSA_public_decrypt (pubkey->size, signature->data, decrypted_sig, rsa_pubkey, RSA_NO_PADDING);
     if (status <= 0) {
       ERROR ("Error: failed to decrypt signature.\n");
@@ -824,6 +866,7 @@ crypto_verify_rsa_signature_internal (
     // In older lists we need to get hashAlg from signature data.
     hashAlg = pkcs_get_hashalg ((const unsigned char *)decrypted_sig);
     OPENSSL_free ((void *)decrypted_sig);
+    decrypted_sig = NULL;
   }
 
  #if OPENSSL_VERSION_NUMBER < 0x30000000L
@@ -910,30 +953,43 @@ OPENSSL_ERROR:
   ERR_free_strings ();
   status = 0;
 EXIT:
- #if OPENSSL_VERSION_NUMBER < 0x30000000L
+ #if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  if (params_build != NULL) {
+    OSSL_PARAM_BLD_free (params_build);
+  }
+
+  if (params != NULL) {
+    OSSL_PARAM_free (params);
+  }
+
+ #else
   if (rsa_pubkey != NULL) {
-    OPENSSL_free ((void *)rsa_pubkey);
+    RSA_free (rsa_pubkey);
   }
 
  #endif
   if (evp_context != NULL) {
-    OPENSSL_free ((void *)evp_context);
+    EVP_PKEY_CTX_free (evp_context);
   }
 
   if (evp_key != NULL) {
-    OPENSSL_free ((void *)evp_key);
+    EVP_PKEY_free (evp_key);
   }
 
   if (modulus != NULL) {
-    OPENSSL_free ((void *)modulus);
+    BN_free (modulus);
   }
 
   if (exponent != NULL) {
-    OPENSSL_free ((void *)exponent);
+    BN_free (exponent);
   }
 
   if (digest != NULL) {
     free (digest);
+  }
+
+  if (decrypted_sig != NULL) {
+    OPENSSL_free ((void *)decrypted_sig);
   }
 
   return status ? true : false;
@@ -980,13 +1036,19 @@ der_encode_sig_comps (
   }
 
   helper_ptr      = OPENSSL_malloc (encoded_size);
+  if (helper_ptr == NULL) {
+    ERROR ("Error: failed to allocate memory for encoded signature.\n");
+    goto EXIT;
+  }
   der_encoded_sig = helper_ptr;
   *length         = encoded_size;
   // i2d_ECDSA_SIG changes value of the pointer passed, that's why we first assigned
   // it to der_encoded_sig, which will hold the encoded_sig.
   if (!i2d_ECDSA_SIG (sig, &helper_ptr)) {
     ERROR ("Error: failed to encode signature.\n");
-    return NULL;
+    OPENSSL_free (der_encoded_sig);
+    der_encoded_sig = NULL;
+    goto EXIT;
   }
 
 EXIT:
@@ -998,11 +1060,11 @@ EXIT:
   }
 
   if (r != NULL) {
-    OPENSSL_free ((void *)r);
+    BN_free (r);
   }
 
   if (s != NULL) {
-    OPENSSL_free ((void *)s);
+    BN_free (s);
   }
 
   return der_encoded_sig;
@@ -1031,12 +1093,15 @@ crypto_verify_ec_signature_internal (
   EVP_PKEY_CTX         *pctx   = NULL;
 
  #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-  const EC_GROUP  *ec_group     = NULL;
-  EC_POINT        *ec_point     = NULL;
-  unsigned char   *point_buffer = NULL;
-  size_t          pt_buf_len;
-  BN_CTX          *bctx      = NULL;
-  const char      *curveName = NULL;
+  const EC_GROUP   *ec_group     = NULL;
+  EC_POINT         *ec_point     = NULL;
+  unsigned char    *point_buffer = NULL;
+  size_t           pt_buf_len;
+  BN_CTX           *bctx         = NULL;
+  const char       *curveName    = NULL;
+  EVP_PKEY_CTX     *fromdata_ctx   = NULL;
+  OSSL_PARAM_BLD   *ec_params_build = NULL;
+  OSSL_PARAM       *ec_params       = NULL;
  #else
   EC_KEY    *ec_key   = NULL;
   EC_GROUP  *ec_group = NULL;
@@ -1106,8 +1171,16 @@ crypto_verify_ec_signature_internal (
   BN_CTX_free (bctx);
   bctx = NULL;
   bctx = BN_CTX_new ();
+  if ( bctx == NULL ) {
+    ERROR ("Error: Failed to create BIGNUM context.\n");
+    goto OPENSSL_ERROR;
+  }
 
   pt_buf_len   = EC_POINT_point2oct (ec_group, ec_point, POINT_CONVERSION_COMPRESSED, NULL, 0, bctx);
+  if ( pt_buf_len == 0 ) {
+    ERROR ("Error: failed to calculate point buffer length.\n");
+    goto OPENSSL_ERROR;
+  }
   point_buffer = OPENSSL_malloc (pt_buf_len);
   if ( point_buffer == NULL ) {
     ERROR ("Error: failed to allocate point buffer.\n");
@@ -1119,49 +1192,53 @@ crypto_verify_ec_signature_internal (
     goto OPENSSL_ERROR;
   }
 
-  EVP_PKEY_CTX  *ctx = EVP_PKEY_CTX_new_from_name (NULL, "EC", NULL);
-  if ( ctx == NULL ) {
+  fromdata_ctx = EVP_PKEY_CTX_new_from_name (NULL, "EC", NULL);
+  if ( fromdata_ctx == NULL ) {
     ERROR ("Error: failed to initialize key creation CTX.\n");
     goto OPENSSL_ERROR;
   }
 
-  OSSL_PARAM_BLD  *params_build = OSSL_PARAM_BLD_new ();
-  if ( params_build == NULL ) {
+  ec_params_build = OSSL_PARAM_BLD_new ();
+  if ( ec_params_build == NULL ) {
     ERROR ("Error: failed to set up parameter builder.\n");
     goto OPENSSL_ERROR;
   }
 
-  if ( !OSSL_PARAM_BLD_push_utf8_string (params_build, "group", curveName, 0)) {
+  if ( !OSSL_PARAM_BLD_push_utf8_string (ec_params_build, "group", curveName, 0)) {
     ERROR ("Error: failed to push group into param build.\n");
     goto OPENSSL_ERROR;
   }
 
-  if ( !OSSL_PARAM_BLD_push_octet_string (params_build, "pub", point_buffer, pt_buf_len)) {
+  if ( !OSSL_PARAM_BLD_push_octet_string (ec_params_build, "pub", point_buffer, pt_buf_len)) {
     ERROR ("Error: failed to push pubkey into param build.\n");
     goto OPENSSL_ERROR;
   }
 
-  OSSL_PARAM  *params = OSSL_PARAM_BLD_to_param (params_build);
-  if ( params == NULL ) {
+  ec_params = OSSL_PARAM_BLD_to_param (ec_params_build);
+  if ( ec_params == NULL ) {
     ERROR ("Error: failed to construct params from build.\n");
     goto OPENSSL_ERROR;
   }
 
-  if ( EVP_PKEY_fromdata_init (ctx) <= 0 ) {
+  if ( EVP_PKEY_fromdata_init (fromdata_ctx) <= 0 ) {
     ERROR ("ERROR: failed to initialize key creation from data.\n");
     goto OPENSSL_ERROR;
   }
 
-  if ( EVP_PKEY_fromdata (ctx, &evp_key, EVP_PKEY_PUBLIC_KEY, params) <= 0) {
+  if ( EVP_PKEY_fromdata (fromdata_ctx, &evp_key, EVP_PKEY_PUBLIC_KEY, ec_params) <= 0) {
     ERROR ("Error: failed to create EC_KEY.\n");
     result = 0;
     goto EXIT;
   }
 
-  OSSL_PARAM_BLD_free (params_build);
-  OSSL_PARAM_free (params);
-  EVP_PKEY_CTX_free (ctx);
+  OSSL_PARAM_BLD_free (ec_params_build);
+  ec_params_build = NULL;
+  OSSL_PARAM_free (ec_params);
+  ec_params = NULL;
+  EVP_PKEY_CTX_free (fromdata_ctx);
+  fromdata_ctx = NULL;
   BN_CTX_free (bctx);
+  bctx = NULL;
  #else
   ec_key = EC_KEY_new ();
   if (ec_key == NULL) {
@@ -1191,6 +1268,8 @@ crypto_verify_ec_signature_internal (
     ERROR ("Error: failed to assign EC KEY to EVP structure.\n");
     goto OPENSSL_ERROR;
   }
+
+  ec_key = NULL;  /* ownership transferred to evp_key */
 
   if (sigalg == TPM_ALG_SM2) {
     if ( EVP_PKEY_set_alias_type (evp_key, EVP_PKEY_SM2) <= 0 ) {
@@ -1261,45 +1340,61 @@ EXIT:
   // cleanup:
  #if OPENSSL_VERSION_NUMBER >= 0x30000000L
   if (ec_point != NULL) {
-    OPENSSL_free ((void *)ec_point);
+    EC_POINT_free (ec_point);
   }
 
   if (point_buffer != NULL) {
-    OPENSSL_free ((void *)point_buffer);
+    OPENSSL_free (point_buffer);  /* allocated with OPENSSL_malloc */
+  }
+
+  if (ec_params_build != NULL) {
+    OSSL_PARAM_BLD_free (ec_params_build);
+  }
+
+  if (ec_params != NULL) {
+    OSSL_PARAM_free (ec_params);
+  }
+
+  if (fromdata_ctx != NULL) {
+    EVP_PKEY_CTX_free (fromdata_ctx);
+  }
+
+  if (bctx != NULL) {
+    BN_CTX_free (bctx);
   }
 
  #else
   if (ec_key != NULL) {
-    OPENSSL_free ((void *)ec_key);
+    EC_KEY_free (ec_key);
   }
 
  #endif
   if (ec_group != NULL) {
-    OPENSSL_free ((void *)ec_group);
+    EC_GROUP_free ((EC_GROUP *)ec_group);
   }
 
   if (evp_key != NULL) {
-    OPENSSL_free ((void *)evp_key);
+    EVP_PKEY_free (evp_key);
   }
 
   if (x != NULL) {
-    OPENSSL_free ((void *)x);
+    BN_free (x);
   }
 
   if (y != NULL) {
-    OPENSSL_free ((void *)y);
+    BN_free (y);
   }
 
   if (der_encoded_sig != NULL) {
-    OPENSSL_free ((void *)der_encoded_sig);
+    OPENSSL_free ((void *)der_encoded_sig);  /* allocated by OPENSSL_malloc */
   }
 
   if (mctx != NULL) {
-    OPENSSL_free (mctx);
+    EVP_MD_CTX_free (mctx);
   }
 
   if (pctx != NULL) {
-    OPENSSL_free (pctx);
+    EVP_PKEY_CTX_free (pctx);
   }
 
   return result ? true : false;
@@ -1325,6 +1420,7 @@ crypto_ec_sign_data_internal (
   const BIGNUM         *sig_r           = NULL; // Is freed when ECDSA_SIG is freed
   const BIGNUM         *sig_s           = NULL; // Is freed when ECDSA_SIG is freed
   const unsigned char  *signature_block = NULL;
+  const unsigned char  *signature_block_orig = NULL; /* to track OPENSSL_malloc'd ptr */
 
  #if OPENSSL_VERSION_NUMBER < 0x30000000L
   EC_KEY  *ec_key = NULL;
@@ -1357,6 +1453,7 @@ crypto_ec_sign_data_internal (
   }
 
   if ( !OSSL_DECODER_from_fp (dctx, fp)) {
+    OSSL_DECODER_CTX_free (dctx);
     goto OPENSSL_ERROR;
   }
 
@@ -1379,6 +1476,8 @@ crypto_ec_sign_data_internal (
     ERROR ("Error: failed to assign EC key to EVP structure.\n");
     goto OPENSSL_ERROR;
   }
+
+  ec_key = NULL;  /* ownership transferred to evp_key */
 
   if (sigalg == TPM_ALG_SM2) {
     result = EVP_PKEY_set_alias_type (evp_key, EVP_PKEY_SM2);
@@ -1419,7 +1518,8 @@ crypto_ec_sign_data_internal (
       break;
     default:
       ERROR ("Error: unsupported hashalg.\n");
-      return false;
+      result = 0;
+      goto EXIT;
   }
 
   if (result <= 0) {
@@ -1445,6 +1545,8 @@ crypto_ec_sign_data_internal (
     ERROR ("Error: failed to allocate signature block.\n");
     goto OPENSSL_ERROR;
   }
+
+  signature_block_orig = signature_block;
 
   result = EVP_DigestSignFinal (mctx, (unsigned char *)signature_block, &sig_length);
   if (result <= 0) {
@@ -1479,20 +1581,20 @@ OPENSSL_ERROR:
 EXIT:
  #if OPENSSL_VERSION_NUMBER < 0x30000000L
   if (ec_key != NULL) {
-    OPENSSL_free ((void *)ec_key);
+    EC_KEY_free (ec_key);
   }
 
  #endif
   if (evp_key != NULL) {
-    OPENSSL_free ((void *)evp_key);
+    EVP_PKEY_free (evp_key);
   }
 
   if (mctx != NULL) {
-    OPENSSL_free ((void *)mctx);
+    EVP_MD_CTX_free (mctx);
   }
 
   if (pctx != NULL) {
-    OPENSSL_free ((void *)pctx);
+    EVP_PKEY_CTX_free (pctx);
   }
 
   if (fp != NULL) {
@@ -1503,230 +1605,65 @@ EXIT:
     ECDSA_SIG_free (ecdsa_sig);
   }
 
+  if (signature_block_orig != NULL) {
+    OPENSSL_free ((void *)signature_block_orig);
+  }
+
   return result ? true : false;
 }
 
+/*
+ * LMS is not supported via the OpenSSL backend.
+ * LMS/HSS requires the IPPC backend (USE_IPPC=1).
+ */
+
 bool
 crypto_lms_verify_signature_internal (
-  const unsigned char  *msg,
-  size_t               msg_len,
-  const unsigned char  *signature,
-  size_t               sig_len,
-  const unsigned char  *public_key,
+  const unsigned char  *msg       __attribute__ ((unused)),
+  size_t               msg_len    __attribute__ ((unused)),
+  const unsigned char  *signature __attribute__ ((unused)),
+  size_t               sig_len    __attribute__ ((unused)),
+  const unsigned char  *public_key __attribute__ ((unused)),
   size_t               pubkey_len __attribute__ ((unused))
   )
 {
-  if ((NULL == msg) || (NULL == signature) || (NULL == public_key)) {
-    ERROR ("LMS verify: NULL parameter\n");
-    return false;
-  }
-
-  /* Note: public_key already has LEVELS prefix (4 bytes 0x01000000 BE)
-   * and signature already has NSPK prefix (4 bytes 0x00000000)
-   * added by the caller (pollist2_1.c) */
-
-  /* Verify signature using hash-sigs library */
-  bool  result = hss_validate_signature (
-                                         public_key,
-                                         msg,
-                                         msg_len,
-                                         signature,
-                                         sig_len,
-                                         NULL /* info parameter */
-                                         );
-
-  if (!result) {
-    ERROR ("LMS signature verification failed\n");
-    return false;
-  }
-
-  if (verbose) {
-    LOG ("LMS signature verification succeeded\n");
-  }
-
-  return true;
+  ERROR ("ERROR: LMS signature verification is not supported via the OpenSSL backend.\n");
+  ERROR ("       Build with USE_IPPC=1 to enable LMS support.\n");
+  return false;
 }
 
-/*
- * Callback for hss_load_private_key to read private key file
- */
-static bool
-read_private_key (
-  unsigned char  *buffer,
-  size_t         len_buffer,
-  void           *context
-  )
-{
-  const char  *filename = (const char *)context;
-  FILE        *fp       = fopen (filename, "rb");
-
-  if (NULL == fp) {
-    ERROR ("Failed to open private key file: %s\n", filename);
-    return false;
-  }
-
-  size_t  bytes_read = fread (buffer, 1, len_buffer, fp);
-  fclose (fp);
-
-  if (bytes_read != len_buffer) {
-    ERROR ("Failed to read %zu bytes from private key file (got %zu)\n", len_buffer, bytes_read);
-    return false;
-  }
-
-  return true;
-}
-
-/*
- * Callback for hss_generate_signature to update private key file
- */
-static bool
-update_private_key (
-  unsigned char  *buffer,
-  size_t         len_buffer,
-  void           *context
-  )
-{
-  const char  *filename = (const char *)context;
-
-  /* Try to open for update (read/write without truncating) */
-  FILE  *fp = fopen (filename, "r+");
-
-  if (NULL == fp) {
-    /* If r+ fails, fall back to creating new file */
-    ERROR ("Cannot open private key for update with r+ mode: %s\n", filename);
-    fp = fopen (filename, "wb");
-    if (NULL == fp) {
-      ERROR ("Cannot open private key for update with wb mode: %s\n", filename);
-      return false;
-    }
-  }
-
-  /* Write the entire buffer as one item (matching original implementation) */
-  size_t  written = fwrite (buffer, len_buffer, 1, fp);
-
-  if (written != 1) {
-    ERROR ("Cannot write to private key for update: %s\n", filename);
-    fclose (fp);
-    return false;
-  }
-
-  if (fclose (fp) != 0) {
-    ERROR ("Cannot close the private key after update: %s\n", filename);
-    return false;
-  }
-
-  if (verbose) {
-    LOG ("LMS private key successfully updated.\n");
-  }
-
-  return true;
-}
-
-/*
- * LMS signature generation using hash-sigs library
- */
 crypto_status
 crypto_lms_sign_data_internal (
-  const unsigned char  *msg,
-  size_t               msg_len,
-  unsigned char        *signature,
-  size_t               *sig_len,
-  const char           *privkey_file,
-  const unsigned char  *aux_data,
-  size_t               aux_len
+  const unsigned char  *msg          __attribute__ ((unused)),
+  size_t               msg_len       __attribute__ ((unused)),
+  unsigned char        *signature    __attribute__ ((unused)),
+  size_t               *sig_len      __attribute__ ((unused)),
+  const char           *privkey_file __attribute__ ((unused)),
+  const unsigned char  *aux_data     __attribute__ ((unused)),
+  size_t               aux_len       __attribute__ ((unused))
   )
 {
-  if ((NULL == msg) || (NULL == signature) || (NULL == sig_len) || (NULL == privkey_file)) {
-    ERROR ("LMS sign: NULL parameter\n");
-    return crypto_nullptr_error;
-  }
-
-  struct hss_working_key  *working_key   = NULL;
-  unsigned char           *aux_data_copy = NULL;
-  size_t                  aux_data_len   = aux_len;
-
-  /* Load auxiliary data if provided */
-  if ((aux_data != NULL) && (aux_len > 0)) {
-    aux_data_copy = malloc (aux_len);
-    if (NULL == aux_data_copy) {
-      ERROR ("Failed to allocate memory for aux data\n");
-      return crypto_memory_alloc_fail;
-    }
-
-    memcpy (aux_data_copy, aux_data, aux_len);
-  }
-
-  /* Load private key into working key structure */
-  working_key = hss_load_private_key (
-                                      read_private_key,
-                                      (void *)privkey_file,
-                                      0, /* memory_target: 0 = minimize memory */
-                                      aux_data_copy,
-                                      aux_data_len,
-                                      NULL /* info parameter */
-                                      );
-
-  if (aux_data_copy != NULL) {
-    free (aux_data_copy);
-  }
-
-  if (NULL == working_key) {
-    ERROR ("Failed to load LMS private key from %s\n", privkey_file);
-    return crypto_invalid_key;
-  }
-
-  /* Query signature length */
-  size_t  sig_buffer_len = hss_get_signature_len_from_working_key (working_key);
-  if (sig_buffer_len == 0) {
-    ERROR ("Failed to get signature length\n");
-    hss_free_working_key (working_key);
-    return crypto_crypto_operation_fail;
-  }
-
-  /* Check if provided buffer is large enough
-   * Note: hss_generate_signature already includes NSPK prefix (levels-1 field) */
-  if (*sig_len < sig_buffer_len) {
-    ERROR ("Signature buffer too small: need %zu, have %zu\n", sig_buffer_len, *sig_len);
-    hss_free_working_key (working_key);
-    return crypto_buffer_too_small;
-  }
-
-  /* Generate signature directly into output buffer
-   * The signature already includes the NSPK prefix (levels-1 = 0x00000000) */
-  bool  result = hss_generate_signature (
-                                         working_key,
-                                         update_private_key,
-                                         (void *)privkey_file,
-                                         msg,
-                                         msg_len,
-                                         signature,
-                                         sig_buffer_len,
-                                         NULL /* info parameter */
-                                         );
-
-  if (!result) {
-    ERROR ("LMS signature generation failed\n");
-    hss_free_working_key (working_key);
-    return crypto_crypto_operation_fail;
-  }
-
-  *sig_len = sig_buffer_len;
-
-  hss_free_working_key (working_key);
-
-  if (verbose) {
-    LOG ("LMS signature generation succeeded, signature length: %zu\n", *sig_len);
-  }
-
-  return crypto_ok;
+  ERROR ("ERROR: LMS signature generation is not supported via the OpenSSL backend.\n");
+  ERROR ("       Build with USE_IPPC=1 to enable LMS support.\n");
+  return crypto_not_supported;
 }
 
 /*
- * ML-DSA stubs for OpenSSL backend.
- * OpenSSL does not support ML-DSA (FIPS 204). These stubs emit a compile-time
- * info message and return failure at runtime.
+ * ML-DSA-87 implementation using OpenSSL >= 3.6 EVP API (FIPS 204).
+ *
+ * ML-DSA-87 parameters (security level 5):
+ *   Public key:  2592 bytes
+ *   Private key: 4896 bytes
+ *   Signature:   4627 bytes
+ *
+ * Keys are stored as raw binary files, compatible with the IPPC backend.
+ * ML-DSA is a "pure" signature scheme: no separate hash step — the EVP
+ * DigestSign/DigestVerify one-shot API is used with md=NULL.
  */
-#pragma message("ML-DSA is not supported with OpenSSL backend")
+
+#define MLDSA87_PUBKEY_SIZE     2592
+#define MLDSA87_PRIVKEY_SIZE    4896
+#define MLDSA87_SIGNATURE_SIZE  4627
 
 bool
 crypto_mldsa_keygen_internal (
@@ -1734,10 +1671,124 @@ crypto_mldsa_keygen_internal (
   const char  *privkey_file
   )
 {
-  (void)pubkey_file;
-  (void)privkey_file;
-  printf ("ERROR: ML-DSA key generation is not supported with OpenSSL backend\n");
-  return false;
+  EVP_PKEY_CTX   *kctx    = NULL;
+  EVP_PKEY       *pkey    = NULL;
+  unsigned char  *pub_buf = NULL;
+  unsigned char  *prv_buf = NULL;
+  size_t         pub_len  = 0;
+  size_t         prv_len  = 0;
+  FILE           *fp      = NULL;
+  bool           result   = false;
+
+  LOG ("[mldsa_keygen]\n");
+
+  kctx = EVP_PKEY_CTX_new_from_name (NULL, "ML-DSA-87", NULL);
+  if (kctx == NULL) {
+    ERROR ("ERROR: EVP_PKEY_CTX_new_from_name(ML-DSA-87) failed\n");
+    goto OPENSSL_ERROR;
+  }
+
+  if (EVP_PKEY_keygen_init (kctx) <= 0) {
+    ERROR ("ERROR: EVP_PKEY_keygen_init failed\n");
+    goto OPENSSL_ERROR;
+  }
+
+  if (EVP_PKEY_keygen (kctx, &pkey) <= 0) {
+    ERROR ("ERROR: EVP_PKEY_keygen failed\n");
+    goto OPENSSL_ERROR;
+  }
+
+  /* Query raw key sizes */
+  if (EVP_PKEY_get_raw_public_key (pkey, NULL, &pub_len) <= 0) {
+    ERROR ("ERROR: Failed to query ML-DSA-87 public key size\n");
+    goto OPENSSL_ERROR;
+  }
+
+  if (EVP_PKEY_get_raw_private_key (pkey, NULL, &prv_len) <= 0) {
+    ERROR ("ERROR: Failed to query ML-DSA-87 private key size\n");
+    goto OPENSSL_ERROR;
+  }
+
+  pub_buf = malloc (pub_len);
+  prv_buf = malloc (prv_len);
+  if ((pub_buf == NULL) || (prv_buf == NULL)) {
+    ERROR ("ERROR: Failed to allocate ML-DSA key buffers\n");
+    goto EXIT;
+  }
+
+  if (EVP_PKEY_get_raw_public_key (pkey, pub_buf, &pub_len) <= 0) {
+    ERROR ("ERROR: Failed to export ML-DSA-87 public key\n");
+    goto OPENSSL_ERROR;
+  }
+
+  if (EVP_PKEY_get_raw_private_key (pkey, prv_buf, &prv_len) <= 0) {
+    ERROR ("ERROR: Failed to export ML-DSA-87 private key\n");
+    goto OPENSSL_ERROR;
+  }
+
+  /* Write public key to file */
+  fp = fopen (pubkey_file, "wb");
+  if (fp == NULL) {
+    ERROR ("ERROR: Cannot open public key file for writing: %s\n", pubkey_file);
+    goto EXIT;
+  }
+
+  if (fwrite (pub_buf, pub_len, 1, fp) != 1) {
+    ERROR ("ERROR: Failed to write public key to %s\n", pubkey_file);
+    fclose (fp);
+    goto EXIT;
+  }
+
+  fclose (fp);
+  fp = NULL;
+
+  /* Write private key to file */
+  fp = fopen (privkey_file, "wb");
+  if (fp == NULL) {
+    ERROR ("ERROR: Cannot open private key file for writing: %s\n", privkey_file);
+    goto EXIT;
+  }
+
+  if (fwrite (prv_buf, prv_len, 1, fp) != 1) {
+    ERROR ("ERROR: Failed to write private key to %s\n", privkey_file);
+    fclose (fp);
+    goto EXIT;
+  }
+
+  fclose (fp);
+  fp = NULL;
+
+  if (verbose) {
+    LOG ("ML-DSA-87 key pair generated: %s (pub, %zu B), %s (prv, %zu B)\n",
+         pubkey_file, pub_len, privkey_file, prv_len);
+  }
+
+  result = true;
+  goto EXIT;
+
+OPENSSL_ERROR:
+  ERR_load_crypto_strings ();
+  ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
+  ERR_free_strings ();
+EXIT:
+  if (pub_buf != NULL) {
+    free (pub_buf);
+  }
+
+  if (prv_buf != NULL) {
+    memset (prv_buf, 0, prv_len);   /* scrub private key material */
+    free (prv_buf);
+  }
+
+  if (pkey != NULL) {
+    EVP_PKEY_free (pkey);
+  }
+
+  if (kctx != NULL) {
+    EVP_PKEY_CTX_free (kctx);
+  }
+
+  return result;
 }
 
 crypto_status
@@ -1749,13 +1800,99 @@ crypto_mldsa_sign_data_internal (
   const char           *privkey_file
   )
 {
-  (void)msg;
-  (void)msg_len;
-  (void)signature;
-  (void)sig_len;
-  (void)privkey_file;
-  printf ("ERROR: ML-DSA signing is not supported with OpenSSL backend\n");
-  return crypto_general_fail;
+  EVP_PKEY       *pkey      = NULL;
+  EVP_MD_CTX     *mctx      = NULL;
+  unsigned char  *prv_buf   = NULL;
+  FILE           *fp        = NULL;
+  crypto_status  result     = crypto_general_fail;
+  size_t         prv_len    = MLDSA87_PRIVKEY_SIZE;
+
+  LOG ("[mldsa_sign_data]\n");
+
+  /* Check output buffer size */
+  if (*sig_len < MLDSA87_SIGNATURE_SIZE) {
+    ERROR ("ERROR: ML-DSA signature buffer too small: need %d, have %zu\n",
+           MLDSA87_SIGNATURE_SIZE, *sig_len);
+    return crypto_buffer_too_small;
+  }
+
+  /* Read private key file */
+  prv_buf = malloc (prv_len);
+  if (prv_buf == NULL) {
+    ERROR ("ERROR: Failed to allocate ML-DSA private key buffer\n");
+    return crypto_memory_alloc_fail;
+  }
+
+  fp = fopen (privkey_file, "rb");
+  if (fp == NULL) {
+    ERROR ("ERROR: Cannot open ML-DSA private key file: %s\n", privkey_file);
+    free (prv_buf);
+    return crypto_file_io_error;
+  }
+
+  if (fread (prv_buf, prv_len, 1, fp) != 1) {
+    ERROR ("ERROR: Failed to read ML-DSA private key from %s\n", privkey_file);
+    fclose (fp);
+    free (prv_buf);
+    return crypto_file_io_error;
+  }
+
+  fclose (fp);
+  fp = NULL;
+
+  /* Create EVP_PKEY from raw private key bytes */
+  pkey = EVP_PKEY_new_raw_private_key_ex (NULL, "ML-DSA-87", NULL, prv_buf, prv_len);
+  if (pkey == NULL) {
+    ERROR ("ERROR: Failed to import ML-DSA-87 private key\n");
+    goto OPENSSL_ERROR;
+  }
+
+  /* One-shot DigestSign (ML-DSA has no separate hash step, md=NULL) */
+  mctx = EVP_MD_CTX_new ();
+  if (mctx == NULL) {
+    ERROR ("ERROR: Failed to allocate EVP_MD_CTX\n");
+    goto EXIT;
+  }
+
+  if (EVP_DigestSignInit_ex (mctx, NULL, NULL, NULL, NULL, pkey, NULL) <= 0) {
+    ERROR ("ERROR: EVP_DigestSignInit_ex failed for ML-DSA-87\n");
+    goto OPENSSL_ERROR;
+  }
+
+  size_t out_len = *sig_len;
+  if (EVP_DigestSign (mctx, signature, &out_len, msg, msg_len) <= 0) {
+    ERROR ("ERROR: EVP_DigestSign failed for ML-DSA-87\n");
+    goto OPENSSL_ERROR;
+  }
+
+  *sig_len = out_len;
+
+  if (verbose) {
+    LOG ("ML-DSA-87 signature generation succeeded, signature length: %zu\n", *sig_len);
+  }
+
+  result = crypto_ok;
+  goto EXIT;
+
+OPENSSL_ERROR:
+  ERR_load_crypto_strings ();
+  ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
+  ERR_free_strings ();
+EXIT:
+  if (mctx != NULL) {
+    EVP_MD_CTX_free (mctx);
+  }
+
+  if (pkey != NULL) {
+    EVP_PKEY_free (pkey);
+  }
+
+  if (prv_buf != NULL) {
+    memset (prv_buf, 0, prv_len);
+    free (prv_buf);
+  }
+
+  return result;
 }
 
 bool
@@ -1768,14 +1905,67 @@ crypto_mldsa_verify_signature_internal (
   size_t               pubkey_len
   )
 {
-  (void)msg;
-  (void)msg_len;
-  (void)signature;
-  (void)sig_len;
-  (void)public_key;
-  (void)pubkey_len;
-  printf ("ERROR: ML-DSA verification is not supported with OpenSSL backend\n");
-  return false;
+  EVP_PKEY    *pkey   = NULL;
+  EVP_MD_CTX  *mctx   = NULL;
+  bool        result  = false;
+  int         vr;
+
+  LOG ("[mldsa_verify_signature]\n");
+
+  (void)sig_len;    /* ML-DSA-87 signature has a fixed size */
+  (void)pubkey_len; /* ML-DSA-87 pubkey has a fixed size */
+
+  /* Create EVP_PKEY from raw public key bytes */
+  pkey = EVP_PKEY_new_raw_public_key_ex (NULL, "ML-DSA-87", NULL, public_key, pubkey_len);
+  if (pkey == NULL) {
+    ERROR ("ERROR: Failed to import ML-DSA-87 public key\n");
+    goto OPENSSL_ERROR;
+  }
+
+  /* One-shot DigestVerify (ML-DSA has no separate hash step, md=NULL) */
+  mctx = EVP_MD_CTX_new ();
+  if (mctx == NULL) {
+    ERROR ("ERROR: Failed to allocate EVP_MD_CTX\n");
+    goto EXIT;
+  }
+
+  if (EVP_DigestVerifyInit_ex (mctx, NULL, NULL, NULL, NULL, pkey, NULL) <= 0) {
+    ERROR ("ERROR: EVP_DigestVerifyInit_ex failed for ML-DSA-87\n");
+    goto OPENSSL_ERROR;
+  }
+
+  vr = EVP_DigestVerify (mctx, signature, sig_len, msg, msg_len);
+  if (vr < 0) {
+    ERROR ("ERROR: EVP_DigestVerify error for ML-DSA-87\n");
+    goto OPENSSL_ERROR;
+  }
+
+  if (vr != 1) {
+    ERROR ("ERROR: ML-DSA-87 signature verification failed (invalid signature)\n");
+    goto EXIT;
+  }
+
+  if (verbose) {
+    LOG ("ML-DSA-87 signature verification succeeded\n");
+  }
+
+  result = true;
+  goto EXIT;
+
+OPENSSL_ERROR:
+  ERR_load_crypto_strings ();
+  ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
+  ERR_free_strings ();
+EXIT:
+  if (mctx != NULL) {
+    EVP_MD_CTX_free (mctx);
+  }
+
+  if (pkey != NULL) {
+    EVP_PKEY_free (pkey);
+  }
+
+  return result;
 }
 
 #endif /* !USE_IPPC */

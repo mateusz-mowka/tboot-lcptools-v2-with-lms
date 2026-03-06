@@ -159,6 +159,7 @@ lcp_list_t *read_policy_list_file(const char *file, bool fail_ok, bool *no_sigbl
         return pollist;
     }
     DISPLAY("ERROR: unknown version.\n");
+    free(pollist);
     return NULL; //if it got here, there must've been an error
 }
 
@@ -1036,32 +1037,27 @@ bool rsa_sign_list2_data(lcp_policy_list_t2 *pollist, const char *privkey_file,
         return false;
     }
 
-    data_to_sign = allocate_sized_buffer(get_lcp_hash_size(hash_alg));
+    /* Pass raw list data to crypto_rsa_sign — each backend hashes internally.
+     * This avoids a double-hash in the IPPC backend (whose _rmf functions
+     * hash the input message themselves). */
+    data_to_sign = allocate_sized_buffer(list_data_len);
     if (data_to_sign == NULL) {
         ERROR("Error failed to allocate buffer.\n");
         status = false;
         goto END;
     }
     if (verbose) {
-        DISPLAY("Data to hash:\n");
+        DISPLAY("Data to sign (raw):\n");
         print_hex("       ", (const unsigned char *) pollist, list_data_len);
     }
     signature_block->size = key_size;
-    data_to_sign->size = get_lcp_hash_size(hash_alg);
-    status = hash_buffer((const unsigned char *) pollist, list_data_len,
-                                    (tb_hash_t *) data_to_sign->data, hash_alg);
-    if ( !status ) {
-        ERROR("Error: failed to hash list\n");
-        //status is false
-        goto END;
-    }
+    data_to_sign->size = list_data_len;
+    memcpy_s((void *) data_to_sign->data, data_to_sign->size,
+             (const void *) pollist, list_data_len);
 
-    if ( verbose ) {
-        LOG("digest:\n");
-        print_hex("", (const void *) data_to_sign->data, get_hash_size(hash_alg));
-    }
-
-    c_status = crypto_rsa_sign((crypto_sized_buffer *)signature_block,(crypto_sized_buffer *) data_to_sign, pollist->sig_alg, hash_alg, privkey_file);
+    crypto_sized_buffer c_sig_block = { .size = signature_block->size, .data = signature_block->data };
+    crypto_sized_buffer c_data_to_sign = { .size = data_to_sign->size, .data = data_to_sign->data };
+    c_status = crypto_rsa_sign(&c_sig_block, &c_data_to_sign, pollist->sig_alg, hash_alg, privkey_file);
 
     status = (c_status == crypto_ok) ? true : false;
 
@@ -1134,6 +1130,7 @@ lcp_policy_list_t2 *policy_list2_ec_sign_init(lcp_policy_list_t2 *pollist,
     if (!result) {
         ERROR("Error: failed to sign list data.\n");
         free(sig);
+        free(pollist);
         return NULL;
     }
     free(sig);

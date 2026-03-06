@@ -11,6 +11,11 @@ crypto_hash_buffer (
   uint16_t             hash_alg
   )
 {
+  if ((NULL == buf) || (NULL == hash)) {
+    fprintf (stderr, "crypto_hash_buffer called with NULL parameter\n");
+    return crypto_nullptr_error;
+  }
+
   return crypto_hash_buffer_internal (buf, size, hash, hash_alg);
 }
 
@@ -22,12 +27,12 @@ crypto_read_rsa_pubkey (
   )
 {
   if (NULL == file) {
-    printf ("crypto_read_rsa_pubkey called with filename == NULL");
+    fprintf (stderr, "crypto_read_rsa_pubkey called with filename == NULL\n");
     return crypto_nullptr_error;
   }
 
   if (NULL == keysize) {
-    printf ("crypto_read_rsa_pubkey called with *keysize == NULL");
+    fprintf (stderr, "crypto_read_rsa_pubkey called with *keysize == NULL\n");
     return crypto_nullptr_error;
   }
 
@@ -42,6 +47,11 @@ crypto_read_ecdsa_pubkey (
   size_t      *key_size_bytes
   )
 {
+  if ((NULL == file) || (NULL == qx) || (NULL == qy) || (NULL == key_size_bytes)) {
+    fprintf (stderr, "crypto_read_ecdsa_pubkey called with NULL parameter\n");
+    return crypto_nullptr_error;
+  }
+
   return crypto_read_ecdsa_pubkey_internal (file, qx, qy, key_size_bytes);
 }
 
@@ -54,6 +64,11 @@ crypto_rsa_sign (
   const char           *privkey_file
   )
 {
+  if ((NULL == sig_block) || (NULL == digest) || (NULL == privkey_file)) {
+    fprintf (stderr, "crypto_rsa_sign called with NULL parameter\n");
+    return crypto_nullptr_error;
+  }
+
   return crypto_rsa_sign_internal (sig_block, digest, sig_alg, hash_alg, privkey_file);
 }
 
@@ -67,6 +82,11 @@ crypto_verify_rsa_signature (
   uint16_t             list_ver
   )
 {
+  if ((NULL == data) || (NULL == pubkey) || (NULL == signature)) {
+    fprintf (stderr, "crypto_verify_rsa_signature called with NULL parameter\n");
+    return false;
+  }
+
   return crypto_verify_rsa_signature_internal (data, pubkey, signature, hashAlg, sig_alg, list_ver);
 }
 
@@ -81,6 +101,12 @@ crypto_verify_ec_signature (
   uint16_t             hashalg
   )
 {
+  if ((NULL == data) || (NULL == pubkey_x) || (NULL == pubkey_y) ||
+      (NULL == sig_r) || (NULL == sig_s)) {
+    fprintf (stderr, "crypto_verify_ec_signature called with NULL parameter\n");
+    return false;
+  }
+
   return crypto_verify_ec_signature_internal (data, pubkey_x, pubkey_y, sig_r, sig_s, sigalg, hashalg);
 }
 
@@ -94,6 +120,11 @@ crypto_ec_sign_data (
   const char           *privkey_file
   )
 {
+  if ((NULL == data) || (NULL == r) || (NULL == s) || (NULL == privkey_file)) {
+    fprintf (stderr, "crypto_ec_sign_data called with NULL parameter\n");
+    return false;
+  }
+
   return crypto_ec_sign_data_internal (data, r, s, sigalg, hashalg, privkey_file);
 }
 
@@ -108,7 +139,7 @@ crypto_lms_verify_signature (
   )
 {
   if ((NULL == msg) || (NULL == signature) || (NULL == public_key)) {
-    printf ("crypto_lms_verify_signature called with NULL parameter\n");
+    fprintf (stderr, "crypto_lms_verify_signature called with NULL parameter\n");
     return false;
   }
 
@@ -127,7 +158,7 @@ crypto_lms_sign_data (
   )
 {
   if ((NULL == msg) || (NULL == signature) || (NULL == sig_len) || (NULL == privkey_file)) {
-    printf ("crypto_lms_sign_data called with NULL parameter\n");
+    fprintf (stderr, "crypto_lms_sign_data called with NULL parameter\n");
     return crypto_nullptr_error;
   }
 
@@ -141,7 +172,7 @@ crypto_mldsa_keygen (
   )
 {
   if ((NULL == pubkey_file) || (NULL == privkey_file)) {
-    printf ("crypto_mldsa_keygen called with NULL parameter\n");
+    fprintf (stderr, "crypto_mldsa_keygen called with NULL parameter\n");
     return false;
   }
 
@@ -159,7 +190,7 @@ crypto_mldsa_verify_signature (
   )
 {
   if ((NULL == msg) || (NULL == signature) || (NULL == public_key)) {
-    printf ("crypto_mldsa_verify_signature called with NULL parameter\n");
+    fprintf (stderr, "crypto_mldsa_verify_signature called with NULL parameter\n");
     return false;
   }
 
@@ -176,7 +207,7 @@ crypto_mldsa_sign_data (
   )
 {
   if ((NULL == msg) || (NULL == signature) || (NULL == sig_len) || (NULL == privkey_file)) {
-    printf ("crypto_mldsa_sign_data called with NULL parameter\n");
+    fprintf (stderr, "crypto_mldsa_sign_data called with NULL parameter\n");
     return crypto_nullptr_error;
   }
 

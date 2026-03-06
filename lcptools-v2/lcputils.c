@@ -53,7 +53,6 @@
 #include "polelt_plugin.h"
 #include "lcputils.h"
 #include "pollist2.h"
-#include "hash-sigs/common_defs.h"
 #include "crypto.h"
 
 void ERROR(const char *fmt, ...)
@@ -361,7 +360,7 @@ uint16_t str_to_lcp_hash_mask(const char *str)
         return TPM_ALG_MASK_SHA512;
     else if (strcmp(str,"sm3") == 0)
         return TPM_ALG_MASK_SM3_256;
-    else if(strncmp(str, "0X", 2) || strncmp(str, "0x", 2))
+    else if(strncmp(str, "0X", 2) == 0 || strncmp(str, "0x", 2) == 0)
         return strtoul(str, NULL, 0);
     else
         return  TPM_ALG_MASK_NULL;
@@ -423,7 +422,7 @@ uint32_t str_to_sig_alg_mask(const char *str, const uint16_t version, size_t siz
         else if (strncmp(str, "mldsa", size) == 0) {
             return SIGN_ALG_MASK_MLDSA_87;
         }
-        else if(strncmp(str, "0X", 2) || strncmp(str, "0x", 2)){
+        else if(strncmp(str, "0X", 2) == 0 || strncmp(str, "0x", 2) == 0){
             return strtoul(str, NULL, 0);
         }
         else{
@@ -530,7 +529,10 @@ Out: true/false on verification success or failure
         return false;
     }
 
-    return crypto_verify_rsa_signature((crypto_sized_buffer*)data, (crypto_sized_buffer*)pubkey, (crypto_sized_buffer*)signature, hashAlg, sig_alg, list_ver);
+    crypto_sized_buffer c_data = { .size = data->size, .data = data->data };
+    crypto_sized_buffer c_pubkey = { .size = pubkey->size, .data = pubkey->data };
+    crypto_sized_buffer c_signature = { .size = signature->size, .data = signature->data };
+    return crypto_verify_rsa_signature(&c_data, &c_pubkey, &c_signature, hashAlg, sig_alg, list_ver);
 }
 
 bool verify_ec_signature(sized_buffer *data, sized_buffer *pubkey_x, 
@@ -578,8 +580,13 @@ bool verify_ec_signature(sized_buffer *data, sized_buffer *pubkey_x,
         return false;
     }
 
-    return crypto_verify_ec_signature((crypto_sized_buffer*)data, (crypto_sized_buffer*)pubkey_x, (crypto_sized_buffer*)pubkey_y,
-    (crypto_sized_buffer*) sig_r, (crypto_sized_buffer*) sig_s, sigalg, hashalg);
+    crypto_sized_buffer c_data = { .size = data->size, .data = data->data };
+    crypto_sized_buffer c_pubkey_x = { .size = pubkey_x->size, .data = pubkey_x->data };
+    crypto_sized_buffer c_pubkey_y = { .size = pubkey_y->size, .data = pubkey_y->data };
+    crypto_sized_buffer c_sig_r = { .size = sig_r->size, .data = sig_r->data };
+    crypto_sized_buffer c_sig_s = { .size = sig_s->size, .data = sig_s->data };
+    return crypto_verify_ec_signature(&c_data, &c_pubkey_x, &c_pubkey_y,
+    &c_sig_r, &c_sig_s, sigalg, hashalg);
 }
 
 bool ec_sign_data(sized_buffer *data, sized_buffer *r, sized_buffer *s, uint16_t sigalg,
@@ -611,7 +618,10 @@ bool ec_sign_data(sized_buffer *data, sized_buffer *r, sized_buffer *s, uint16_t
         return false;
     }
 
-    return crypto_ec_sign_data((crypto_sized_buffer*) data, (crypto_sized_buffer*) r, (crypto_sized_buffer*) s, sigalg, hashalg, privkey_file);
+    crypto_sized_buffer c_data = { .size = data->size, .data = data->data };
+    crypto_sized_buffer c_r = { .size = r->size, .data = r->data };
+    crypto_sized_buffer c_s = { .size = s->size, .data = s->data };
+    return crypto_ec_sign_data(&c_data, &c_r, &c_s, sigalg, hashalg, privkey_file);
 }
 
 void buffer_reverse_byte_order(uint8_t *buffer, size_t length)

@@ -250,6 +250,7 @@ static dma_protected_range_t get_dma_protect_info(uint8_t range /*HI or LO*/, os
     heap_tpr_req_element_t *tpr_req_elt = NULL;
 
     if (range != LO_RANGE && range != HI_RANGE) {
+        printk(TBOOT_ERR"get_dma_protect_info: Invalid range parameter (%u), must be LO_RANGE (0) or HI_RANGE (1)\n", range);
         return range_info;
     }
 
@@ -304,8 +305,10 @@ static bool reserve_dma_protected_delta_mem(uint64_t min_lo_ram, uint64_t max_lo
         length = max_lo_ram - base;
         printk(TBOOT_INFO"reserving 0x%Lx - 0x%Lx, which was truncated for DMA protection\n",
                base, base + length);
-        if ( !e820_reserve_ram(base, length) )
+        if ( !e820_reserve_ram(base, length) ) {
+            printk(TBOOT_ERR"reserve_dma_protected_delta_mem: Failed to reserve low RAM e820 range (0x%Lx - 0x%Lx)\n", base, base + length);
             return false;
+        }
         if (!efi_memmap_reserve(base, length)) {
            return false;
         }
@@ -316,10 +319,13 @@ static bool reserve_dma_protected_delta_mem(uint64_t min_lo_ram, uint64_t max_lo
         length = max_hi_ram - base;
         printk(TBOOT_INFO"reserving 0x%Lx - 0x%Lx, which was truncated for DMA protection\n",
                base, base + length);
-        if ( !e820_reserve_ram(base, length) )
+        if ( !e820_reserve_ram(base, length) ) {
+            printk(TBOOT_ERR"reserve_dma_protected_delta_mem: Failed to reserve high RAM e820 range (0x%Lx - 0x%Lx)\n", base, base + length);
             return false;
+        }
         if (!efi_memmap_reserve(base, length)) {
-           return false;
+            printk(TBOOT_ERR"reserve_dma_protected_delta_mem: Failed to reserve high RAM EFI memory map (0x%Lx - 0x%Lx)\n", base, base + length);
+            return false;
         }
     }
 
@@ -355,6 +361,7 @@ static bool verify_dma_protection(txt_heap_t *txt_heap)
     }
     else {
         if ( !get_ram_ranges(&min_lo_ram, &max_lo_ram, &min_hi_ram, &max_hi_ram) ) {
+            printk(TBOOT_ERR"verify_dma_protection: Failed to get RAM ranges from e820 table\n");
             return false;
         }
         
@@ -442,11 +449,11 @@ void set_dma_protection(os_sinit_data_t *os_sinit_data,
     heap_tpr_req_element_t *tpr_req_elt = NULL;
     tpr_req_elt = get_tpr_req_element(os_sinit_data);
     if (g_tpr_support == true && tpr_req_elt == NULL) {
-        printk(TBOOT_ERR"failed to read TPR_REQ_ELEMENT from TXT HEAP.\n");
+        printk(TBOOT_ERR"set_dma_protection: Failed to read TPR_REQ_ELEMENT from TXT HEAP\n");
         return;
     }
     if (g_tpr_support == true && tpr_req_elt->tpr_cnt != 2) {
-        printk(TBOOT_ERR"TPR_REQ_ELEMENT count is not 2.\n");
+        printk(TBOOT_ERR"set_dma_protection: TPR_REQ_ELEMENT count is %u, expected 2\n", tpr_req_elt->tpr_cnt);
         return;
     }
     min_lo_ram &= ~0x1fffffULL;
@@ -477,10 +484,13 @@ tb_error_t txt_verify_platform(void)
 
     /* check TXT supported */
     err = supports_txt();
-    if ( err != TB_ERR_NONE )
+    if ( err != TB_ERR_NONE ) {
+        printk(TBOOT_ERR"txt_verify_platform: TXT support check failed with error code %d\n", err);
         return err;
+    }
 
     if ( !vtd_bios_enabled() ) {
+        printk(TBOOT_ERR"txt_verify_platform: VT-d is not enabled by BIOS\n");
         return TB_ERR_VTD_NOT_SUPPORTED;
     }
 
@@ -494,8 +504,10 @@ tb_error_t txt_verify_platform(void)
 
     /* verify BIOS to OS data */
     txt_heap = get_txt_heap();
-    if ( !verify_bios_data(txt_heap) )
+    if ( !verify_bios_data(txt_heap) ) {
+        printk(TBOOT_ERR"txt_verify_platform: Failed to verify BIOS data in TXT heap\n");
         return TB_ERR_TXT_NOT_SUPPORTED;
+    }
 
     return TB_ERR_NONE;
 }
@@ -517,16 +529,22 @@ tb_error_t txt_post_launch_verify_platform(void)
      */
     txt_heap = get_txt_heap();
 
-    if ( !verify_txt_heap(txt_heap, false) )
+    if ( !verify_txt_heap(txt_heap, false) ) {
+        printk(TBOOT_ERR"txt_post_launch_verify_platform: Failed to verify TXT heap\n");
         return TB_ERR_POST_LAUNCH_VERIFICATION;
+    }
 
     /* verify the saved MTRRs */
-    if ( !verify_saved_mtrrs(txt_heap) )
+    if ( !verify_saved_mtrrs(txt_heap) ) {
+        printk(TBOOT_ERR"txt_post_launch_verify_platform: Failed to verify saved MTRRs\n");
         return TB_ERR_POST_LAUNCH_VERIFICATION;
+    }
 
     /* verify that VT-d PMRs were really set as required */
-    if ( !verify_dma_protection(txt_heap) )
+    if ( !verify_dma_protection(txt_heap) ) {
+        printk(TBOOT_ERR"txt_post_launch_verify_platform: Failed to verify DMA protection\n");
         return TB_ERR_POST_LAUNCH_VERIFICATION;
+    }
 
     return TB_ERR_NONE;
 }
@@ -538,8 +556,10 @@ bool verify_e820_map(sinit_mdr_t* mdrs_base, uint32_t num_mdrs)
     uint64_t base, length;
     uint32_t i, j, pos;
 
-    if ( (mdrs_base == NULL) || (num_mdrs == 0) )
+    if ( (mdrs_base == NULL) || (num_mdrs == 0) ) {
+        printk(TBOOT_ERR"verify_e820_map: Invalid parameters - mdrs_base=%p, num_mdrs=%u\n", mdrs_base, num_mdrs);
         return false;
+    }
 
     /* sort mdrs */
     for( i = 0; i < num_mdrs; i++ ) {
@@ -570,8 +590,10 @@ bool verify_e820_map(sinit_mdr_t* mdrs_base, uint32_t num_mdrs)
         if ( mdr_entry->mem_type > MDR_MEMTYPE_GOOD )
             continue;
         length = mdr_entry->base - base;
-        if ( (length > 0) && (!e820_reserve_ram(base, length)) )
+        if ( (length > 0) && (!e820_reserve_ram(base, length)) ) {
+            printk(TBOOT_ERR"verify_e820_map: Failed to reserve e820 RAM gap (0x%Lx - 0x%Lx)\n", base, base + length);
             return false;
+        }
         base = mdr_entry->base + mdr_entry->length;
     }
 
@@ -660,7 +682,7 @@ static bool verify_mseg(uint64_t smm_mon_ctl)
         return true;
     }
 
-    printk(TBOOT_ERR"but different MSEG headers\n");
+    printk(TBOOT_ERR"verify_mseg: Different MSEG headers detected (mseg_base=%p, txt_mseg_base=%p)\n", mseg_base, txt_mseg_base);
     return false;
 }
 
@@ -676,14 +698,14 @@ bool verify_stm(unsigned int cpuid)
 
         /* verify ILP's MSEG == TXT.MSEG.BASE */
         if ( !verify_mseg(ilp_smm_mon_ctl) ) {
-            printk(TBOOT_ERR"verifying ILP is opt-out or has the same MSEG header with TXT.MSEG.BASE failed.\n");
+            printk(TBOOT_ERR"verify_stm: Verifying ILP (cpu %u) is opt-out or has the same MSEG header with TXT.MSEG.BASE failed\n", cpuid);
             return false;
         }
     }
     else {
         /* verify ILP's SMM MSR == RLP's SMM MSR */
         if ( smm_mon_ctl != ilp_smm_mon_ctl ) {
-            printk(TBOOT_ERR" : verifying ILP's MSR_IA32_SMM_MONITOR_CTL with cpu %u failed.\n", cpuid);
+            printk(TBOOT_ERR"verify_stm: RLP MSR_IA32_SMM_MONITOR_CTL (0x%Lx) doesn't match ILP's (0x%Lx) on cpu %u\n", smm_mon_ctl, ilp_smm_mon_ctl, cpuid);
             return false;
         }
         /* since the RLP's MSR is the same. No need to verify MSEG header */

@@ -485,8 +485,13 @@ int main(int argc, char* argv[])
         size_t hash_size = mle_hdr->mle_end_off - mle_hdr->mle_start_off;
         void *hash_buf = exp_start + mle_hdr->mle_start_off;
         lcp_hash_t2 *hash = malloc(sizeof(lcp_hash_t2));
+        if ( hash == NULL ) {
+            LOG("not enough memory for hash\n");
+            goto out;
+        }
         hash_buffer(hash_buf, hash_size, (tb_hash_t *)hash, alg_type);
         print_hash((tb_hash_t *)hash, alg_type);
+        free(hash);
     }
 
     else if ( cmd == 'V' ) /* --version */ {

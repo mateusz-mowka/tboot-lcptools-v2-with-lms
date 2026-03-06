@@ -52,7 +52,8 @@ typedef enum {
   crypto_file_io_error,
   crypto_invalid_key,
   crypto_buffer_too_small,
-  crypto_crypto_operation_fail
+  crypto_crypto_operation_fail,
+  crypto_not_supported
 } crypto_status;
 
 typedef struct {

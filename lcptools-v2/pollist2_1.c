@@ -49,7 +49,6 @@
 #include "lcputils.h"
 #include "pollist2_1.h"
 #include "polelt.h"
-#include "hash-sigs/hss.h"
 #include "crypto.h"
 
 //Function prototypes:
@@ -131,6 +130,8 @@ lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base
     sig = create_empty_signature_2_1(key_alg);
     if (sig == NULL || new_pollist == NULL ) {
         ERROR("ERROR: unable to create signature.\n");
+        free(sig);
+        free(new_pollist);
         return NULL;
     }
     //Remember that Revocation Counter size is added to to key signature offset
@@ -138,6 +139,8 @@ lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base
     status = memcpy_s(new_pollist, key_signature_offset, raw_data, key_signature_offset);
     if (status != EOK) {
         ERROR("Error: failed to copy list data.\n");
+        free(sig);
+        free(new_pollist);
         return NULL;
     }
 
@@ -163,6 +166,7 @@ lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base
         if (!get_ecc_signature_2_1_data(sig, (void *) raw_data+sig_offset_in_data)) {
             ERROR("ERROR: failed to get signature data.\n");
             free(sig);
+            free(new_pollist);
             return NULL;
         }
         new_pollist->KeySignatureOffset = 0x0; // Reset keysignatureoffset
@@ -177,6 +181,7 @@ lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base
         //LMS signature is fixed size, so we can just copy it to the new list
         memcpy_s((void *) sig, sizeof(lms_key_and_signature) + sizeof(uint16_t), (const void *) raw_data + key_signature_offset - offsetof(lcp_signature_2_1, KeyAndSignature),
                  sizeof(lms_key_and_signature) + sizeof(uint16_t));
+        new_pollist->KeySignatureOffset = 0x0; // Reset keysignatureoffset
         new_pollist = add_tpm20_signature_2_1(new_pollist, sig, TPM_ALG_LMS);
         if (new_pollist == NULL ) {
             ERROR("ERROR: Cannot add TPM_signature_2_1");
@@ -188,6 +193,7 @@ lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base
         //ML-DSA signature is fixed size, so we can just copy it to the new list
         memcpy_s((void *) sig, sizeof(mldsa_key_and_signature) + sizeof(uint16_t), (const void *) raw_data + key_signature_offset - offsetof(lcp_signature_2_1, KeyAndSignature),
                  sizeof(mldsa_key_and_signature) + sizeof(uint16_t));
+        new_pollist->KeySignatureOffset = 0x0; // Reset keysignatureoffset
         new_pollist = add_tpm20_signature_2_1(new_pollist, sig, TCG_ALG_MLDSA);
         if (new_pollist == NULL ) {
             ERROR("ERROR: Cannot add TPM_signature_2_1");
@@ -318,6 +324,7 @@ Out: Pointer to an empty structure
         return sig;
     }
     else {
+        free(sig);
         return NULL;
     }
 }
@@ -372,6 +379,7 @@ Out: Pointer to empty structure
         return sig;
     }
     else {
+        free(sig);
         return NULL;
     }
 }
@@ -395,6 +403,10 @@ Out: Size
         return sizeof(sig->RevocationCounter) + sizeof(rsa_key_and_signature);
     case TPM_ALG_ECC:
         return sizeof(sig->RevocationCounter) + sizeof(ecc_key_and_signature);
+    case TPM_ALG_LMS:
+        return sizeof(sig->RevocationCounter) + sizeof(lms_key_and_signature);
+    case TCG_ALG_MLDSA:
+        return sizeof(sig->RevocationCounter) + sizeof(mldsa_key_and_signature);
     default:
         break;
     }
@@ -1975,24 +1987,17 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
         print_hex("       ", (const unsigned char *) pollist, pollist->KeySignatureOffset);
     }
 
-    digest = allocate_sized_buffer(get_lcp_hash_size(hashalg));
+    /* Pass raw list data to crypto_rsa_sign — each backend hashes internally.
+     * This avoids a double-hash in the IPPC backend (whose _rmf functions
+     * hash the input message themselves). */
+    digest = allocate_sized_buffer(pollist->KeySignatureOffset);
     if (digest == NULL) {
         ERROR("Error: failed to allocate buffer.\n");
         goto ERROR;
     }
-    digest->size = get_lcp_hash_size(hashalg);
-
-    status = hash_buffer((const unsigned char *) pollist, pollist->KeySignatureOffset,
-                                           (tb_hash_t *) digest->data, hashalg);
-    if ( !status ) {
-        ERROR("Error: failed to hash list\n");
-        goto ERROR;
-    }
-
-    if ( verbose ) {
-        LOG("digest:\n");
-        print_hex("", &digest, get_hash_size(hashalg));
-    }
+    digest->size = pollist->KeySignatureOffset;
+    memcpy_s((void *) digest->data, digest->size,
+             (const void *) pollist, pollist->KeySignatureOffset);
 
     //Allocate mem for signature block:
     sig_block = allocate_sized_buffer(keysize);
@@ -2002,7 +2007,9 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     }
     sig_block->size = keysize;
 
-    c_status = crypto_rsa_sign((crypto_sized_buffer *)sig_block,(crypto_sized_buffer *) digest, sig_alg, hashalg, privkey_file);
+    crypto_sized_buffer c_sig_block = { .size = sig_block->size, .data = sig_block->data };
+    crypto_sized_buffer c_digest = { .size = digest->size, .data = digest->data };
+    c_status = crypto_rsa_sign(&c_sig_block, &c_digest, sig_alg, hashalg, privkey_file);
 
     status = (c_status == crypto_ok) ? true : false;
 
@@ -2112,7 +2119,7 @@ static lcp_signature_2_1 *read_lms_pubkey_file_2_1(const char *pubkey_file)
     }
     //Cisco hash-sigs tool adds "levels" field to the key, we need to skip it
     //but first make sure the key size is correct
-    fseek(fp, SEEK_SET, SEEK_END);
+    fseek(fp, 0, SEEK_END);
     if (ftell(fp) != LMS_MAX_PUBKEY_SIZE + sizeof(uint32_t)) {
         ERROR("ERROR: incorrect LMS key size.\n");
         fclose(fp);
@@ -2271,28 +2278,31 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     lcp_signature_2_1 *sig = NULL;
     uint8_t* lms_sig = NULL;
     bool status = false;
+    char *privkey_file_no_ext = NULL;
+    char *aux_filename = NULL;
+    size_t len_aux_data = 0;
+    void *aux_data = NULL;
 
-    char *privkey_file_no_ext = strip_fname_extension(privkey_file);
-
-    size_t aux_filename_len = strlen(privkey_file_no_ext) + sizeof (".prv" ) + 1;
-    char *aux_filename = malloc(aux_filename_len);
-    
-    if (aux_filename == NULL) {
-        ERROR( "Error during malloc, aux_filename\n" );
-        return false;
-    }
-
-    sprintf( aux_filename, "%s.aux", privkey_file_no_ext );
-    
     DISPLAY("[lms_sign_list_2_1_data]\n");
     
     if (pollist == NULL || privkey_file == NULL) {
         ERROR("ERROR: lcp policy list or private key file is not defined.\n");
         goto CLEANUP;
     }
+
+    privkey_file_no_ext = strip_fname_extension(privkey_file);
+
+    size_t aux_filename_len = strlen(privkey_file_no_ext) + sizeof (".prv" ) + 1;
+    aux_filename = malloc(aux_filename_len);
     
-    size_t len_aux_data = 0;
-    void *aux_data = read_file( aux_filename, &len_aux_data, false);
+    if (aux_filename == NULL) {
+        ERROR( "Error during malloc, aux_filename\n" );
+        goto CLEANUP;
+    }
+
+    sprintf( aux_filename, "%s.aux", privkey_file_no_ext );
+    
+    aux_data = read_file( aux_filename, &len_aux_data, false);
     if (aux_data != NULL) {
         DISPLAY( "Processing with aux data, %s \n", aux_filename);
     } else {
@@ -2356,6 +2366,8 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     }
 
 CLEANUP:
+    if (privkey_file_no_ext != NULL)
+        free(privkey_file_no_ext);
     if (aux_filename != NULL)
         free(aux_filename);
     if(aux_data != NULL)
@@ -2502,6 +2514,7 @@ lcp_policy_list_t2_1 *policy_list2_1_rsa_sign(lcp_policy_list_t2_1 *pollist,
         free(pollist);
         return NULL;
     }
+    free(sig);
     return pollist;
 }
 
@@ -2542,6 +2555,7 @@ static lcp_policy_list_t2_1 *policy_list2_1_ec_sign(lcp_policy_list_t2_1 *pollis
         free(pollist);
         return NULL;
     }
+    free(sig);
     return pollist;
 }
 
@@ -2581,6 +2595,7 @@ static lcp_policy_list_t2_1 *policy_list2_1_lms_sign(lcp_policy_list_t2_1 *polli
         return NULL;
     }
 
+    free(sig);
     return pollist;
 }
 
@@ -2620,6 +2635,7 @@ static lcp_policy_list_t2_1 *policy_list2_1_mldsa_sign(lcp_policy_list_t2_1 *pol
         return NULL;
     }
 
+    free(sig);
     return pollist;
 }
 

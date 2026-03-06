@@ -12,24 +12,13 @@ ROOTDIR ?= $(CURDIR)/..
 include $(ROOTDIR)/Config.mk
 
 
-ifndef USE_IPPC
-LCP2_TARGETS := \
-	hash_sigs	\
-	lcp2_mlehash    \
-	lcp2_crtpol    \
-	lcp2_crtpollist \
-	lcp2_crtpolelt  \
-
-else
 LCP2_TARGETS := \
 	lcp2_mlehash    \
 	lcp2_crtpol    \
 	lcp2_crtpollist \
-	lcp2_crtpolelt  \
+	lcp2_crtpolelt
 
-endif
-
-# Build IPPC library if USE_IPPC is set (needed for standalone builds)
+# Build IPPC library if USE_IPPC is set
 ifdef USE_IPPC
 IPPC_DEP := ippc_lib
 else
@@ -69,9 +58,6 @@ $(INST_TARGET) : $(notdir $(INST_TARGET))
 
 clean :
 	rm -f *~ *.a *.so *.o *.rpm $(DEP_FILES) $(LCP2_TARGETS)
-ifndef USE_IPPC
-	$(MAKE) -C hash-sigs clean
-endif
 
 mrproper : clean
 
@@ -99,31 +85,27 @@ LIBS += -L$(ROOTDIR)/lcptools-v2/ippc/cryptography-primitives/build/.build/RELEA
 LDFLAGS += -Wl,-rpath,$(ROOTDIR)/lcptools-v2/ippc/cryptography-primitives/build/.build/RELEASE/lib
 endif
 
-ifndef USE_IPPC
-HASH_SIGS := ./hash-sigs/hss_lib_thread.a ./hash-sigs/hss_verify.a
+
+ifdef USE_IPPC
+LCP_CRYPTO_OBJ := crypto_ippc.o
 else
-HASH_SIGS :=
+LCP_CRYPTO_OBJ := crypto_OpenSSL.o
 endif
 
-$(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o crypto.o crypto_OpenSSL.o crypto_ippc.o
+$(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o crypto.o $(LCP_CRYPTO_OBJ)
 	$(AR) rc $@ $^
 
-lcp2_crtpolelt : crtpolelt.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)
+lcp2_crtpolelt : crtpolelt.o $(POLELT_PLUGINS) $(LCP2_LIB)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
-lcp2_crtpollist : crtpollist.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)
+lcp2_crtpollist : crtpollist.o $(POLELT_PLUGINS) $(LCP2_LIB)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
-lcp2_crtpol : crtpol.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)
+lcp2_crtpol : crtpol.o $(POLELT_PLUGINS) $(LCP2_LIB)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
-lcp2_mlehash : mlehash.o $(LCP2_LIB) $(HASH_SIGS)
+lcp2_mlehash : mlehash.o $(LCP2_LIB)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
-
-ifndef USE_IPPC
-hash_sigs : 
-	$(MAKE) -C hash-sigs
-endif
 
 #
 # implicit rules

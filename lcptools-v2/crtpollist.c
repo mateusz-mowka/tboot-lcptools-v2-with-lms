@@ -269,6 +269,7 @@ static int create(void)
         }
         if ( !verify_policy_element(elt, len) ) {
             free(pollist);
+            free(elt);
             return 1;
         }
         if (major_ver == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION))
@@ -524,6 +525,7 @@ static int show(void)
         LOG("show: version == 0x0300\n");
         DISPLAY("policy list file: %s\n", files[0]);
         display_tpm20_policy_list_2_1("", pollist, false);
+        free(pollist);
         return 0;
     }
     return 0;
