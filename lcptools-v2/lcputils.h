@@ -51,7 +51,6 @@
 #define UNUSED(x) (void)(x)
 #endif
 
-#include <openssl/evp.h>
 
 //Helper struct to pass user input data to functions in pollist2 and pollist2_1
 typedef struct sign_user_input {
@@ -105,15 +104,11 @@ size_t get_lcp_hash_size(uint16_t hash_alg);
 extern void buffer_reverse_byte_order(uint8_t *buffer, size_t length);
 extern bool ec_sign_data(sized_buffer *data, sized_buffer *r, sized_buffer *s, 
                     uint16_t hashalg, uint16_t sigalg, const char *privkey_file);
-extern bool rsa_ssa_pss_sign(sized_buffer *sig_block, sized_buffer *data,
-        uint16_t sig_alg, uint16_t hash_alg, EVP_PKEY_CTX *private_key_context);
 bool verify_ec_signature(sized_buffer *data, sized_buffer *pubkey_x, 
                          sized_buffer *pubkey_y, sized_buffer *sig_r,
                          sized_buffer *sig_s, uint16_t sigalg, uint16_t hashalg);
 bool verify_rsa_signature(sized_buffer *data, sized_buffer *pubkey, sized_buffer *signature,
                           uint16_t hashAlg, uint16_t sig_alg, uint16_t list_ver);
-EVP_PKEY_CTX *rsa_get_sig_ctx(const char *key_path, uint16_t key_size_bytes);
-unsigned char *der_encode_sig_comps(sized_buffer *sig_r, sized_buffer *sig_s, int *length);
 char *strip_fname_extension(const char *fname);
 void print_xdr_lms_key_info(const lms_xdr_key_data *key);
 void print_lms_signature(const lms_signature_block *sig);

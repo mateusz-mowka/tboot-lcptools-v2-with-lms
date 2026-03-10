@@ -41,17 +41,6 @@
 #include <string.h>
 #include <safe_lib.h>
 #define PRINT printf
-#include <openssl/rsa.h>
-#include <openssl/pem.h>
-#include <openssl/err.h>
-#include <openssl/bn.h>
-#include <openssl/ecdsa.h>
-#include <openssl/ec.h>
-#include <openssl/evp.h>
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-    #include <openssl/decoder.h>
-    #include <openssl/core.h>
-#endif
 #include "../include/hash.h"
 #include "../include/uuid.h"
 #include "../include/lcp3.h"
@@ -60,7 +49,7 @@
 #include "lcputils.h"
 #include "pollist2_1.h"
 #include "polelt.h"
-#include "hash-sigs/hss.h"
+#include "crypto.h"
 
 //Function prototypes:
 
@@ -71,6 +60,7 @@ static bool get_ecc_signature_2_1_data(lcp_signature_2_1 *sig, void *data);
 static bool verify_tpm20_pollist_2_1_rsa_sig(const lcp_policy_list_t2_1 *pollist);
 static bool verify_tpm20_pollist_2_1_ec_sig(const lcp_policy_list_t2_1 *pollist);
 static bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist);
+static bool verify_tpm20_pollist_2_1_mldsa_sig(const lcp_policy_list_t2_1 *pollist);
 static void display_tpm20_signature_2_1(const char *prefix, const lcp_signature_2_1 *sig,
                                                         const uint16_t sig_alg);
 static lcp_policy_list_t2_1 *add_tpm20_signature_2_1(lcp_policy_list_t2_1 *pollist,
@@ -80,6 +70,7 @@ static lcp_signature_2_1 *read_ecdsa_pubkey_file_2_1(const char *pubkey_file);
 static bool ec_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file);
 static bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file);
 static bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file);
+static bool mldsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file);
 static lcp_policy_list_t2_1 *policy_list2_1_rsa_sign(lcp_policy_list_t2_1 *pollist,
                                                      uint16_t rev_ctr, uint16_t hash_alg, 
                                                      uint16_t sig_alg, const char *pubkey_file,
@@ -139,6 +130,8 @@ lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base
     sig = create_empty_signature_2_1(key_alg);
     if (sig == NULL || new_pollist == NULL ) {
         ERROR("ERROR: unable to create signature.\n");
+        free(sig);
+        free(new_pollist);
         return NULL;
     }
     //Remember that Revocation Counter size is added to to key signature offset
@@ -146,6 +139,8 @@ lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base
     status = memcpy_s(new_pollist, key_signature_offset, raw_data, key_signature_offset);
     if (status != EOK) {
         ERROR("Error: failed to copy list data.\n");
+        free(sig);
+        free(new_pollist);
         return NULL;
     }
 
@@ -171,6 +166,7 @@ lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base
         if (!get_ecc_signature_2_1_data(sig, (void *) raw_data+sig_offset_in_data)) {
             ERROR("ERROR: failed to get signature data.\n");
             free(sig);
+            free(new_pollist);
             return NULL;
         }
         new_pollist->KeySignatureOffset = 0x0; // Reset keysignatureoffset
@@ -185,7 +181,20 @@ lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base
         //LMS signature is fixed size, so we can just copy it to the new list
         memcpy_s((void *) sig, sizeof(lms_key_and_signature) + sizeof(uint16_t), (const void *) raw_data + key_signature_offset - offsetof(lcp_signature_2_1, KeyAndSignature),
                  sizeof(lms_key_and_signature) + sizeof(uint16_t));
+        new_pollist->KeySignatureOffset = 0x0; // Reset keysignatureoffset
         new_pollist = add_tpm20_signature_2_1(new_pollist, sig, TPM_ALG_LMS);
+        if (new_pollist == NULL ) {
+            ERROR("ERROR: Cannot add TPM_signature_2_1");
+            free(sig);
+            return NULL;
+        }
+        break;
+    case TCG_ALG_MLDSA:
+        //ML-DSA signature is fixed size, so we can just copy it to the new list
+        memcpy_s((void *) sig, sizeof(mldsa_key_and_signature) + sizeof(uint16_t), (const void *) raw_data + key_signature_offset - offsetof(lcp_signature_2_1, KeyAndSignature),
+                 sizeof(mldsa_key_and_signature) + sizeof(uint16_t));
+        new_pollist->KeySignatureOffset = 0x0; // Reset keysignatureoffset
+        new_pollist = add_tpm20_signature_2_1(new_pollist, sig, TCG_ALG_MLDSA);
         if (new_pollist == NULL ) {
             ERROR("ERROR: Cannot add TPM_signature_2_1");
             free(sig);
@@ -285,6 +294,9 @@ lcp_signature_2_1 *create_empty_signature_2_1(uint16_t sig_alg)
         case TPM_ALG_LMS:
             sig = create_empty_lms_signature_2_1();
             break;
+        case TCG_ALG_MLDSA:
+            sig = create_empty_mldsa_signature_2_1();
+            break;
         default:
             ERROR("Error: unknown signature algorithm.\n");
             return NULL;
@@ -312,6 +324,7 @@ Out: Pointer to an empty structure
         return sig;
     }
     else {
+        free(sig);
         return NULL;
     }
 }
@@ -322,6 +335,21 @@ lcp_signature_2_1 *create_empty_lms_signature_2_1(void)
 */
 {
     size_t sig_size = sizeof(lms_key_and_signature) + offsetof(lcp_signature_2_1,
+                                                                KeyAndSignature);
+
+    lcp_signature_2_1 *sig = calloc(sig_size, 1);
+    if (sig == NULL) {
+        return NULL;
+    }
+    return sig;
+}
+
+lcp_signature_2_1 *create_empty_mldsa_signature_2_1(void)
+/*
+    This function: returns empty (only zeroes) mldsa sig structure. Caller must free it after use.
+*/
+{
+    size_t sig_size = sizeof(mldsa_key_and_signature) + offsetof(lcp_signature_2_1,
                                                                 KeyAndSignature);
 
     lcp_signature_2_1 *sig = calloc(sig_size, 1);
@@ -351,6 +379,7 @@ Out: Pointer to empty structure
         return sig;
     }
     else {
+        free(sig);
         return NULL;
     }
 }
@@ -374,6 +403,10 @@ Out: Size
         return sizeof(sig->RevocationCounter) + sizeof(rsa_key_and_signature);
     case TPM_ALG_ECC:
         return sizeof(sig->RevocationCounter) + sizeof(ecc_key_and_signature);
+    case TPM_ALG_LMS:
+        return sizeof(sig->RevocationCounter) + sizeof(lms_key_and_signature);
+    case TCG_ALG_MLDSA:
+        return sizeof(sig->RevocationCounter) + sizeof(mldsa_key_and_signature);
     default:
         break;
     }
@@ -547,6 +580,10 @@ Out: Nothing
     }
     if (sig_header->key_alg == TPM_ALG_LMS) {
         display_tpm20_signature_2_1("        ", sig, TPM_ALG_LMS);
+        return;
+    }
+    if (sig_header->key_alg == TCG_ALG_MLDSA) {
+        display_tpm20_signature_2_1("        ", sig, TCG_ALG_MLDSA);
         return;
     }
     return;
@@ -751,6 +788,9 @@ bool verify_tpm20_pollist_2_1_sig(lcp_policy_list_t2_1 *pollist)
     }
     else if ( header->key_alg == TPM_ALG_LMS) {
         result = verify_tpm20_pollist_2_1_lms_sig(pollist);
+    }
+    else if ( header->key_alg == TCG_ALG_MLDSA) {
+        result = verify_tpm20_pollist_2_1_mldsa_sig(pollist);
     }
     else {
         //Function end
@@ -1095,13 +1135,14 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
 
     memcpy_s((void *) policy_list_data, pollist->KeySignatureOffset, (const void *) pollist, pollist->KeySignatureOffset);
 
-    if(!hss_validate_signature(
-		public_key,
+    // Use crypto abstraction layer for LMS verification
+    if (!crypto_lms_verify_signature(
 		policy_list_data,
 		pollist->KeySignatureOffset,
 		lms_sig,
 		signature_len,
-		NULL
+		public_key,
+		publickey_len
 	)){
         goto CLEANUP;
     }
@@ -1116,6 +1157,48 @@ CLEANUP:
     if(policy_list_data != NULL)
         free(policy_list_data);
 
+    return status;
+}
+
+bool verify_tpm20_pollist_2_1_mldsa_sig(const lcp_policy_list_t2_1 *pollist)
+{
+    LOG("[verify_tpm20_pollist_2_1_mldsa_sig]\n");
+
+    bool status = false;
+    lcp_signature_2_1 *sig = NULL;
+    uint8_t *policy_list_data = NULL;
+
+    sig = get_tpm20_signature_2_1(pollist);
+    if (sig == NULL) {
+        ERROR("Error: failed to get signature.\n");
+        return false;
+    }
+
+    policy_list_data = malloc(pollist->KeySignatureOffset);
+    if (policy_list_data == NULL) {
+        ERROR("Error during malloc, policy_list_data.\n");
+        return false;
+    }
+
+    memcpy_s((void *) policy_list_data, pollist->KeySignatureOffset,
+             (const void *) pollist, pollist->KeySignatureOffset);
+
+    /* Verify using raw public key and signature from the LCP structure */
+    if (!crypto_mldsa_verify_signature(
+            policy_list_data,
+            pollist->KeySignatureOffset,
+            sig->KeyAndSignature.MldsaKeyAndSignature.Signature.Signature,
+            MLDSA87_SIGNATURE_SIZE,
+            sig->KeyAndSignature.MldsaKeyAndSignature.Key.PubKey,
+            MLDSA87_PUBKEY_SIZE
+    )) {
+        ERROR("ML-DSA signature verification failed.\n");
+        free(policy_list_data);
+        return false;
+    }
+
+    status = true;
+    free(policy_list_data);
     return status;
 }
 
@@ -1299,6 +1382,54 @@ Out:
             hash_alg_to_str(sig->KeyAndSignature.LmsKeyAndSignature.Signature.HashAlg)
         );
         print_lms_signature((const lms_signature_block *) &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature);
+        break;
+    case TCG_ALG_MLDSA:
+        DISPLAY("MLDSA_KEY_AND_SIGNATURE:\n");
+        DISPLAY ("%s Version: 0x%x\n", prefix,
+                               sig->KeyAndSignature.MldsaKeyAndSignature.Version);
+        DISPLAY (
+            "%s KeyAlg: 0x%x (%s)\n",
+            prefix,
+            sig->KeyAndSignature.MldsaKeyAndSignature.KeyAlg,
+            key_alg_to_str(sig->KeyAndSignature.MldsaKeyAndSignature.KeyAlg)
+        );
+        DISPLAY("MLDSA_PUBLIC_KEY:\n");
+        DISPLAY ("%s Version: 0x%x\n", prefix,
+                            sig->KeyAndSignature.MldsaKeyAndSignature.Key.Version);
+        DISPLAY ("%s KeySize: 0x%x (%d bytes)\n", prefix,
+                        sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize,
+                        sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize);
+        print_hex(new_prefix, (const void *)
+           sig->KeyAndSignature.MldsaKeyAndSignature.Key.PubKey,
+           sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize > 64 ? 64 :
+           sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize);
+        if (sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize > 64) {
+            DISPLAY("%s ... (truncated, total %d bytes)\n", prefix,
+                    sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize);
+        }
+        DISPLAY("End of MLDSA_PUBLIC_KEY\n");
+        DISPLAY (
+            "%s SigScheme: 0x%x (%s)\n",
+            prefix,
+            sig->KeyAndSignature.MldsaKeyAndSignature.SigScheme,
+            sig_alg_to_str(sig->KeyAndSignature.MldsaKeyAndSignature.SigScheme)
+        );
+        DISPLAY("MLDSA_SIGNATURE:\n");
+        DISPLAY ("%s Version: 0x%x\n", prefix,
+                            sig->KeyAndSignature.MldsaKeyAndSignature.Signature.Version);
+        DISPLAY ("%s KeySize: 0x%x (%d bytes)\n", prefix,
+                            sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize,
+                            sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize);
+        print_hex(new_prefix, (const void *)
+           sig->KeyAndSignature.MldsaKeyAndSignature.Signature.Signature,
+           sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize > 64 ? 64 :
+           sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize);
+        if (sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize > 64) {
+            DISPLAY("%s ... (truncated, total %d bytes)\n", prefix,
+                    sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize);
+        }
+        DISPLAY("End of MLDSA_SIGNATURE\n");
+        break;
     default:
         break;
     }
@@ -1344,6 +1475,9 @@ Out: copy of a list with signature added
         break;
     case TPM_ALG_LMS:
         sig_size = offsetof(lcp_signature_2_1, KeyAndSignature) + sizeof(lms_key_and_signature);
+        break;
+    case TCG_ALG_MLDSA:
+        sig_size = offsetof(lcp_signature_2_1, KeyAndSignature) + sizeof(mldsa_key_and_signature);
         break;
     default:
         return NULL;
@@ -1441,6 +1575,19 @@ Out: void
             buff_size = sig->KeyAndSignature.LmsKeyAndSignature.Key.KeySize;
             result = hash_buffer(
             (const unsigned char *) &sig->KeyAndSignature.LmsKeyAndSignature.Key.PubKey,
+            buff_size, (tb_hash_t *) hash, hash_alg);
+            if (!result) {
+                ERROR("ERROR: failed to allocate buffer\n");
+                return false;
+            }
+            else {
+                return true;
+            }
+        case TCG_ALG_MLDSA:
+            LOG("List signed: ML-DSA\n");
+            buff_size = sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize;
+            result = hash_buffer(
+            (const unsigned char *) sig->KeyAndSignature.MldsaKeyAndSignature.Key.PubKey,
             buff_size, (tb_hash_t *) hash, hash_alg);
             if (!result) {
                 ERROR("ERROR: failed to allocate buffer\n");
@@ -1587,6 +1734,15 @@ Out: handle to buffer containing contiguous policy list data.
             return NULL;
         }
         break;
+    case TCG_ALG_MLDSA:
+        //ML-DSA is fixed size, dump as-is
+        result = memcpy_s((void *)to_buffer+bytes_written, buffer_size, (const void *) sig, sizeof(mldsa_key_and_signature) + offsetof(lcp_signature_2_1, KeyAndSignature));
+        if (result != EOK) {
+            ERROR("Error: failed to copy list data.\n");
+            free(to_buffer);
+            return NULL;
+        }
+        break;
     default:
         ERROR("Error: unsupported key algorithm.\n");
         free(to_buffer);
@@ -1630,6 +1786,10 @@ Out: signature size, or 0 on error.
     case TPM_ALG_LMS:
         //LMS is fixed size
         sig_size = sizeof(lms_key_and_signature);
+        return sig_size;
+    case TCG_ALG_MLDSA:
+        //ML-DSA is fixed size
+        sig_size = sizeof(mldsa_key_and_signature);
         return sig_size;
     default:
         ERROR("Error: unknown key algorithm.\n");
@@ -1740,54 +1900,12 @@ In: path to file containing RSA public key
 Out: Pointer to signature structure.
 */
 {
-    FILE *fp = NULL;
-    BIGNUM *modulus = NULL;
-    #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-        EVP_PKEY *pubkey = NULL;
-    #else
-        RSA *pubkey = NULL;
-    #endif
-    lcp_signature_2_1 *sig = NULL;
     unsigned char *key = NULL;
+    lcp_signature_2_1 *sig = NULL;
+    size_t keysize = 0;
+    crypto_status status = crypto_read_rsa_pubkey(file, &key, &keysize);
 
-    int keysize = 0;
-    int result = 0;
-
-    LOG("read_rsa_pubkey_file_2_1\n");
-    fp = fopen(file, "rb");
-    if ( fp == NULL ) {
-        ERROR("Error: failed to open .pem file %s: %s\n", file,
-                strerror(errno));
-        return NULL;
-    }
-
-    #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-        OSSL_DECODER_CTX *dctx;
-        dctx = OSSL_DECODER_CTX_new_for_pkey(&pubkey, "PEM", NULL, "RSA", OSSL_KEYMGMT_SELECT_PUBLIC_KEY, NULL, NULL);
-        if ( dctx == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-        if ( !OSSL_DECODER_from_fp(dctx, fp) ) {
-            goto OPENSSL_ERROR;
-        }
-        OSSL_DECODER_CTX_free(dctx);
-    #else
-        pubkey = PEM_read_RSA_PUBKEY(fp, NULL, NULL, NULL);
-    #endif
-    if ( pubkey == NULL ) {
-        goto OPENSSL_ERROR;
-    }
-    //Close the file, won't need it anymore
-    fclose(fp);
-    fp = NULL;
-
-    #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-        keysize = EVP_PKEY_get_size(pubkey);
-    #else
-        keysize = RSA_size(pubkey);
-    #endif
-    if ( keysize != 256 && keysize != 384 ) {
-        ERROR("Error: public key size %d is not supported\n", keysize);
+    if(crypto_ok != status){
         goto ERROR;
     }
 
@@ -1796,34 +1914,10 @@ Out: Pointer to signature structure.
         ERROR("Error: failed to create empty lcp signature 2.1\n");
         goto ERROR;
     }
-
-    #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-        EVP_PKEY_get_bn_param(pubkey, "n", &modulus);
-    #elif OPENSSL_VERSION_NUMBER >= 0x10100000L
-        RSA_get0_key(pubkey, (const BIGNUM **) &modulus, NULL, NULL);
-    #else
-        modulus = pubkey->n;
-    #endif
-    if (modulus == NULL) {
-        goto OPENSSL_ERROR;
-    }
-
-    //Allocate for the key
-    key = malloc(keysize);
-    if (key == NULL) {
-        ERROR("Error: failed to allocate memory for public key.\n");
-        goto ERROR;
-    }
-    //Save mod into key array
-    result = BN_bn2bin(modulus, key);
-    if (result <= 0 || result != keysize) {
-        goto OPENSSL_ERROR;
-    }
-
     /* openssl key is big-endian and policy requires little-endian, so reverse
        bytes and append to sig*/
 
-    for ( int i = 0; i < keysize; i++ ) {
+    for ( unsigned int i = 0; i < keysize; i++ ) {
         sig->KeyAndSignature.RsaKeyAndSignature.Key.Modulus[i] = key[keysize -i -1];
     }
 
@@ -1840,24 +1934,14 @@ Out: Pointer to signature structure.
         display_tpm20_signature_2_1("    ", sig, TPM_ALG_RSAPSS);
     }
     //SUCCESS:
-        OPENSSL_free((void *) pubkey);
-        OPENSSL_free((void * )modulus);
         free(key);
+        key=NULL;
         return sig;
-    OPENSSL_ERROR:
-        ERROR("OpenSSL error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-        goto ERROR;
     ERROR:
-        if (fp != NULL)
-            fclose(fp);
         if (key != NULL)
             free(key);
         if (sig != NULL)
             free(sig);
-        if (modulus == NULL)
-            OPENSSL_free((void *) modulus);
-        if (pubkey != NULL)
-            OPENSSL_free((void *) pubkey);
         return NULL;
 }
 
@@ -1879,7 +1963,7 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     lcp_signature_2_1 *sig = NULL;
     sized_buffer *digest = NULL;
     sized_buffer *sig_block = NULL;  //Buffer for generated sig
-    EVP_PKEY_CTX *context = NULL;  //Context for openssl functions
+    crypto_status c_status = crypto_general_fail;
 
     LOG("rsa_sign_list_2_1_data\n");
     if ( pollist == NULL || privkey_file == NULL )
@@ -1903,31 +1987,17 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
         print_hex("       ", (const unsigned char *) pollist, pollist->KeySignatureOffset);
     }
 
-    digest = allocate_sized_buffer(get_lcp_hash_size(hashalg));
+    /* Pass raw list data to crypto_rsa_sign — each backend hashes internally.
+     * This avoids a double-hash in the IPPC backend (whose _rmf functions
+     * hash the input message themselves). */
+    digest = allocate_sized_buffer(pollist->KeySignatureOffset);
     if (digest == NULL) {
         ERROR("Error: failed to allocate buffer.\n");
         goto ERROR;
     }
-    digest->size = get_lcp_hash_size(hashalg);
-
-    status = hash_buffer((const unsigned char *) pollist, pollist->KeySignatureOffset,
-                                           (tb_hash_t *) digest->data, hashalg);
-    if ( !status ) {
-        ERROR("Error: failed to hash list\n");
-        goto ERROR;
-    }
-
-    if ( verbose ) {
-        LOG("digest:\n");
-        print_hex("", &digest, get_hash_size(hashalg));
-    }
-
-    //Create context using key
-    context = rsa_get_sig_ctx(privkey_file, keysize);
-    if ( context == NULL) {
-        ERROR("ERROR: failed to initialize EVP context.\n");
-        goto ERROR;
-    }
+    digest->size = pollist->KeySignatureOffset;
+    memcpy_s((void *) digest->data, digest->size,
+             (const void *) pollist, pollist->KeySignatureOffset);
 
     //Allocate mem for signature block:
     sig_block = allocate_sized_buffer(keysize);
@@ -1937,10 +2007,14 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     }
     sig_block->size = keysize;
 
-    //Sign
-    status = rsa_ssa_pss_sign(sig_block, digest, sig_alg, hashalg, context);
+    crypto_sized_buffer c_sig_block = { .size = sig_block->size, .data = sig_block->data };
+    crypto_sized_buffer c_digest = { .size = digest->size, .data = digest->data };
+    c_status = crypto_rsa_sign(&c_sig_block, &c_digest, sig_alg, hashalg, privkey_file);
+
+    status = (c_status == crypto_ok) ? true : false;
+
     if (!status) {
-        ERROR("ERROR: failed to sign list data.");
+        ERROR("Error: failed to sign list data.\n");
         goto ERROR;
     }
 
@@ -1958,8 +2032,6 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     if (digest != NULL) {
         free(digest);
     }
-    if (context != NULL)
-        OPENSSL_free(context);
     return true;
     ERROR:
         if (sig_block != NULL) {
@@ -1968,198 +2040,70 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
         if (digest != NULL) {
             free(digest);
         }
-        if (context != NULL)
-            OPENSSL_free(context);
         return false;
 }
 
 static lcp_signature_2_1 *read_ecdsa_pubkey_file_2_1(const char *pubkey_file)
 {
-    int result;
     lcp_signature_2_1 *sig = NULL;
-    FILE *fp = NULL;
-    BIGNUM *x = NULL;
-    BIGNUM *y = NULL;
-    uint16_t bytes_in_x;
-    uint16_t bytes_in_y;
-    uint16_t keySize;
-    uint16_t keySizeBytes;
-    uint8_t qx[MAX_ECC_KEY_SIZE];
-    uint8_t qy[MAX_ECC_KEY_SIZE];
-    uint8_t qx_le[MAX_ECC_KEY_SIZE];
-    uint8_t qy_le[MAX_ECC_KEY_SIZE];
-    #if OPENSSL_VERSION_NUMBER < 0x30000000L
-        const EC_KEY *pubkey = NULL;
-        const EC_POINT *pubpoint = NULL;
-        const EC_GROUP *pubgroup = NULL;
-        BN_CTX *ctx = NULL;
-    #else
-        EVP_PKEY *pubkey = NULL;
-    #endif
+    size_t key_size_bytes;
+    uint8_t *qx;
+    uint8_t *qy;
+    int result;
 
-    fp = fopen(pubkey_file, "rb");
-    if ( fp == NULL) {
-        ERROR("ERROR: cannot open file.\n");
-        goto ERROR;
+    crypto_status c_status = crypto_read_ecdsa_pubkey(pubkey_file, &qx, &qy, &key_size_bytes);
+    if (c_status != crypto_ok){
+        return NULL;
     }
 
-    #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-        OSSL_DECODER_CTX *dctx;
-        dctx = OSSL_DECODER_CTX_new_for_pkey(&pubkey, "PEM", NULL, "EC", OSSL_KEYMGMT_SELECT_PUBLIC_KEY, NULL, NULL);
-        if ( dctx == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-        if ( !OSSL_DECODER_from_fp(dctx, fp) ) {
-            goto OPENSSL_ERROR;
-        }
-        OSSL_DECODER_CTX_free(dctx);
-
-        if ( pubkey == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-
-        EVP_PKEY_get_bn_param(pubkey, "qx", &x);
-        EVP_PKEY_get_bn_param(pubkey, "qy", &y);
-        if ( x == NULL|| y == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-    #else
-        pubkey = PEM_read_EC_PUBKEY(fp, NULL, NULL, NULL);
-        if ( pubkey == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-
-        pubpoint = EC_KEY_get0_public_key(pubkey);
-        if ( pubpoint == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-        pubgroup = EC_KEY_get0_group(pubkey);
-        if ( pubgroup == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-
-        x = BN_new();
-        y = BN_new();
-        if ( x == NULL|| y == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-        ctx = BN_CTX_new();
-        if ( ctx == NULL ) {
-            goto OPENSSL_ERROR;
-        }
-        result = EC_POINT_get_affine_coordinates_GFp(pubgroup, pubpoint, x, y, ctx);
-        if (result <= 0) {
-            goto OPENSSL_ERROR;
-        }
-    #endif    
-    //Close the file
-    fclose(fp);
-    fp = NULL;
-
-    bytes_in_x = BN_num_bytes(x);
-    bytes_in_y = BN_num_bytes(y);
-
-    keySize = bytes_in_x*8;
-    if (bytes_in_x != bytes_in_y) {
-        ERROR("ERROR: key coordinates are not the same length.");
-        goto ERROR;
-    }
-    if ( keySize != 256 && keySize != 384 ) {
-        ERROR("ERROR: keySize 0x%X is not 0x%X or 0x%X.\n", keySize/8, MIN_ECC_KEY_SIZE,
-                                                              MAX_ECC_KEY_SIZE);
-        goto ERROR;
-    }
-
-    keySizeBytes = bytes_in_x;
-    if ( keySize/8 != bytes_in_x || keySize/8 != bytes_in_y ) {
-        ERROR("ERROR: keySize 0x%X is not 0x%X or 0x%X.\n", keySizeBytes,
-                                            MIN_ECC_KEY_SIZE, MAX_ECC_KEY_SIZE);
-        goto ERROR;
-    }
     sig = create_empty_ecc_signature_2_1();
     if ( sig == NULL ) {
+        result = ESNULLP;
         ERROR("ERROR: failed to generate ecc signature 2.1.\n");
-        goto ERROR;
+        goto END;
     }
 
     sig->KeyAndSignature.EccKeyAndSignature.Version = SIGNATURE_VERSION;
     sig->KeyAndSignature.EccKeyAndSignature.KeyAlg = TPM_ALG_ECC;
     sig->KeyAndSignature.EccKeyAndSignature.Key.Version = SIGNATURE_VERSION;
-    sig->KeyAndSignature.EccKeyAndSignature.Key.KeySize = keySize; //In bits!
+    sig->KeyAndSignature.EccKeyAndSignature.Key.KeySize = key_size_bytes*8; //In bits!
     sig->KeyAndSignature.EccKeyAndSignature.Signature.Version = SIGNATURE_VERSION;
-    sig->KeyAndSignature.EccKeyAndSignature.Signature.KeySize = keySize;
+    sig->KeyAndSignature.EccKeyAndSignature.Signature.KeySize = key_size_bytes*8;
 
-    if (keySize == 256) { //256 bit key with sha256
+    if ((key_size_bytes*8) == 256) { //256 bit key with sha256
         sig->KeyAndSignature.EccKeyAndSignature.Signature.HashAlg = TPM_ALG_SHA256;
     }
     else { //384 bit key with sha384
         sig->KeyAndSignature.EccKeyAndSignature.Signature.HashAlg = TPM_ALG_SHA384;
     }
 
-    if (!BN_bn2bin(x, qx)) {
-        goto OPENSSL_ERROR;
-    }
-    if (!BN_bn2bin(y, qy)) {
-        goto OPENSSL_ERROR;
-    }
-
-    for (uint8_t i = 0; i < keySizeBytes; i++) { //reverse
-        qx_le[i] = qx[keySizeBytes-1-i];
-        qy_le[i] = qy[keySizeBytes-1-i];
-    }
 
     result = memcpy_s(
         (void*)sig->KeyAndSignature.EccKeyAndSignature.Key.QxQy,
-        2*MAX_ECC_KEY_SIZE, qx_le, bytes_in_x
+        2*MAX_ECC_KEY_SIZE, qx, key_size_bytes
     );
     if ( result != EOK ) {
         ERROR("ERROR: Cannot copy key data to LCP list\n");
-        goto ERROR;
+        goto END;
     }
     result = memcpy_s(
-        (void*)sig->KeyAndSignature.EccKeyAndSignature.Key.QxQy + bytes_in_x,
-        (2*MAX_ECC_KEY_SIZE)-bytes_in_x, qy_le, bytes_in_y
+        (void*)sig->KeyAndSignature.EccKeyAndSignature.Key.QxQy + key_size_bytes,
+        (2*MAX_ECC_KEY_SIZE)-key_size_bytes, qy, key_size_bytes
     );
     if ( result != EOK ) {
         ERROR("ERROR: Cannot copy key data to LCP list\n");
-        goto ERROR;
+        goto END;
     }
-//Free resources:
-    OPENSSL_free((void *) pubkey);
-    OPENSSL_free((void *) x);
-    OPENSSL_free((void *) y);
-    #if OPENSSL_VERSION_NUMBER < 0x30000000L
-        OPENSSL_free((void *) pubpoint);
-        OPENSSL_free((void *) pubgroup);
-        OPENSSL_free((void *) ctx);
-    #endif
+
+END:
+    free(qx);
+    free(qy);
+    if(result != EOK){
+        free(sig);
+        sig = NULL;
+    }
+
     return sig;
-//ERROR handling:
-    OPENSSL_ERROR:
-        ERR_load_crypto_strings();
-        ERROR("OpenSSL error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-        ERR_free_strings();
-    ERROR:
-        //Free all OPENSSL stuff
-        if (fp != NULL)
-            fclose(fp);
-        if (sig != NULL)
-            free(sig);
-        if (pubkey != NULL)
-            OPENSSL_free((void *) pubkey);
-        if (x != NULL)
-            OPENSSL_free((void *) x);
-        if (y != NULL)
-            OPENSSL_free((void *) y);
-        #if OPENSSL_VERSION_NUMBER < 0x30000000L
-            if (pubpoint != NULL)
-                OPENSSL_free((void *) pubpoint);
-            if (pubgroup != NULL)
-                OPENSSL_free((void *) pubgroup);
-            if (ctx != NULL)
-                OPENSSL_free((void *) ctx);
-        #endif
-        return NULL;
 }
 
 static lcp_signature_2_1 *read_lms_pubkey_file_2_1(const char *pubkey_file)
@@ -2175,7 +2119,7 @@ static lcp_signature_2_1 *read_lms_pubkey_file_2_1(const char *pubkey_file)
     }
     //Cisco hash-sigs tool adds "levels" field to the key, we need to skip it
     //but first make sure the key size is correct
-    fseek(fp, SEEK_SET, SEEK_END);
+    fseek(fp, 0, SEEK_END);
     if (ftell(fp) != LMS_MAX_PUBKEY_SIZE + sizeof(uint32_t)) {
         ERROR("ERROR: incorrect LMS key size.\n");
         fclose(fp);
@@ -2210,82 +2154,155 @@ static lcp_signature_2_1 *read_lms_pubkey_file_2_1(const char *pubkey_file)
     return sig;
 }
 
-static bool read_private_key( unsigned char *private_key,
-                              size_t len_private_key, void *filename) {
-    FILE *f = fopen( filename, "rb" );
-    if (!f) {
-        ERROR("ERROR: Cannot open private key: %s\n", filename);
-        return false;
+static lcp_signature_2_1 *read_mldsa_pubkey_file_2_1(const char *pubkey_file)
+{
+    lcp_signature_2_1 *sig = NULL;
+    FILE *fp = NULL;
+
+    fp = fopen(pubkey_file, "rb");
+    if (fp == NULL) {
+        ERROR("ERROR: cannot open ML-DSA public key file.\n");
+        return NULL;
     }
-    if (1 != fread( private_key, len_private_key, 1, f )) {
-        /* Read failed */
-        ERROR("ERROR: Cannot read private key: %s\n", filename);
-        fclose(f);
-        return false;
+    /* Check file size matches ML-DSA-87 public key */
+    fseek(fp, 0, SEEK_END);
+    long fsize = ftell(fp);
+    if (fsize != MLDSA87_PUBKEY_SIZE) {
+        ERROR("ERROR: incorrect ML-DSA public key size: %ld (expected %d).\n",
+              fsize, MLDSA87_PUBKEY_SIZE);
+        fclose(fp);
+        return NULL;
     }
-    fclose(f);
-    LOG("LMS private key successfully read.");
-    /* Everything succeeded */
-    return true;
+    fseek(fp, 0, SEEK_SET);
+
+    sig = create_empty_mldsa_signature_2_1();
+    if (sig == NULL) {
+        ERROR("ERROR: failed to generate ML-DSA signature 2.1.\n");
+        fclose(fp);
+        return NULL;
+    }
+
+    /* Read the public key directly into the structure */
+    if (fread((void *) sig->KeyAndSignature.MldsaKeyAndSignature.Key.PubKey,
+              MLDSA87_PUBKEY_SIZE, 1, fp) != 1) {
+        ERROR("ERROR: failed to read ML-DSA public key file.\n");
+        fclose(fp);
+        free(sig);
+        return NULL;
+    }
+    fclose(fp);
+
+    sig->KeyAndSignature.MldsaKeyAndSignature.Version = SIGNATURE_VERSION;
+    sig->KeyAndSignature.MldsaKeyAndSignature.KeyAlg = TCG_ALG_MLDSA;
+    sig->KeyAndSignature.MldsaKeyAndSignature.Key.Version = SIGNATURE_VERSION;
+    sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize = MLDSA87_PUBKEY_SIZE;
+    sig->KeyAndSignature.MldsaKeyAndSignature.SigScheme = TCG_ALG_MLDSA;
+    sig->KeyAndSignature.MldsaKeyAndSignature.Signature.Version = SIGNATURE_VERSION;
+    sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize = MLDSA87_SIGNATURE_SIZE;
+
+    return sig;
 }
 
-static bool update_private_key( unsigned char *private_key,
-                               size_t len_private_key, void *filename) {
-    FILE *f = fopen( filename, "r+" );
-    if (!f) {
-        /* Open failed, possibly because the file didn't exist */
-        ERROR("ERROR: Cannot open private key for update with r+ mode: %s\n", filename);
-        f = fopen( filename, "wb" );
-        if (!f) {
-            ERROR("ERROR: Cannot open private key for update with wb mode: %s\n", filename);
-            /* Unable to open file */
-            return false;
-        }
-    }
-    if (1 != fwrite( private_key, len_private_key, 1, f )) {
-        /* Write failed */
-        ERROR("ERROR: Cannot write to private key for update: %s\n", filename);
-        fclose(f);
+
+bool mldsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file)
+{
+    lcp_signature_2_1 *sig = NULL;
+    bool status = false;
+
+    DISPLAY("[mldsa_sign_list_2_1_data]\n");
+
+    if (pollist == NULL || privkey_file == NULL) {
+        ERROR("ERROR: lcp policy list or private key file is not defined.\n");
         return false;
     }
-    if (0 != fclose(f)) {
-        ERROR("ERROR: Cannot close the private key after update: %s\n", filename);
-        /* Close failed (possibly because pending write failed) */
+
+    /* Allocate buffer for signature */
+    size_t sig_len = MLDSA87_SIGNATURE_SIZE;
+    uint8_t *mldsa_sig = malloc(sig_len);
+    if (mldsa_sig == NULL) {
+        ERROR("Error during malloc, mldsa_sig\n");
         return false;
     }
-    LOG("LMS private key successfully updated.");
-    /* Everything succeeded */
-    return true;
+
+    DISPLAY("Generate ML-DSA-87 signature\n");
+
+    /* Use crypto abstraction layer for ML-DSA signing */
+    crypto_status sign_result = crypto_mldsa_sign_data(
+        (const unsigned char *)pollist,
+        pollist->KeySignatureOffset,
+        mldsa_sig,
+        &sig_len,
+        privkey_file
+    );
+
+    if (sign_result != crypto_ok) {
+        ERROR("Error during generation of ML-DSA signature.\n");
+        free(mldsa_sig);
+        return false;
+    }
+
+    sig = get_tpm20_signature_2_1(pollist);
+    if (sig == NULL) {
+        ERROR("Error: failed to get signature structure.\n");
+        free(mldsa_sig);
+        return false;
+    }
+
+    /* Copy signature into LCP structure */
+    if (memcpy_s(
+            sig->KeyAndSignature.MldsaKeyAndSignature.Signature.Signature,
+            MLDSA87_SIGNATURE_SIZE,
+            mldsa_sig,
+            sig_len) != EOK) {
+        ERROR("Error: failed to copy ML-DSA signature.\n");
+        free(mldsa_sig);
+        return false;
+    }
+
+    status = true;
+
+    /* Dump sigblock if verbose is on */
+    if (verbose) {
+        DISPLAY("ML-DSA Signature block (first 64 bytes):\n");
+        print_hex("    ", (const void *) sig->KeyAndSignature.MldsaKeyAndSignature.Signature.Signature,
+                  sig_len > 64 ? 64 : sig_len);
+    }
+
+    free(mldsa_sig);
+    return status;
 }
+
 
 bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file)
 {
-    struct hss_working_key *working_key = NULL;
     lcp_signature_2_1 *sig = NULL;
     uint8_t* lms_sig = NULL;
     bool status = false;
+    char *privkey_file_no_ext = NULL;
+    char *aux_filename = NULL;
+    size_t len_aux_data = 0;
+    void *aux_data = NULL;
 
-    char *privkey_file_no_ext = strip_fname_extension(privkey_file);
-
-    size_t aux_filename_len = strlen(privkey_file_no_ext) + sizeof (".prv" ) + 1;
-    char *aux_filename = malloc(aux_filename_len);
-    
-    if (aux_filename == NULL) {
-        ERROR( "Error during malloc, aux_filename\n" );
-        return false;
-    }
-
-    sprintf( aux_filename, "%s.aux", privkey_file_no_ext );
-    
     DISPLAY("[lms_sign_list_2_1_data]\n");
     
     if (pollist == NULL || privkey_file == NULL) {
         ERROR("ERROR: lcp policy list or private key file is not defined.\n");
         goto CLEANUP;
     }
+
+    privkey_file_no_ext = strip_fname_extension(privkey_file);
+
+    size_t aux_filename_len = strlen(privkey_file_no_ext) + sizeof (".prv" ) + 1;
+    aux_filename = malloc(aux_filename_len);
     
-    size_t len_aux_data = 0;
-    void *aux_data = read_file( aux_filename, &len_aux_data, false);
+    if (aux_filename == NULL) {
+        ERROR( "Error during malloc, aux_filename\n" );
+        goto CLEANUP;
+    }
+
+    sprintf( aux_filename, "%s.aux", privkey_file_no_ext );
+    
+    aux_data = read_file( aux_filename, &len_aux_data, false);
     if (aux_data != NULL) {
         DISPLAY( "Processing with aux data, %s \n", aux_filename);
     } else {
@@ -2293,26 +2310,8 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
         DISPLAY( "Processing without aux data\n" );
     }
 
-    DISPLAY( "Loading private key\n" );
-    LOG("privkey_file: %s \n", privkey_file);
-    working_key = hss_load_private_key(read_private_key, (unsigned char *)privkey_file, 0, aux_data, len_aux_data, NULL);
-    
-    if (working_key == NULL) {
-        ERROR( "Error loading private key\n" );
-        goto CLEANUP;
-    }
-
-    //aux_data already loaded with priv key, so not needed
-    free(aux_data);
-    aux_data = NULL;
-
-    size_t sig_len;
-    sig_len = hss_get_signature_len_from_working_key(working_key);
-    if (sig_len == 0) {
-        ERROR( "Error getting signature len\n" );
-        goto CLEANUP;
-    }
-
+    // Allocate buffer for signature (max LMS signature size)
+    size_t sig_len = LMS_MAX_SIGNATURE_SIZE;
     lms_sig = malloc(sig_len);
     if (lms_sig == NULL) {
         ERROR( "Error during malloc, lms_sig\n" );
@@ -2321,17 +2320,18 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
 
     DISPLAY( "Generate signature\n" );
 
-    if (!hss_generate_signature(
-		working_key, 
-		update_private_key, 
-		(unsigned char *)privkey_file,
-		pollist,
-		pollist->KeySignatureOffset,
-		lms_sig,
-		sig_len,
-		NULL
-		)){
-        
+    // Use crypto abstraction layer for LMS signing
+    crypto_status sign_result = crypto_lms_sign_data(
+        (const unsigned char*)pollist,
+        pollist->KeySignatureOffset,
+        lms_sig,
+        &sig_len,
+        privkey_file,
+        aux_data,
+        len_aux_data
+    );
+
+    if (sign_result != crypto_ok) {
         ERROR("Error during generation of LMS signature.\n");
         goto CLEANUP;
     }
@@ -2341,11 +2341,21 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.HashAlg = TPM_ALG_SHA256;
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.Version = SIGNATURE_VERSION;
     sig->KeyAndSignature.LmsKeyAndSignature.Signature.KeySize = LMS_MAX_PUBKEY_SIZE;
+    
+    /* The signature returned by crypto_lms_sign_data already includes NSPK prefix
+     * We skip the first 4 bytes (NSPK) and copy the rest into the structure */
+    size_t bytes_to_copy = sig_len - sizeof(uint32_t);
+    if (bytes_to_copy != sizeof(lms_signature_block)) {
+        ERROR("Signature size mismatch: expected %zu, got %zu (total sig_len=%zu)\n", 
+              sizeof(lms_signature_block), bytes_to_copy, sig_len);
+        goto CLEANUP;
+    }
+    
     memcpy_s(
         &sig->KeyAndSignature.LmsKeyAndSignature.Signature.Signature,
         sizeof(lms_signature_block),
         (lms_sig+sizeof(uint32_t)),
-        sig_len-sizeof(uint32_t));
+        bytes_to_copy);
 
     status = true;
 
@@ -2356,12 +2366,12 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     }
 
 CLEANUP:
+    if (privkey_file_no_ext != NULL)
+        free(privkey_file_no_ext);
     if (aux_filename != NULL)
         free(aux_filename);
     if(aux_data != NULL)
         free(aux_data);
-    if(working_key != NULL)
-        hss_free_working_key(working_key);
     if(lms_sig != NULL)
         free(lms_sig);
 
@@ -2504,6 +2514,7 @@ lcp_policy_list_t2_1 *policy_list2_1_rsa_sign(lcp_policy_list_t2_1 *pollist,
         free(pollist);
         return NULL;
     }
+    free(sig);
     return pollist;
 }
 
@@ -2544,6 +2555,7 @@ static lcp_policy_list_t2_1 *policy_list2_1_ec_sign(lcp_policy_list_t2_1 *pollis
         free(pollist);
         return NULL;
     }
+    free(sig);
     return pollist;
 }
 
@@ -2583,6 +2595,47 @@ static lcp_policy_list_t2_1 *policy_list2_1_lms_sign(lcp_policy_list_t2_1 *polli
         return NULL;
     }
 
+    free(sig);
+    return pollist;
+}
+
+static lcp_policy_list_t2_1 *policy_list2_1_mldsa_sign(lcp_policy_list_t2_1 *pollist,
+                                                uint16_t rev_ctr,
+                                                uint16_t sig_alg,
+                                                const char *pubkey_file,
+                                                const char *privkey_file)
+{
+    lcp_signature_2_1 *sig = NULL;
+    bool result;
+
+    if (pollist == NULL) {
+        ERROR("Error: cannot create lcp signature 2.1.\n");
+        return NULL;
+    }
+
+    sig = read_mldsa_pubkey_file_2_1(pubkey_file);
+    if (sig == NULL) {
+        ERROR("Error: failed to read ML-DSA key.\n");
+        return NULL;
+    }
+    sig->RevocationCounter = rev_ctr;
+    sig->KeyAndSignature.MldsaKeyAndSignature.SigScheme = sig_alg;
+    pollist = add_tpm20_signature_2_1(pollist, sig, sig_alg);
+    if (pollist == NULL) {
+        ERROR("Error: failed to add lcp_signature_2_1 to list.\n");
+        free(sig);
+        return NULL;
+    }
+
+    result = mldsa_sign_list_2_1_data(pollist, privkey_file);
+    if (!result) {
+        ERROR("Error: failed to sign list data.\n");
+        free(sig);
+        free(pollist);
+        return NULL;
+    }
+
+    free(sig);
     return pollist;
 }
 
@@ -2622,6 +2675,13 @@ bool sign_lcp_policy_list_t2_1(sign_user_input user_input)
     }
     else if (user_input.sig_alg == TPM_ALG_LMS) {
         pollist = policy_list2_1_lms_sign(pollist,
+                                            user_input.rev_ctr,
+                                            user_input.sig_alg,
+                                            user_input.pubkey_file,
+                                            user_input.privkey_file);
+    }
+    else if (user_input.sig_alg == TCG_ALG_MLDSA) {
+        pollist = policy_list2_1_mldsa_sign(pollist,
                                             user_input.rev_ctr,
                                             user_input.sig_alg,
                                             user_input.pubkey_file,

@@ -42,12 +42,8 @@
 #include <getopt.h>
 #include <errno.h>
 #include <string.h>
-#include <openssl/rsa.h>
-#include <openssl/engine.h>
-#include <openssl/pem.h>
-#include <openssl/err.h>
-#include <openssl/bn.h>
 #include <safe_lib.h>
+#include <stddef.h>
 #define PRINT   printf
 #include "../../include/config.h"
 #include "../../include/hash.h"
@@ -174,6 +170,7 @@ int create_legacy(void)
     pol = malloc(policy_size);
     if (pol == NULL) {
         ERROR("Error: failed to allocate policy.\n");
+        return 1;
     }
     memset_s(pol, policy_size, 0x00);
     pol->version = pol_ver;
@@ -346,11 +343,11 @@ int create(void)
                     sizeof(poldata->file_signature));
             poldata->num_lists = 0;
 
+            uint16_t use_only_version = 0; //Sets the version of list to use
             for ( unsigned int i = 0; i < nr_files; i++ ) {
                 bool no_sigblock_ok = false;
                 size_t file_len;
                 uint16_t version;
-                uint16_t use_only_version; //Sets the version of list to use
                 lcp_list_t *pollist = NULL;
                 void *file_data = read_file(files[i], &file_len, false);
                 if ( file_data == NULL ) {

@@ -124,8 +124,10 @@ bool set_mtrrs_for_acmod(const acm_hdr_t *hdr)
     /*
      * now set MTRRs for AC mod and rest of memory
      */
-    if ( !set_mem_type(hdr, hdr->size*4, MTRR_TYPE_WRBACK) )
+    if ( !set_mem_type(hdr, hdr->size*4, MTRR_TYPE_WRBACK) ) {
+        printk(TBOOT_ERR"set_mtrrs_for_acmod: Failed to set memory type for AC module (base=%p, size=%u)\n", hdr, hdr->size*4);
         return false;
+    }
 
     /*
      * now undo some of earlier changes and enable our new settings
@@ -298,7 +300,7 @@ static bool validate_mmio_regions(const mtrr_state_t *saved_state)
     /* mmio space for IOAPIC should be UC */
     acpi_table_ioapic = (acpi_table_ioapic_t *)get_acpi_ioapic_table();
     if ( acpi_table_ioapic == NULL) {
-        printk(TBOOT_ERR"acpi_table_ioapic == NULL\n");
+        printk(TBOOT_ERR"validate_mmio_regions: Failed to get ACPI IOAPIC table\n");
         return false;
     }
     printk(TBOOT_DETA"acpi_table_ioapic @ %p, .address = %x\n",
@@ -315,7 +317,7 @@ static bool validate_mmio_regions(const mtrr_state_t *saved_state)
     /* mmio space for PCI config space should be UC */
     acpi_table_mcfg = (acpi_table_mcfg_t *)get_acpi_mcfg_table();
     if ( acpi_table_mcfg == NULL) {
-        printk(TBOOT_ERR"acpi_table_mcfg == NULL\n");
+        printk(TBOOT_ERR"validate_mmio_regions: Failed to get ACPI MCFG table\n");
         return false;
     }
     printk(TBOOT_DETA"acpi_table_mcfg @ %p, .base_address = %x\n",
@@ -344,7 +346,7 @@ bool validate_mtrrs(const mtrr_state_t *saved_state)
     /* number variable MTRRs */
     mtrr_cap.raw = rdmsr(MSR_MTRRcap);
     if ( mtrr_cap.vcnt < saved_state->num_var_mtrrs ) {
-        printk(TBOOT_ERR"actual # var MTRRs (%d) < saved # (%d)\n",
+        printk(TBOOT_ERR"validate_mtrrs: Actual # var MTRRs (%d) < saved # (%d)\n",
                mtrr_cap.vcnt, saved_state->num_var_mtrrs);
         return false;
     }
@@ -555,7 +557,7 @@ bool set_mem_type(const void *base, uint32_t size, uint32_t mem_type)
         num_pages -= mtrr_s;
         ndx++;
         if ( ndx == mtrr_cap.vcnt ) {
-            printk(TBOOT_ERR"exceeded number of var MTRRs when mapping range\n");
+            printk(TBOOT_ERR"set_mem_type: Exceeded number of var MTRRs (%d) when mapping range (first loop)\n", mtrr_cap.vcnt);
             return false;
         }
     }
@@ -591,7 +593,7 @@ bool set_mem_type(const void *base, uint32_t size, uint32_t mem_type)
         num_pages -= pages_in_range;
         ndx++;
         if ( ndx == mtrr_cap.vcnt ) {
-            printk(TBOOT_ERR"exceeded number of var MTRRs when mapping range\n");
+            printk(TBOOT_ERR"set_mem_type: Exceeded number of var MTRRs (%d) when mapping range (second loop)\n", mtrr_cap.vcnt);
             return false;
         }
     }

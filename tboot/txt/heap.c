@@ -151,8 +151,10 @@ void print_event_2(void *evt, uint16_t alg)
     void *next = evt;
 
     hash_size = get_hash_size(alg); 
-    if ( hash_size == 0 )
+    if ( hash_size == 0 ) {
+        printk(TBOOT_ERR"print_event_2: Failed to get hash size for algorithm %u\n", alg);
         return;
+    }
 
     printk(TBOOT_DETA"\t\t\t Event:\n");
     printk(TBOOT_DETA"\t\t\t     PCRIndex: %u\n", *((uint32_t *)next));
@@ -310,8 +312,10 @@ static void print_evt_log_ptr_elt_2(const heap_ext_data_element_t *elt)
 
         uint32_t hash_size, data_size; 
         hash_size = get_hash_size(log_descr->alg); 
-        if ( hash_size == 0 )
+        if ( hash_size == 0 ) {
+            printk(TBOOT_ERR"print_evt_log_ptr_elt_2: Failed to get hash size for algorithm %u\n", log_descr->alg);
             return;
+        }
 
         void *curr, *next;
 
@@ -373,7 +377,10 @@ static void print_evt_log_ptr_elt_2_1(const heap_ext_data_element_t *elt)
 
 static void print_tpr_req_elt(const heap_ext_data_element_t *elt)
 {
-    if (elt == NULL) return;
+    if (elt == NULL) {
+        printk(TBOOT_ERR"print_tpr_req_elt: Element pointer is NULL\n");
+        return;
+    }
     const heap_tpr_req_element_t *tpr_req_elt = (const heap_tpr_req_element_t *) elt->data;
     printk(TBOOT_DETA"\t TPR_REQ_ELEMENT:\n");
     printk(TBOOT_DETA"\t\t       type: %d\n", elt->type);
@@ -548,8 +555,10 @@ static bool verify_evt_log_ptr_elt(const heap_ext_data_element_t *elt)
 
 static bool verify_evt_log_ptr_elt_2(const heap_ext_data_element_t *elt)
 {
-    if ( !elt )
+    if ( !elt ) {
+        printk(TBOOT_ERR"verify_evt_log_ptr_elt_2: Element pointer is NULL\n");
         return false;
+    }
 
     return true;
 }
@@ -611,8 +620,10 @@ bool verify_bios_data(const txt_heap_t *txt_heap)
     printk(TBOOT_DETA"TXT.HEAP.SIZE: 0x%jx (%ju)\n", heap_size, heap_size);
 
     /* verify that heap base/size are valid */
-    if ( txt_heap == NULL || heap_base == 0 || heap_size == 0 )
+    if ( txt_heap == NULL || heap_base == 0 || heap_size == 0 ) {
+        printk(TBOOT_ERR"verify_bios_data: txt_heap, heap_base or heap_size == 0\n");
         return false;
+    }
 
     /* check size */
     uint64_t size = get_bios_data_size(txt_heap);
@@ -620,6 +631,7 @@ bool verify_bios_data(const txt_heap_t *txt_heap)
         printk(TBOOT_ERR"BIOS data size is 0\n");
         return false;
     }
+
     if ( size > heap_size ) {
         printk(TBOOT_ERR"BIOS data size is larger than heap size "
                "(%jx, heap size=%jx)\n", size, heap_size);
@@ -774,9 +786,15 @@ void print_os_sinit_data_vtdpmr(const os_sinit_data_t *os_sinit_data)
 void print_os_sinit_data_tpr(const os_sinit_data_t *os_sinit_data)
 {
     heap_tpr_req_element_t *tpr_elt = NULL;
-    if (os_sinit_data == NULL) return;
+    if (os_sinit_data == NULL) {
+        printk(TBOOT_ERR"print_os_sinit_data_tpr: os_sinit_data pointer is NULL\n");
+        return;
+    }
     tpr_elt = get_tpr_req_element(os_sinit_data);
-    if (tpr_elt == NULL) return;
+    if (tpr_elt == NULL) {
+        printk(TBOOT_ERR"print_os_sinit_data_tpr: Failed to get TPR element\n");
+        return;
+    }
     printk(TBOOT_DETA"\t tpr_lo_base: 0x%Lx\n", tpr_elt->tpr_req_arr[0].tpr_range_base);
     printk(TBOOT_DETA"\t tpr_lo_size: 0x%Lx\n", tpr_elt->tpr_req_arr[0].tpr_range_size);
     printk(TBOOT_DETA"\t tpr_hi_base: 0x%Lx\n", tpr_elt->tpr_req_arr[1].tpr_range_base);
@@ -992,14 +1010,17 @@ heap_tpr_req_element_t *get_tpr_req_element(const os_sinit_data_t *os_sinit_data
     heap_ext_data_element_t *elt = NULL;
     heap_tpr_req_element_t *tpr_elt = NULL;
     if (os_sinit_data == NULL) {
+        printk(TBOOT_ERR"get_tpr_req_element: os_sinit_data pointer is NULL\n");
         return NULL;
     }
     if (os_sinit_data->version < 6) {
         //Old versions do not support heap_ext_elements
+        printk(TBOOT_WARN"get_tpr_req_element: os_sinit_data version %u does not support heap_ext_elements\n", os_sinit_data->version);
         return NULL;
     }
     if (g_tpr_support == false) {
         //TPR not supported
+        printk(TBOOT_WARN"get_tpr_req_element: TPR not supported\n");
         return NULL;
     }
     elt = (heap_ext_data_element_t *) &os_sinit_data->ext_data_elts;

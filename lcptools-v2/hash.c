@@ -40,11 +40,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#include <openssl/evp.h>
 #include <safe_lib.h>
 #define PRINT   printf
 #include "../../include/config.h"
 #include "../../include/hash.h"
+#include "crypto.h"
 
 /*
  * are_hashes_equal
@@ -75,36 +75,7 @@ bool are_hashes_equal(const tb_hash_t *hash1, const tb_hash_t *hash2,
 bool hash_buffer(const unsigned char* buf, size_t size, tb_hash_t *hash,
 		 uint16_t hash_alg)
 {
-    if ( hash == NULL )
-        return false;
-
-    EVP_MD_CTX *ctx = EVP_MD_CTX_create();
-    const EVP_MD *md;
-
-    if ( hash_alg == TB_HALG_SHA1 || hash_alg == TB_HALG_SHA1_LG ) {
-        md = EVP_sha1();
-        
-    }
-    else if (hash_alg == TB_HALG_SHA256) {
-        md = EVP_sha256();
-    }
-    else if (hash_alg == TB_HALG_SHA384) {
-        md = EVP_sha384();
-    }
-    else if (hash_alg == TB_HALG_SHA512) {
-        md = EVP_sha512();
-    }
-    else if (hash_alg == TB_HALG_SM3) {
-        md = EVP_sm3();
-    }
-    else
-        return false;
-    
-    EVP_DigestInit(ctx, md);
-    EVP_DigestUpdate(ctx, buf, size);
-    EVP_DigestFinal(ctx, hash->sha1, NULL);
-    EVP_MD_CTX_destroy(ctx);
-    return true;
+    return (crypto_hash_buffer(buf, size, (unsigned char*)hash, hash_alg) == 0 ? true : false); 
 }
 
 /*
@@ -121,18 +92,11 @@ bool extend_hash(tb_hash_t *hash1, const tb_hash_t *hash2, uint16_t hash_alg)
         return false;
 
     if ( hash_alg == TB_HALG_SHA1 ) {
-        EVP_MD_CTX *ctx = EVP_MD_CTX_create();
-        const EVP_MD *md;
-
         memcpy_s(buf, sizeof(buf), &(hash1->sha1), sizeof(hash1->sha1));
         memcpy_s(buf + sizeof(hash1->sha1), sizeof(buf) - sizeof(hash1->sha1),
                  &(hash2->sha1), sizeof(hash1->sha1));
-        md = EVP_sha1();
-        EVP_DigestInit(ctx, md);
-        EVP_DigestUpdate(ctx, buf, 2*sizeof(hash1->sha1));
-        EVP_DigestFinal(ctx, hash1->sha1, NULL);
-        EVP_MD_CTX_destroy(ctx);
-        return true;
+
+        return (crypto_hash_buffer(buf, (2*sizeof(hash1->sha1)), (unsigned char*)hash1->sha1, hash_alg) == 0 ? true : false);
     }
     else
         return false;

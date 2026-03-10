@@ -75,6 +75,7 @@ bool write_tpm20_policy_list_2_1_file(const char *file, const char *signature_fi
 lcp_signature_2_1 *create_empty_ecc_signature_2_1(void);
 lcp_signature_2_1 *create_empty_rsa_signature_2_1(void);
 lcp_signature_2_1 *create_empty_lms_signature_2_1(void);
+lcp_signature_2_1 *create_empty_mldsa_signature_2_1(void);
 lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base_size,
                                              uint16_t key_signature_offset);
 bool sign_lcp_policy_list_t2_1(sign_user_input user_input);

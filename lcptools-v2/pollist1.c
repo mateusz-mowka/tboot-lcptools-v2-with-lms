@@ -41,9 +41,6 @@
 #include <string.h>
 #include <safe_lib.h>
 #define PRINT   printf
-#include <openssl/pem.h>
-#include <openssl/err.h>
-#include <openssl/rsa.h>
 #include "../include/config.h"
 #include "../include/hash.h"
 #include "../include/uuid.h"
@@ -54,6 +51,7 @@
 #include "pollist1.h"
 #include "pollist2.h"
 #include "polelt.h"
+#include "crypto.h"
 
 bool verify_tpm12_policy_list(const lcp_policy_list_t *pollist, size_t size,
         bool *no_sigblock, bool size_is_exact)
@@ -461,7 +459,7 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
     size_t list_data_len;
     sized_buffer *signature_block = NULL;
     sized_buffer *digest = NULL;
-    EVP_PKEY_CTX *private_key_context = NULL;
+    crypto_status c_status = crypto_general_fail;
 
     bool status;
 
@@ -477,7 +475,8 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
     }
 
     list_data_len = get_tpm12_policy_list_size(pollist) - sig->pubkey_size;
-    digest = allocate_sized_buffer(SHA1_DIGEST_SIZE);
+    /* Allocate buffer for raw list data — crypto_rsa_sign hashes internally */
+    digest = allocate_sized_buffer(list_data_len);
     if (digest == NULL) {
         ERROR("Error: failed to allocate buffer.\n");
         goto ERROR;
@@ -487,35 +486,31 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
         ERROR("Error: failed to allocate buffer.\n");
         goto ERROR;
     }
-    digest->size = SHA1_DIGEST_SIZE;
+    digest->size = list_data_len;
     signature_block->size = sig->pubkey_size;
+    memcpy_s((void *) digest->data, digest->size,
+                    (const void *) pollist, list_data_len);
     if (verbose) {
-        DISPLAY("Data to hash:\n");
+        DISPLAY("Data to sign:\n");
         print_hex("       ", (const unsigned char *) pollist, list_data_len);
     }
-    status = hash_buffer((const unsigned char *) pollist, list_data_len,
-                                      (tb_hash_t *) digest->data, TPM_ALG_SHA1);
-    if ( !status ) {
-        ERROR("Error: failed to hash list\n");
-        goto ERROR;
-    }
-    if ( verbose ) {
-        LOG("digest:\n");
-        print_hex("", (const void *) digest->data, SHA1_DIGEST_SIZE);
+
+    /* Create crypto_sized_buffer wrappers — sized_buffer uses a flexible array
+     * member (data[]), while crypto_sized_buffer uses a pointer (*data),
+     * so direct casting between them is unsafe. */
+    {
+        crypto_sized_buffer c_sig_block = { .size = signature_block->size, .data = signature_block->data };
+        crypto_sized_buffer c_digest = { .size = digest->size, .data = digest->data };
+        c_status = crypto_rsa_sign(&c_sig_block, &c_digest, pollist->sig_alg, TPM_ALG_SHA1, privkey_file);
     }
 
-    private_key_context = rsa_get_sig_ctx(privkey_file, sig->pubkey_size);
-    if (private_key_context == NULL) {
-        ERROR("Error: failed to initialize EVP context.\n");
-        goto ERROR;
-    }
-    //Now do the signing
-    status = rsa_ssa_pss_sign(signature_block, digest, pollist->sig_alg, TPM_ALG_SHA1,
-                                                           private_key_context);
+    status = (c_status == crypto_ok) ? true : false;
+
     if (!status) {
         ERROR("Error: failed to sign list data.\n");
         goto ERROR;
     }
+
     buffer_reverse_byte_order((uint8_t *) signature_block->data, signature_block->size);
     memcpy_s((void *) sig->pubkey_value + sig->pubkey_size, sig->pubkey_size,
                     (const void *) signature_block->data, signature_block->size);
@@ -530,7 +525,6 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
     if (digest != NULL) {
         free(digest);
     }
-    OPENSSL_free((void *) private_key_context);
     return true;
     ERROR:
         if (signature_block != NULL) {
@@ -539,7 +533,6 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
         if (digest != NULL) {
             free(digest);
         }
-        OPENSSL_free((void *) private_key_context);
         return false;
 }
 
@@ -561,7 +554,7 @@ bool sign_lcp_policy_list_t(sign_user_input user_input)
     if (sig == NULL) {
         ERROR("Error: failed to read public key.\n");
         free(pollist);
-        return NULL;
+        return false;
     }
     if ( (sig->rsa_signature.pubkey_size != 128 /* 1024 bits */)
         && (sig->rsa_signature.pubkey_size != 256 /* 2048 bits */)
@@ -569,21 +562,20 @@ bool sign_lcp_policy_list_t(sign_user_input user_input)
         ERROR("Error: public key size is not 1024/2048/3072 bits\n");
         free(sig);
         free(pollist);
-        return NULL;
+        return false;
     }
 
     sig->rsa_signature.revocation_counter = user_input.rev_ctr;
     pollist = add_tpm12_signature(pollist, (const lcp_signature_t *) &sig->rsa_signature);
     if (pollist == NULL) {
         free(sig);
-        free(pollist);
-        return NULL;
+        return false;
     }
     result = rsa_sign_list1_data(pollist, user_input.privkey_file);
     if (!result) {
         free(sig);
         free(pollist);
-        return NULL;
+        return false;
     }
     
     result = write_tpm12_policy_list_file(user_input.list_file, pollist);

@@ -13,20 +13,30 @@ include $(ROOTDIR)/Config.mk
 
 
 LCP2_TARGETS := \
-	hash_sigs	\
 	lcp2_mlehash    \
 	lcp2_crtpol    \
 	lcp2_crtpollist \
-	lcp2_crtpolelt  \
+	lcp2_crtpolelt
 
-lcp2 : $(LCP2_TARGETS)
+# Build IPPC library if USE_IPPC is set
+ifdef USE_IPPC
+IPPC_DEP := ippc_lib
+else
+IPPC_DEP :=
+endif
+
+.PHONY: ippc_lib
+ippc_lib:
+	$(MAKE) -C ippc build
+
+lcp2 : $(IPPC_DEP) $(LCP2_TARGETS)
 
 
 #
 # universal rules
 #
 
-build : $(LCP2_TARGETS)
+build : $(IPPC_DEP) $(LCP2_TARGETS)
 
 
 dist : install
@@ -48,7 +58,6 @@ $(INST_TARGET) : $(notdir $(INST_TARGET))
 
 clean :
 	rm -f *~ *.a *.so *.o *.rpm $(DEP_FILES) $(LCP2_TARGETS)
-	$(MAKE) -C hash-sigs clean
 
 mrproper : clean
 
@@ -70,25 +79,33 @@ LCP2_LIB := liblcp.a
 
 LIBS += -lcrypto -llcp -lz $(ROOTDIR)/safestringlib/libsafestring.a
 
-HASH_SIGS := ./hash-sigs/hss_lib_thread.a ./hash-sigs/hss_verify.a
+# Add IPPC library if USE_IPPC is set
+ifdef USE_IPPC
+LIBS += -L$(ROOTDIR)/lcptools-v2/ippc/cryptography-primitives/build/.build/RELEASE/lib -lippcp
+LDFLAGS += -Wl,-rpath,$(ROOTDIR)/lcptools-v2/ippc/cryptography-primitives/build/.build/RELEASE/lib
+endif
 
-$(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o
+
+ifdef USE_IPPC
+LCP_CRYPTO_OBJ := crypto_ippc.o
+else
+LCP_CRYPTO_OBJ := crypto_OpenSSL.o
+endif
+
+$(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o crypto.o $(LCP_CRYPTO_OBJ)
 	$(AR) rc $@ $^
 
-lcp2_crtpolelt : crtpolelt.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)
+lcp2_crtpolelt : crtpolelt.o $(POLELT_PLUGINS) $(LCP2_LIB)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
-lcp2_crtpollist : crtpollist.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)
+lcp2_crtpollist : crtpollist.o $(POLELT_PLUGINS) $(LCP2_LIB)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
-lcp2_crtpol : crtpol.o $(POLELT_PLUGINS) $(LCP2_LIB) $(HASH_SIGS)
+lcp2_crtpol : crtpol.o $(POLELT_PLUGINS) $(LCP2_LIB)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
 
-lcp2_mlehash : mlehash.o $(LCP2_LIB) $(HASH_SIGS)
+lcp2_mlehash : mlehash.o $(LCP2_LIB)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@
-
-hash_sigs : 
-	$(MAKE) -C hash-sigs
 
 #
 # implicit rules
