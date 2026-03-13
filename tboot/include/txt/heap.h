@@ -296,6 +296,8 @@ typedef struct __packed {
     uint32_t          version;           /* currently 3 */
     mtrr_state_t      saved_mtrr_state;  /* saved prior to changes for SINIT */
     void 			 *lctx_addr;         /* needs to be restored to ebx */
+    uint32_t          num_of_e820_entries; /* number of entries in the copy of */
+                                           /* e820 map */
     uint32_t          saved_misc_enable_msr;  /* saved prior to SENTER */
                                          /* PO policy data */
     uint8_t           lcp_po_data[MAX_LCP_PO_DATA_SIZE];

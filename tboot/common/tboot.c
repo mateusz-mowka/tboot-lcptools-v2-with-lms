@@ -155,6 +155,31 @@ static void restore_saved_s3_wakeup_page(void)
            s3_wakeup_end - s3_wakeup_16);
 }
 
+static bool secure_nr_map_ptr(void)
+{
+    txt_heap_t    *heap           = NULL;
+    os_mle_data_t *os_mle_data    = NULL;
+
+    heap = get_txt_heap();
+    if (heap == NULL) {
+        printk(TBOOT_ERR"Error: TXT heap is not defined.\n");
+        printk(TBOOT_ERR"Failed to secure g_nr_map pointer.\n");
+        return false;
+    }
+
+    os_mle_data = get_os_mle_data_start(heap);
+    if (os_mle_data == NULL) {
+        printk(TBOOT_ERR"Error: Failed to get os_mle_data pointer.\n");
+        printk(TBOOT_ERR"Failed to secure g_nr_map pointer.\n");
+        return false;
+    }
+
+    /* Set g_nr_map to point at the num_of_e820_entries member of the */
+    /* OsMleData struct */
+    set_nr_map_ptr(&os_mle_data->num_of_e820_entries);
+    return true;
+}
+
 static inline void print_tboot_shared(const tboot_shared_t *tboot_shared)
 {
     printk(TBOOT_DETA"tboot_shared data:\n");
@@ -352,6 +377,7 @@ void check_racm_result(void)
 void begin_launch(void *addr, uint32_t magic)
 {
     tb_error_t err;
+    bool is_nr_map_secured = false;
 
     if (g_ldr_ctx->type == 0)
         determine_loader_type(addr, magic);
@@ -430,9 +456,24 @@ void begin_launch(void *addr, uint32_t magic)
     }
     printk(TBOOT_INFO"BSP is cpu %u\n", get_apicid());
 
+    /* secure g_nr_map pointer from DMA unauthorized access */
+    if (supports_txt() == TB_ERR_NONE) {
+        is_nr_map_secured = secure_nr_map_ptr();
+        if (!is_nr_map_secured) {
+            printk(TBOOT_ERR"Error: Failed to secure g_nr_map pointer.\n");
+            printk(TBOOT_ERR"E820 map may be corrupted by DMA attack.\n");
+            apply_policy(TB_ERR_FATAL);
+        }
+        else {
+            printk(TBOOT_INFO"Global ptr for the num of e820 entries has been"
+                             " secured by TBOOT.\n");
+        }
+    }
+
+
     /* make copy of e820 map that we will use and adjust */
     if ( !s3_flag ) {
-        if ( !copy_e820_map(g_ldr_ctx) )  apply_policy(TB_ERR_FATAL);
+        if ( !copy_e820_map(g_ldr_ctx, get_nr_map_ptr()))  apply_policy(TB_ERR_FATAL);
         if (efi_memmap_copy(g_ldr_ctx)) {
             printk(TBOOT_INFO"Original EFI memory map:\n");
             efi_memmap_dump();

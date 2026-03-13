@@ -667,6 +667,8 @@ static void print_os_mle_data(const os_mle_data_t *os_mle_data)
     printk(TBOOT_DETA"\t version: %u\n", os_mle_data->version);
     /* TBD: perhaps eventually print saved_mtrr_state field */
     printk(TBOOT_DETA"\t loader context addr: %p\n", os_mle_data->lctx_addr);
+    printk(TBOOT_DETA"\t number of e820 map entries: %u\n",
+           os_mle_data->num_of_e820_entries);
 }
 
 static bool verify_os_mle_data(const txt_heap_t *txt_heap)
