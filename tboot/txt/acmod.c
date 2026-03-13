@@ -1061,17 +1061,30 @@ bool verify_racm(const acm_hdr_t *acm_hdr)
 #ifndef IS_INCLUDED     /*  defined in utils/acminfo.c  */
 void verify_IA32_se_svn_status(const acm_hdr_t *acm_hdr)
 {
-    struct tpm_if *tpm = get_tpm();
+    uint32_t               ebx     = 0;
+    struct tpm_if          *tpm    = get_tpm();
     const struct tpm_if_fp *tpm_fp = get_tpm_fp();
   
     printk(TBOOT_INFO"SGX:verify_IA32_se_svn_status is called\n");
-        
-    //check if SGX is enabled by cpuid with ax=7, cx=0 
-    if ((cpuid_ebx1(7,0) & 0x00000004) == 0){
-        printk(TBOOT_ERR"SGX is not enabled, cpuid.ebx: 0x%x\n", cpuid_ebx1(7,0));
+
+    /* check if SGX is supported by cpuid with ax=7, cx=0 */
+    ebx = cpuid_ebx1(7,0);
+    if ((ebx & CPUID_EBX_X86_SGX_SUPPORTED) == 0){
+        printk(TBOOT_ERR"SGX is not supported, cpuid.ebx: 0x%x\n", ebx);
         return;
     }
-    printk(TBOOT_INFO"SGX is enabled, cpuid.ebx:0x%x\n", cpuid_ebx1(7,0));
+
+    printk(TBOOT_INFO"SGX is supported, cpuid.ebx:0x%x\n", ebx);
+
+    /* check if SGX is enabled */
+    if ((rdmsr(MSR_IA32_FEATURE_CONTROL) & CPUID_X86_FEATURE_SGX) !=
+         CPUID_X86_FEATURE_SGX){
+        printk(TBOOT_ERR"SGX is not enabled, IA32_FEATURE_CONTROL: 0x%Lx\n",
+               rdmsr(MSR_IA32_FEATURE_CONTROL));
+        return;
+    }
+
+    printk(TBOOT_INFO"SGX is enabled.\n");
     printk(TBOOT_INFO"Comparing se_svn with ACM Header se_svn\n");
     
     if (((rdmsr(MSR_IA32_SE_SVN_STATUS)>>16) & 0xff) != acm_hdr->se_svn) {
