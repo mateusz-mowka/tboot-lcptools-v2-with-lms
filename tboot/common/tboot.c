@@ -35,6 +35,7 @@
  */
 
 #include <config.h>
+#include <memlog.h>
 #include <types.h>
 #include <stdbool.h>
 #include <stdarg.h>
@@ -175,7 +176,6 @@ static void post_launch(void)
     tb_error_t err;
     struct tpm_if *tpm = get_tpm();
     const struct tpm_if_fp *tpm_fp = get_tpm_fp();
-    extern tboot_log_t *g_log;
     extern void shutdown_entry(void);
 
     printk(TBOOT_INFO"measured launch succeeded\n");
@@ -266,7 +266,7 @@ static void post_launch(void)
     tb_memset(&_tboot_shared, 0, PAGE_SIZE);
     _tboot_shared.uuid = (uuid_t)TBOOT_SHARED_UUID;
     _tboot_shared.version = 6;
-    _tboot_shared.log_addr = (uint32_t)g_log;
+    _tboot_shared.log_addr = memlog_get_base();
     _tboot_shared.shutdown_entry = (uint32_t)shutdown_entry;
     _tboot_shared.tboot_base = (uint32_t)&_start;
     _tboot_shared.tboot_size = (uint32_t)&_end - (uint32_t)&_start;
