@@ -27,14 +27,15 @@ backends:
 # Keys are generated (or copied) during test setup.
 #
 # File naming convention (derived from key name + type):
-#   RSA / EC  : {name}_pub.pem, {name}_priv.pem
-#   ML-DSA    : {name}_pub.key, {name}_priv.key
+#   RSA / EC / ML-DSA : {name}_pub.pem, {name}_priv.pem
 #   LMS       : {name}.pub, {name}.prv
 #
 # Supported key types and their required fields:
 #   rsa   — bits: key size in bits
 #   ec    — curve: OpenSSL curve name (e.g. secp256k1, secp384r1)
-#   mldsa — (no extra fields; generated via lcp2_crtpollist --keygen)
+#   mldsa — openssl: path to openssl binary (default: "openssl")
+#           ld_library_path: extra LD_LIBRARY_PATH for ML-DSA support (optional)
+#           Generated via: openssl genpkey -algorithm ML-DSA-87
 #   lms   — copy_from: {pub, priv, aux} source filenames in lcptools-v2/
 keys:
   rsa2048:
@@ -55,6 +56,8 @@ keys:
 
   mldsa:
     type: mldsa
+    openssl: /usr/local/bin/openssl
+    ld_library_path: /usr/local/lib64
 
   lms:
     type: lms

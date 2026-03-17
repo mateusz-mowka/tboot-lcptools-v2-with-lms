@@ -166,20 +166,6 @@ crypto_lms_sign_data (
 }
 
 bool
-crypto_mldsa_keygen (
-  const char  *pubkey_file,
-  const char  *privkey_file
-  )
-{
-  if ((NULL == pubkey_file) || (NULL == privkey_file)) {
-    fprintf (stderr, "crypto_mldsa_keygen called with NULL parameter\n");
-    return false;
-  }
-
-  return crypto_mldsa_keygen_internal (pubkey_file, privkey_file);
-}
-
-bool
 crypto_mldsa_verify_signature (
   const unsigned char  *msg,
   size_t               msg_len,
@@ -212,4 +198,19 @@ crypto_mldsa_sign_data (
   }
 
   return crypto_mldsa_sign_data_internal (msg, msg_len, signature, sig_len, privkey_file);
+}
+
+bool
+crypto_read_mldsa_pubkey (
+  const char     *file,
+  unsigned char  *pubkey,
+  size_t         pubkey_size
+  )
+{
+  if ((NULL == file) || (NULL == pubkey)) {
+    fprintf (stderr, "crypto_read_mldsa_pubkey called with NULL parameter\n");
+    return false;
+  }
+
+  return crypto_read_mldsa_pubkey_internal (file, pubkey, pubkey_size);
 }

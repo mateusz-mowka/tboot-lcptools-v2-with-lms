@@ -3,7 +3,7 @@
  *
  * Tests cover:
  *   - Hashing (SHA-1, SHA-256, SHA-384, SHA-512)
- *   - ML-DSA-87 key generation, signing, and verification
+ *   - ML-DSA-87 signing and verification (PEM key files)
  *   - NULL-parameter guard checks on the dispatch layer (crypto.c)
  *
  * Build:  make USE_IPPC=1        (from lcptools-v2/tests/)
@@ -24,6 +24,9 @@
 #include <openssl/bn.h>
 #include <openssl/obj_mac.h>
 #include <openssl/ecdsa.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/err.h>
 
 /* The crypto headers are plain C; lcp3.h uses flexible array members
    in nested structs which is invalid C++, so we include only crypto.h
@@ -79,6 +82,39 @@ public:
 private:
     std::string path_;
 };
+
+/*
+ * Generate an ML-DSA-87 key pair as PEM files using the OpenSSL EVP API.
+ * Returns true on success, false if ML-DSA-87 is not supported.
+ */
+static bool generate_mldsa_pem_keys(const char *pub_path, const char *priv_path) {
+    EVP_PKEY_CTX *kctx = EVP_PKEY_CTX_new_from_name(NULL, "ML-DSA-87", NULL);
+    if (!kctx) return false;
+
+    EVP_PKEY *pkey = NULL;
+    if (EVP_PKEY_keygen_init(kctx) <= 0 || EVP_PKEY_keygen(kctx, &pkey) <= 0) {
+        EVP_PKEY_CTX_free(kctx);
+        return false;
+    }
+    EVP_PKEY_CTX_free(kctx);
+
+    FILE *fp = fopen(priv_path, "wb");
+    if (!fp) { EVP_PKEY_free(pkey); return false; }
+    if (PEM_write_PrivateKey(fp, pkey, NULL, NULL, 0, NULL, NULL) != 1) {
+        fclose(fp); EVP_PKEY_free(pkey); return false;
+    }
+    fclose(fp);
+
+    fp = fopen(pub_path, "wb");
+    if (!fp) { EVP_PKEY_free(pkey); return false; }
+    if (PEM_write_PUBKEY(fp, pkey) != 1) {
+        fclose(fp); EVP_PKEY_free(pkey); return false;
+    }
+    fclose(fp);
+
+    EVP_PKEY_free(pkey);
+    return true;
+}
 
 /* ================================================================== */
 /*  Hash tests                                                         */
@@ -212,12 +248,13 @@ TEST_F(CryptoHashTest, SHA256_DifferentMessages) {
 
 class CryptoNullParamTest : public ::testing::Test {};
 
-TEST_F(CryptoNullParamTest, MldsaKeygen_NullPubkey) {
-    EXPECT_FALSE(crypto_mldsa_keygen(NULL, "/tmp/dummy.prv"));
+TEST_F(CryptoNullParamTest, MldsaReadPubkey_NullFile) {
+    unsigned char buf[MLDSA87_PUBKEY_SIZE];
+    EXPECT_FALSE(crypto_read_mldsa_pubkey(NULL, buf, sizeof(buf)));
 }
 
-TEST_F(CryptoNullParamTest, MldsaKeygen_NullPrivkey) {
-    EXPECT_FALSE(crypto_mldsa_keygen("/tmp/dummy.pub", NULL));
+TEST_F(CryptoNullParamTest, MldsaReadPubkey_NullBuf) {
+    EXPECT_FALSE(crypto_read_mldsa_pubkey("/tmp/dummy.pem", NULL, 1));
 }
 
 TEST_F(CryptoNullParamTest, MldsaVerify_NullMsg) {
@@ -869,17 +906,15 @@ TEST_F(EccTest, Sign_NonexistentKey) {
 class MldsaTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        pub_file_ = new TempFile(".pub");
-        prv_file_ = new TempFile(".prv");
-        ASSERT_TRUE(crypto_mldsa_keygen(pub_file_->c_str(), prv_file_->c_str()))
-            << "ML-DSA-87 key generation failed";
-        /* Load the public key into memory for verification tests */
-        FILE *fp = fopen(pub_file_->c_str(), "rb");
-        ASSERT_NE(fp, nullptr);
+        pub_file_ = new TempFile(".pem");
+        prv_file_ = new TempFile(".pem");
+        ASSERT_TRUE(generate_mldsa_pem_keys(pub_file_->c_str(), prv_file_->c_str()))
+            << "ML-DSA-87 PEM key generation failed (OpenSSL may lack ML-DSA support)";
+        /* Load the raw public key via the crypto abstraction layer */
         pubkey_.resize(MLDSA87_PUBKEY_SIZE);
-        ASSERT_EQ(fread(pubkey_.data(), 1, MLDSA87_PUBKEY_SIZE, fp),
-                  (size_t)MLDSA87_PUBKEY_SIZE);
-        fclose(fp);
+        ASSERT_TRUE(crypto_read_mldsa_pubkey(pub_file_->c_str(),
+                    pubkey_.data(), pubkey_.size()))
+            << "Failed to read ML-DSA-87 public key from PEM";
     }
 
     void TearDown() override {
@@ -891,38 +926,6 @@ protected:
     TempFile *prv_file_ = nullptr;
     std::vector<unsigned char> pubkey_;
 };
-
-/* Keygen produces files of the correct size */
-TEST_F(MldsaTest, Keygen_FileSizes) {
-    FILE *fp;
-
-    fp = fopen(pub_file_->c_str(), "rb");
-    ASSERT_NE(fp, nullptr);
-    fseek(fp, 0, SEEK_END);
-    EXPECT_EQ(ftell(fp), MLDSA87_PUBKEY_SIZE);
-    fclose(fp);
-
-    fp = fopen(prv_file_->c_str(), "rb");
-    ASSERT_NE(fp, nullptr);
-    fseek(fp, 0, SEEK_END);
-    EXPECT_EQ(ftell(fp), MLDSA87_PRIVKEY_SIZE);
-    fclose(fp);
-}
-
-/* Two key generations produce different keys */
-TEST_F(MldsaTest, Keygen_Unique) {
-    TempFile pub2(".pub"), prv2(".prv");
-    ASSERT_TRUE(crypto_mldsa_keygen(pub2.c_str(), prv2.c_str()));
-
-    std::vector<unsigned char> pub2_data(MLDSA87_PUBKEY_SIZE);
-    FILE *fp = fopen(pub2.c_str(), "rb");
-    ASSERT_NE(fp, nullptr);
-    ASSERT_EQ(fread(pub2_data.data(), 1, MLDSA87_PUBKEY_SIZE, fp),
-              (size_t)MLDSA87_PUBKEY_SIZE);
-    fclose(fp);
-
-    EXPECT_NE(memcmp(pubkey_.data(), pub2_data.data(), MLDSA87_PUBKEY_SIZE), 0);
-}
 
 /* Sign → Verify round-trip */
 TEST_F(MldsaTest, SignVerify_RoundTrip) {
@@ -1006,15 +1009,12 @@ TEST_F(MldsaTest, Verify_WrongKey) {
                                      &sig_len, prv_file_->c_str()), crypto_ok);
 
     /* Generate a different key pair */
-    TempFile pub2(".pub"), prv2(".prv");
-    ASSERT_TRUE(crypto_mldsa_keygen(pub2.c_str(), prv2.c_str()));
+    TempFile pub2(".pem"), prv2(".pem");
+    ASSERT_TRUE(generate_mldsa_pem_keys(pub2.c_str(), prv2.c_str()));
 
     std::vector<unsigned char> wrong_pub(MLDSA87_PUBKEY_SIZE);
-    FILE *fp = fopen(pub2.c_str(), "rb");
-    ASSERT_NE(fp, nullptr);
-    ASSERT_EQ(fread(wrong_pub.data(), 1, MLDSA87_PUBKEY_SIZE, fp),
-              (size_t)MLDSA87_PUBKEY_SIZE);
-    fclose(fp);
+    ASSERT_TRUE(crypto_read_mldsa_pubkey(pub2.c_str(),
+                wrong_pub.data(), wrong_pub.size()));
 
     bool valid = crypto_mldsa_verify_signature(
         msg, sizeof(msg) - 1,

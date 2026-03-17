@@ -116,10 +116,9 @@ static const char help[] =
     "LMS private and public keys with Winternitz coefficient of 4 and Merkle tree height of 20\n"
     "can be generated as follows:\n"
     "  demo lms_key SHA192,20/4\n"
-    "\n--keygen\n"
-    "Generates ML-DSA-87 key pair.\n"
-    "        --pub <key file>         output public key file (raw binary)\n"
-    "        --priv <key file>        output private key file (raw binary)\n";
+    "ML-DSA-87 key pair can be generated as follows:\n"
+    "  openssl genpkey -algorithm ML-DSA-87 -out privkey.pem\n"
+    "  openssl pkey -in privkey.pem -pubout -out pubkey.pem\n";
 
 bool verbose = false;
 
@@ -134,7 +133,6 @@ static struct option long_opts[] =
     {"show",           no_argument,          NULL,     'W'},
     {"verify",         no_argument,          NULL,     'V'},
     {"version",        no_argument,          NULL,     'v'},
-    {"keygen",         no_argument,          NULL,     'K'},
     /* options */
     {"out",            required_argument,    NULL,     'o'},
     {"sigalg",         required_argument,    NULL,     'a'},
@@ -289,31 +287,6 @@ static int create(void)
 
     free(pollist);
     return write_ok ? 0 : 1;
-}
-
-static int keygen(void)
-{
-    LOG("[keygen]\n");
-
-    if ( *pubkey_file == '\0' ) {
-        ERROR("Error: no public key output file specified\n");
-        return 1;
-    }
-    if ( *privkey_file == '\0' ) {
-        ERROR("Error: no private key output file specified\n");
-        return 1;
-    }
-
-    DISPLAY("Generating ML-DSA-87 key pair...\n");
-    if (!crypto_mldsa_keygen(pubkey_file, privkey_file)) {
-        ERROR("Error: ML-DSA-87 key generation failed.\n");
-        return 1;
-    }
-
-    DISPLAY("ML-DSA-87 key pair generated successfully:\n");
-    DISPLAY("  Public key:  %s (%d bytes)\n", pubkey_file, MLDSA87_PUBKEY_SIZE);
-    DISPLAY("  Private key: %s (%d bytes)\n", privkey_file, MLDSA87_PRIVKEY_SIZE);
-    return 0;
 }
 
 static int sign(void)
@@ -602,7 +575,6 @@ int main(int argc, char *argv[])
         case 'V':          /* verify */
         case 'v':          /* version */
         case 'L':          /* lms */
-        case 'K':          /* keygen */
             if ( prev_cmd ) {
                 ERROR("Error: only one command can be specified\n");
                 return 1;
@@ -784,10 +756,6 @@ int main(int argc, char *argv[])
                                                   TOOL_VER_MINOR);
         return 0;
     }
-    else if ( cmd == 'K' ) { /* --keygen */
-        return keygen();
-    }
-
     ERROR("Error: unknown command\n");
     return 1;
 }

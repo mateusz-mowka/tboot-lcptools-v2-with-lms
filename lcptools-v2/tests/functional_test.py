@@ -151,10 +151,8 @@ def run_tool(backend: str, tool: str, *args: str,
 
 def key_pub_file(name: str, key_type: str) -> Path:
     """Return the public key file path for a given key name and type."""
-    if key_type in ("rsa", "ec"):
+    if key_type in ("rsa", "ec", "mldsa"):
         return KEY_DIR / f"{name}_pub.pem"
-    if key_type == "mldsa":
-        return KEY_DIR / f"{name}_pub.key"
     if key_type == "lms":
         return KEY_DIR / f"{name}.pub"
     raise ValueError(f"Unknown key type: {key_type}")
@@ -162,10 +160,8 @@ def key_pub_file(name: str, key_type: str) -> Path:
 
 def key_priv_file(name: str, key_type: str) -> Path:
     """Return the private key file path for a given key name and type."""
-    if key_type in ("rsa", "ec"):
+    if key_type in ("rsa", "ec", "mldsa"):
         return KEY_DIR / f"{name}_priv.pem"
-    if key_type == "mldsa":
-        return KEY_DIR / f"{name}_priv.key"
     if key_type == "lms":
         return KEY_DIR / f"{name}.prv"
     raise ValueError(f"Unknown key type: {key_type}")
@@ -319,12 +315,30 @@ def generate_keys(config: dict, *, verbose: bool):
         elif key_type == "mldsa":
             pub = str(key_pub_file(key_name, key_type))
             priv = str(key_priv_file(key_name, key_type))
-            run_tool("ippc", "lcp2_crtpollist", "--keygen",
-                     "--pub", pub, "--priv", priv, verbose=verbose)
-            if Path(pub).exists() and Path(priv).exists():
-                log(f"Generated ML-DSA key pair ({key_name})")
-            else:
-                log_skip("ML-DSA key generation failed "
+            openssl_bin = key_cfg.get("openssl", "openssl")
+            openssl_env = os.environ.copy()
+            ld_path = key_cfg.get("ld_library_path", "")
+            if ld_path:
+                existing = openssl_env.get("LD_LIBRARY_PATH", "")
+                openssl_env["LD_LIBRARY_PATH"] = (
+                    f"{ld_path}:{existing}" if existing else ld_path
+                )
+            try:
+                subprocess.run(
+                    [openssl_bin, "genpkey", "-algorithm", "ML-DSA-87",
+                     "-out", priv],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    check=True, env=openssl_env,
+                )
+                subprocess.run(
+                    [openssl_bin, "pkey", "-in", priv,
+                     "-pubout", "-out", pub],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    check=True, env=openssl_env,
+                )
+                log(f"Generated ML-DSA-87 key pair ({key_name})")
+            except (subprocess.CalledProcessError, FileNotFoundError) as e:
+                log_skip(f"ML-DSA key generation failed ({e}) "
                          "— ML-DSA tests will be skipped")
 
         elif key_type == "lms":

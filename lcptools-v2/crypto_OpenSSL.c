@@ -1656,7 +1656,8 @@ crypto_lms_sign_data_internal (
  *   Private key: 4896 bytes
  *   Signature:   4627 bytes
  *
- * Keys are stored as raw binary files, compatible with the IPPC backend.
+ * Keys are stored as PEM or DER files (PKCS#8 / SubjectPublicKeyInfo),
+ * generated via: openssl genpkey -algorithm ML-DSA-87
  * ML-DSA is a "pure" signature scheme: no separate hash step — the EVP
  * DigestSign/DigestVerify one-shot API is used with md=NULL.
  */
@@ -1665,102 +1666,66 @@ crypto_lms_sign_data_internal (
 #define MLDSA87_PRIVKEY_SIZE    4896
 #define MLDSA87_SIGNATURE_SIZE  4627
 
+/*
+ * Read an ML-DSA-87 public key from a PEM or DER file and extract the
+ * raw 2592-byte public key into the caller-supplied buffer.
+ */
 bool
-crypto_mldsa_keygen_internal (
-  const char  *pubkey_file,
-  const char  *privkey_file
+crypto_read_mldsa_pubkey_internal (
+  const char     *file,
+  unsigned char  *pubkey,
+  size_t         pubkey_size
   )
 {
-  EVP_PKEY_CTX   *kctx    = NULL;
-  EVP_PKEY       *pkey    = NULL;
-  unsigned char  *pub_buf = NULL;
-  unsigned char  *prv_buf = NULL;
-  size_t         pub_len  = 0;
-  size_t         prv_len  = 0;
-  FILE           *fp      = NULL;
-  bool           result   = false;
+  EVP_PKEY       *pkey   = NULL;
+  FILE           *fp     = NULL;
+  bool           result  = false;
+  size_t         raw_len = pubkey_size;
 
-  LOG ("[mldsa_keygen]\n");
+  LOG ("[read_mldsa_pubkey]\n");
 
-  kctx = EVP_PKEY_CTX_new_from_name (NULL, "ML-DSA-87", NULL);
-  if (kctx == NULL) {
-    ERROR ("ERROR: EVP_PKEY_CTX_new_from_name(ML-DSA-87) failed\n");
-    goto OPENSSL_ERROR;
+  if (pubkey_size < MLDSA87_PUBKEY_SIZE) {
+    ERROR ("ERROR: ML-DSA pubkey buffer too small: need %d, have %zu\n",
+           MLDSA87_PUBKEY_SIZE, pubkey_size);
+    return false;
   }
 
-  if (EVP_PKEY_keygen_init (kctx) <= 0) {
-    ERROR ("ERROR: EVP_PKEY_keygen_init failed\n");
-    goto OPENSSL_ERROR;
-  }
-
-  if (EVP_PKEY_keygen (kctx, &pkey) <= 0) {
-    ERROR ("ERROR: EVP_PKEY_keygen failed\n");
-    goto OPENSSL_ERROR;
-  }
-
-  /* Query raw key sizes */
-  if (EVP_PKEY_get_raw_public_key (pkey, NULL, &pub_len) <= 0) {
-    ERROR ("ERROR: Failed to query ML-DSA-87 public key size\n");
-    goto OPENSSL_ERROR;
-  }
-
-  if (EVP_PKEY_get_raw_private_key (pkey, NULL, &prv_len) <= 0) {
-    ERROR ("ERROR: Failed to query ML-DSA-87 private key size\n");
-    goto OPENSSL_ERROR;
-  }
-
-  pub_buf = malloc (pub_len);
-  prv_buf = malloc (prv_len);
-  if ((pub_buf == NULL) || (prv_buf == NULL)) {
-    ERROR ("ERROR: Failed to allocate ML-DSA key buffers\n");
-    goto EXIT;
-  }
-
-  if (EVP_PKEY_get_raw_public_key (pkey, pub_buf, &pub_len) <= 0) {
-    ERROR ("ERROR: Failed to export ML-DSA-87 public key\n");
-    goto OPENSSL_ERROR;
-  }
-
-  if (EVP_PKEY_get_raw_private_key (pkey, prv_buf, &prv_len) <= 0) {
-    ERROR ("ERROR: Failed to export ML-DSA-87 private key\n");
-    goto OPENSSL_ERROR;
-  }
-
-  /* Write public key to file */
-  fp = fopen (pubkey_file, "wb");
+  fp = fopen (file, "rb");
   if (fp == NULL) {
-    ERROR ("ERROR: Cannot open public key file for writing: %s\n", pubkey_file);
-    goto EXIT;
+    ERROR ("ERROR: Cannot open ML-DSA public key file: %s\n", file);
+    return false;
   }
 
-  if (fwrite (pub_buf, pub_len, 1, fp) != 1) {
-    ERROR ("ERROR: Failed to write public key to %s\n", pubkey_file);
-    fclose (fp);
-    goto EXIT;
+  /* Try PEM first (-----BEGIN PUBLIC KEY-----) */
+  pkey = PEM_read_PUBKEY (fp, NULL, NULL, NULL);
+  if (pkey == NULL) {
+    /* PEM failed — try DER (SubjectPublicKeyInfo) */
+    rewind (fp);
+    pkey = d2i_PUBKEY_fp (fp, NULL);
   }
 
   fclose (fp);
-  fp = NULL;
 
-  /* Write private key to file */
-  fp = fopen (privkey_file, "wb");
-  if (fp == NULL) {
-    ERROR ("ERROR: Cannot open private key file for writing: %s\n", privkey_file);
+  if (pkey == NULL) {
+    ERROR ("ERROR: Failed to read ML-DSA-87 public key (not PEM or DER): %s\n", file);
+    goto OPENSSL_ERROR;
+  }
+
+  /* Verify algorithm */
+  if (!EVP_PKEY_is_a (pkey, "ML-DSA-87")) {
+    ERROR ("ERROR: Public key is not ML-DSA-87\n");
     goto EXIT;
   }
 
-  if (fwrite (prv_buf, prv_len, 1, fp) != 1) {
-    ERROR ("ERROR: Failed to write private key to %s\n", privkey_file);
-    fclose (fp);
-    goto EXIT;
+  /* Extract raw public key bytes */
+  if (EVP_PKEY_get_raw_public_key (pkey, pubkey, &raw_len) <= 0) {
+    ERROR ("ERROR: Failed to extract raw ML-DSA-87 public key\n");
+    goto OPENSSL_ERROR;
   }
 
-  fclose (fp);
-  fp = NULL;
-
-  if (verbose) {
-    LOG ("ML-DSA-87 key pair generated: %s (pub, %zu B), %s (prv, %zu B)\n",
-         pubkey_file, pub_len, privkey_file, prv_len);
+  if (raw_len != MLDSA87_PUBKEY_SIZE) {
+    ERROR ("ERROR: Unexpected ML-DSA-87 public key size: %zu\n", raw_len);
+    goto EXIT;
   }
 
   result = true;
@@ -1771,21 +1736,8 @@ OPENSSL_ERROR:
   ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
   ERR_free_strings ();
 EXIT:
-  if (pub_buf != NULL) {
-    free (pub_buf);
-  }
-
-  if (prv_buf != NULL) {
-    memset (prv_buf, 0, prv_len);   /* scrub private key material */
-    free (prv_buf);
-  }
-
   if (pkey != NULL) {
     EVP_PKEY_free (pkey);
-  }
-
-  if (kctx != NULL) {
-    EVP_PKEY_CTX_free (kctx);
   }
 
   return result;
@@ -1802,10 +1754,8 @@ crypto_mldsa_sign_data_internal (
 {
   EVP_PKEY       *pkey      = NULL;
   EVP_MD_CTX     *mctx      = NULL;
-  unsigned char  *prv_buf   = NULL;
   FILE           *fp        = NULL;
   crypto_status  result     = crypto_general_fail;
-  size_t         prv_len    = MLDSA87_PRIVKEY_SIZE;
 
   LOG ("[mldsa_sign_data]\n");
 
@@ -1816,35 +1766,33 @@ crypto_mldsa_sign_data_internal (
     return crypto_buffer_too_small;
   }
 
-  /* Read private key file */
-  prv_buf = malloc (prv_len);
-  if (prv_buf == NULL) {
-    ERROR ("ERROR: Failed to allocate ML-DSA private key buffer\n");
-    return crypto_memory_alloc_fail;
-  }
-
+  /* Read private key from PEM or DER file */
   fp = fopen (privkey_file, "rb");
   if (fp == NULL) {
     ERROR ("ERROR: Cannot open ML-DSA private key file: %s\n", privkey_file);
-    free (prv_buf);
     return crypto_file_io_error;
   }
 
-  if (fread (prv_buf, prv_len, 1, fp) != 1) {
-    ERROR ("ERROR: Failed to read ML-DSA private key from %s\n", privkey_file);
-    fclose (fp);
-    free (prv_buf);
-    return crypto_file_io_error;
+  /* Try PEM first (-----BEGIN PRIVATE KEY-----) */
+  pkey = PEM_read_PrivateKey (fp, NULL, NULL, NULL);
+  if (pkey == NULL) {
+    /* PEM failed — try DER (PKCS#8) */
+    rewind (fp);
+    pkey = d2i_PrivateKey_fp (fp, NULL);
   }
 
   fclose (fp);
   fp = NULL;
 
-  /* Create EVP_PKEY from raw private key bytes */
-  pkey = EVP_PKEY_new_raw_private_key_ex (NULL, "ML-DSA-87", NULL, prv_buf, prv_len);
   if (pkey == NULL) {
-    ERROR ("ERROR: Failed to import ML-DSA-87 private key\n");
+    ERROR ("ERROR: Failed to read ML-DSA-87 private key (not PEM or DER): %s\n", privkey_file);
     goto OPENSSL_ERROR;
+  }
+
+  /* Verify algorithm */
+  if (!EVP_PKEY_is_a (pkey, "ML-DSA-87")) {
+    ERROR ("ERROR: Private key is not ML-DSA-87\n");
+    goto EXIT;
   }
 
   /* One-shot DigestSign (ML-DSA has no separate hash step, md=NULL) */
@@ -1885,11 +1833,6 @@ EXIT:
 
   if (pkey != NULL) {
     EVP_PKEY_free (pkey);
-  }
-
-  if (prv_buf != NULL) {
-    memset (prv_buf, 0, prv_len);
-    free (prv_buf);
   }
 
   return result;

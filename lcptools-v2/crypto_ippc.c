@@ -3752,152 +3752,377 @@ cleanup:
 /* ========================================================================== */
 
 /*
- * ML-DSA-87 key generation using IPPC library.
- * Generates a key pair and writes raw binary public/private key files.
- *
  * ML-DSA-87 parameters (NIST FIPS 204, security level 5):
  *   Public key:  2592 bytes
  *   Private key: 4896 bytes
  *   Signature:   4627 bytes
+ *
+ * Keys are stored as PEM or DER files (PKCS#8 / SubjectPublicKeyInfo),
+ * generated via: openssl genpkey -algorithm ML-DSA-87
  */
-bool
-crypto_mldsa_keygen_internal (
-  const char  *pubkey_file,
-  const char  *privkey_file
+
+#define MLDSA87_PUBKEY_SIZE     2592
+#define MLDSA87_PRIVKEY_SIZE    4896
+#define MLDSA87_SIGNATURE_SIZE  4627
+
+/* ML-DSA-87 OID: 2.16.840.1.101.3.4.3.19 */
+static const uint8_t  mldsa87_oid[] = {
+  0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x13
+};
+
+/*
+ * Extract raw 2592-byte public key from SubjectPublicKeyInfo (SPKI) DER.
+ * Structure: SEQUENCE { SEQUENCE { OID ML-DSA-87 }, BIT STRING { raw pubkey } }
+ */
+static int
+parse_mldsa_public_key_spki (
+  const uint8_t  *der_buf,
+  size_t         der_size,
+  uint8_t        *pubkey,
+  size_t         pubkey_buf_size,
+  size_t         *pubkey_len
   )
 {
-  IppStatus         ipp_status   = ippStsNoErr;
-  bool              result       = false;
-  IppsMLDSAState    *state       = NULL;
-  Ipp8u             *keygen_buf  = NULL;
-  Ipp8u             *pub_key     = NULL;
-  Ipp8u             *prv_key     = NULL;
-  Ipp32s            state_size   = 0;
-  Ipp32s            keygen_buf_sz = 0;
-  IppsMLDSAInfo     info;
-  FILE              *fp          = NULL;
+  size_t  offset = 0;
+  size_t  seq_len, alg_seq_len, bitstring_len;
+  size_t  alg_seq_end;
 
-  /* Get required IPPC state size for ML-DSA-87 */
-  ipp_status = ippsMLDSA_GetSize (&state_size);
-  if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_GetSize failed: %d\n", ipp_status);
-    goto cleanup;
+  /* Outer SEQUENCE */
+  if (offset >= der_size || der_buf[offset] != 0x30) {
+    return -1;
   }
 
-  state = (IppsMLDSAState *)malloc (state_size);
-  if (NULL == state) {
-    printf ("ERROR: Failed to allocate ML-DSA state\n");
-    goto cleanup;
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &seq_len) != 0) {
+    return -1;
   }
 
-  /* Initialize state for ML-DSA-87, maxMessageLength >= 1 required */
-  ipp_status = ippsMLDSA_Init (state, 1, ML_DSA_87);
-  if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_Init failed: %d\n", ipp_status);
-    goto cleanup;
+  /* AlgorithmIdentifier SEQUENCE */
+  if (offset >= der_size || der_buf[offset] != 0x30) {
+    return -1;
   }
 
-  /* Get key sizes */
-  ipp_status = ippsMLDSA_GetInfo (&info, ML_DSA_87);
-  if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_GetInfo failed: %d\n", ipp_status);
-    goto cleanup;
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &alg_seq_len) != 0) {
+    return -1;
   }
 
-  if (verbose) {
-    printf ("ML-DSA-87 key sizes: pub=%d, prv=%d, sig=%d\n",
-            info.publicKeySize, info.privateKeySize, info.signatureSize);
+  alg_seq_end = offset + alg_seq_len;
+
+  /* Verify ML-DSA-87 OID */
+  if ((alg_seq_len < sizeof (mldsa87_oid)) || (alg_seq_end > der_size)) {
+    return -1;
   }
 
-  /* Allocate key buffers */
-  pub_key = (Ipp8u *)malloc (info.publicKeySize);
-  prv_key = (Ipp8u *)malloc (info.privateKeySize);
-  if (!pub_key || !prv_key) {
-    printf ("ERROR: Failed to allocate ML-DSA key buffers\n");
-    goto cleanup;
+  if (memcmp (&der_buf[offset], mldsa87_oid, sizeof (mldsa87_oid)) != 0) {
+    printf ("ERROR: Not an ML-DSA-87 public key\n");
+    return -1;
   }
 
-  /* Get keygen scratch buffer size */
-  ipp_status = ippsMLDSA_KeyGenBufferGetSize (&keygen_buf_sz, state);
-  if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_KeyGenBufferGetSize failed: %d\n", ipp_status);
-    goto cleanup;
+  offset = alg_seq_end;
+
+  /* BIT STRING containing the raw public key */
+  if (offset >= der_size || der_buf[offset] != 0x03) {
+    return -1;
   }
 
-  keygen_buf = (Ipp8u *)malloc (keygen_buf_sz);
-  if (NULL == keygen_buf) {
-    printf ("ERROR: Failed to allocate ML-DSA keygen scratch buffer\n");
-    goto cleanup;
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &bitstring_len) != 0) {
+    return -1;
   }
 
-  /* Generate key pair (rndFunc=NULL uses RDRAND) */
-  ipp_status = ippsMLDSA_KeyGen (pub_key, prv_key, state, keygen_buf, NULL, NULL);
-  if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_KeyGen failed: %d\n", ipp_status);
-    goto cleanup;
+  /* Skip unused-bits byte (must be 0) */
+  if (offset >= der_size || der_buf[offset] != 0x00) {
+    return -1;
   }
 
-  /* Write public key to file */
-  fp = fopen (pubkey_file, "wb");
-  if (NULL == fp) {
-    printf ("ERROR: Cannot open public key file for writing: %s\n", pubkey_file);
-    goto cleanup;
+  offset++;
+  bitstring_len--;
+
+  if (bitstring_len != MLDSA87_PUBKEY_SIZE) {
+    printf ("ERROR: Unexpected ML-DSA-87 public key size: %zu (expected %d)\n",
+            bitstring_len, MLDSA87_PUBKEY_SIZE);
+    return -1;
   }
 
-  if (fwrite (pub_key, info.publicKeySize, 1, fp) != 1) {
-    printf ("ERROR: Failed to write public key to %s\n", pubkey_file);
-    fclose (fp);
-    goto cleanup;
+  if (pubkey_buf_size < bitstring_len || offset + bitstring_len > der_size) {
+    return -1;
   }
 
-  fclose (fp);
-  fp = NULL;
+  memcpy (pubkey, &der_buf[offset], bitstring_len);
+  *pubkey_len = bitstring_len;
 
-  /* Write private key to file */
-  fp = fopen (privkey_file, "wb");
-  if (NULL == fp) {
-    printf ("ERROR: Cannot open private key file for writing: %s\n", privkey_file);
-    goto cleanup;
+  return 0;
+}
+
+/*
+ * Extract raw 4896-byte expanded private key from PKCS#8 DER.
+ * Structure: SEQUENCE { INTEGER 0, SEQUENCE { OID }, OCTET STRING {
+ *              SEQUENCE { OCTET STRING (seed 32B), OCTET STRING (expanded 4896B) } } }
+ */
+static int
+parse_mldsa_private_key_pkcs8 (
+  const uint8_t  *der_buf,
+  size_t         der_size,
+  uint8_t        *privkey,
+  size_t         privkey_buf_size,
+  size_t         *privkey_len
+  )
+{
+  size_t  offset = 0;
+  size_t  seq_len, int_len, alg_seq_len, alg_seq_end;
+  size_t  octet_len, inner_end, seed_len, expanded_len;
+
+  /* Outer SEQUENCE */
+  if (offset >= der_size || der_buf[offset] != 0x30) {
+    return -1;
   }
 
-  if (fwrite (prv_key, info.privateKeySize, 1, fp) != 1) {
-    printf ("ERROR: Failed to write private key to %s\n", privkey_file);
-    fclose (fp);
-    goto cleanup;
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &seq_len) != 0) {
+    return -1;
   }
 
-  fclose (fp);
-  fp = NULL;
-
-  if (verbose) {
-    printf ("ML-DSA-87 key pair generated: %s (pub), %s (prv)\n", pubkey_file, privkey_file);
+  /* Version INTEGER (must be 0) */
+  if (offset >= der_size || der_buf[offset] != 0x02) {
+    return -1;
   }
 
-  result = true;
+  offset++;
 
-cleanup:
-  if (keygen_buf) {
-    free (keygen_buf);
+  if (der_parse_length (der_buf, &offset, der_size, &int_len) != 0) {
+    return -1;
   }
 
-  if (pub_key) {
-    free (pub_key);
+  if ((int_len != 1) || (offset >= der_size) || (der_buf[offset] != 0x00)) {
+    printf ("ERROR: PKCS#8 version must be 0\n");
+    return -1;
   }
 
-  if (prv_key) {
-    free (prv_key);
+  offset++;
+
+  /* AlgorithmIdentifier SEQUENCE */
+  if (offset >= der_size || der_buf[offset] != 0x30) {
+    return -1;
   }
 
-  if (state) {
-    free (state);
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &alg_seq_len) != 0) {
+    return -1;
   }
 
-  return result;
+  alg_seq_end = offset + alg_seq_len;
+
+  /* Verify ML-DSA-87 OID */
+  if ((alg_seq_len < sizeof (mldsa87_oid)) || (alg_seq_end > der_size)) {
+    return -1;
+  }
+
+  if (memcmp (&der_buf[offset], mldsa87_oid, sizeof (mldsa87_oid)) != 0) {
+    printf ("ERROR: Not an ML-DSA-87 private key\n");
+    return -1;
+  }
+
+  offset = alg_seq_end;
+
+  /* Outer OCTET STRING wrapping the private key data */
+  if (offset >= der_size || der_buf[offset] != 0x04) {
+    return -1;
+  }
+
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, der_size, &octet_len) != 0) {
+    return -1;
+  }
+
+  inner_end = offset + octet_len;
+
+  if (inner_end > der_size) {
+    return -1;
+  }
+
+  /* Inner SEQUENCE: { OCTET STRING (seed), OCTET STRING (expanded key) } */
+  if (offset >= inner_end || der_buf[offset] != 0x30) {
+    return -1;
+  }
+
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, inner_end, &seq_len) != 0) {
+    return -1;
+  }
+
+  /* First OCTET STRING: seed (skip it) */
+  if (offset >= inner_end || der_buf[offset] != 0x04) {
+    return -1;
+  }
+
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, inner_end, &seed_len) != 0) {
+    return -1;
+  }
+
+  offset += seed_len;
+
+  /* Second OCTET STRING: expanded private key (what IPPC needs) */
+  if (offset >= inner_end || der_buf[offset] != 0x04) {
+    return -1;
+  }
+
+  offset++;
+
+  if (der_parse_length (der_buf, &offset, inner_end, &expanded_len) != 0) {
+    return -1;
+  }
+
+  if (expanded_len != MLDSA87_PRIVKEY_SIZE) {
+    printf ("ERROR: Unexpected ML-DSA-87 expanded private key size: %zu (expected %d)\n",
+            expanded_len, MLDSA87_PRIVKEY_SIZE);
+    return -1;
+  }
+
+  if (privkey_buf_size < expanded_len || offset + expanded_len > der_size) {
+    return -1;
+  }
+
+  memcpy (privkey, &der_buf[offset], expanded_len);
+  *privkey_len = expanded_len;
+
+  return 0;
+}
+
+/*
+ * Read an ML-DSA-87 public key from a PEM or DER file and extract
+ * the raw 2592-byte public key into the caller-supplied buffer.
+ */
+bool
+crypto_read_mldsa_pubkey_internal (
+  const char     *file,
+  unsigned char  *pubkey,
+  size_t         pubkey_size
+  )
+{
+  uint8_t   *file_data = NULL;
+  size_t    file_size  = 0;
+  uint8_t   *der_buf   = NULL;
+  uint16_t  der_size   = 0;
+  uint8_t   pem_type;
+  size_t    raw_len    = 0;
+
+  if (pubkey_size < MLDSA87_PUBKEY_SIZE) {
+    printf ("ERROR: ML-DSA pubkey buffer too small: need %d, have %zu\n",
+            MLDSA87_PUBKEY_SIZE, pubkey_size);
+    return false;
+  }
+
+  file_data = (uint8_t *)read_file (file, &file_size, false);
+  if (file_data == NULL) {
+    return false;
+  }
+
+  /* Check if PEM and convert to DER if needed */
+  if (memcmp (file_data, "-----BEG", 8) == 0) {
+    pem_type = get_der_from_pem ((char *)file_data, file_size, &der_buf, &der_size);
+    free (file_data);
+    file_data = NULL;
+
+    if ((der_size == 0) || (der_buf == NULL)) {
+      printf ("ERROR: Failed to convert ML-DSA PEM to DER\n");
+      return false;
+    }
+
+    if (pem_type != PEMTYPE__PUBLIC) {
+      printf ("ERROR: Expected PUBLIC KEY PEM, got pem_type %d\n", pem_type);
+      free (der_buf);
+      return false;
+    }
+  } else if (file_data[0] == 0x30) {
+    /* Already DER */
+    der_buf  = file_data;
+    der_size = (uint16_t)file_size;
+  } else {
+    printf ("ERROR: ML-DSA public key file is not PEM or DER: %s\n", file);
+    free (file_data);
+    return false;
+  }
+
+  if (parse_mldsa_public_key_spki (der_buf, der_size, pubkey, pubkey_size, &raw_len) != 0) {
+    printf ("ERROR: Failed to parse ML-DSA-87 public key from %s\n", file);
+    free (der_buf);
+    return false;
+  }
+
+  free (der_buf);
+  return true;
+}
+
+/*
+ * Read an ML-DSA-87 private key from a PEM or DER file and extract the
+ * raw 4896-byte expanded private key into the caller-supplied buffer.
+ */
+static bool
+read_mldsa_privkey_from_pem (
+  const char     *file,
+  uint8_t        *privkey,
+  size_t         privkey_size,
+  size_t         *privkey_len
+  )
+{
+  uint8_t   *file_data = NULL;
+  size_t    file_size  = 0;
+  uint8_t   *der_buf   = NULL;
+  uint16_t  der_size   = 0;
+  uint8_t   pem_type;
+
+  file_data = (uint8_t *)read_file (file, &file_size, false);
+  if (file_data == NULL) {
+    return false;
+  }
+
+  if (memcmp (file_data, "-----BEG", 8) == 0) {
+    pem_type = get_der_from_pem ((char *)file_data, file_size, &der_buf, &der_size);
+    free (file_data);
+    file_data = NULL;
+
+    if ((der_size == 0) || (der_buf == NULL)) {
+      printf ("ERROR: Failed to convert ML-DSA private key PEM to DER\n");
+      return false;
+    }
+
+    if (pem_type != PEMTYPE__PRIVATE) {
+      printf ("ERROR: Expected PRIVATE KEY PEM, got pem_type %d\n", pem_type);
+      free (der_buf);
+      return false;
+    }
+  } else if (file_data[0] == 0x30) {
+    der_buf  = file_data;
+    der_size = (uint16_t)file_size;
+  } else {
+    printf ("ERROR: ML-DSA private key file is not PEM or DER: %s\n", file);
+    free (file_data);
+    return false;
+  }
+
+  if (parse_mldsa_private_key_pkcs8 (der_buf, der_size, privkey, privkey_size, privkey_len) != 0) {
+    printf ("ERROR: Failed to parse ML-DSA-87 private key from %s\n", file);
+    free (der_buf);
+    return false;
+  }
+
+  free (der_buf);
+  return true;
 }
 
 /*
  * ML-DSA-87 signature generation using IPPC library.
- * Reads a raw binary private key file and signs the message.
+ * Reads a PEM or DER PKCS#8 private key file and signs the message.
  */
 crypto_status
 crypto_mldsa_sign_data_internal (
@@ -3916,7 +4141,7 @@ crypto_mldsa_sign_data_internal (
   Ipp32s            state_size    = 0;
   Ipp32s            sign_buf_sz   = 0;
   IppsMLDSAInfo     info;
-  FILE              *fp           = NULL;
+  size_t            prv_len       = 0;
 
   /* Get key sizes */
   ipp_status = ippsMLDSA_GetInfo (&info, ML_DSA_87);
@@ -3932,28 +4157,19 @@ crypto_mldsa_sign_data_internal (
     return crypto_buffer_too_small;
   }
 
-  /* Read private key file */
+  /* Read private key from PEM or DER file */
   prv_key = (Ipp8u *)malloc (info.privateKeySize);
   if (NULL == prv_key) {
     printf ("ERROR: Failed to allocate ML-DSA private key buffer\n");
     return crypto_memory_alloc_fail;
   }
 
-  fp = fopen (privkey_file, "rb");
-  if (NULL == fp) {
-    printf ("ERROR: Cannot open ML-DSA private key file: %s\n", privkey_file);
+  if (!read_mldsa_privkey_from_pem (privkey_file, prv_key,
+                                     (size_t)info.privateKeySize, &prv_len)) {
+    printf ("ERROR: Failed to read ML-DSA-87 private key from %s\n", privkey_file);
     free (prv_key);
     return crypto_file_io_error;
   }
-
-  if (fread (prv_key, info.privateKeySize, 1, fp) != 1) {
-    printf ("ERROR: Failed to read ML-DSA private key from %s\n", privkey_file);
-    fclose (fp);
-    free (prv_key);
-    return crypto_file_io_error;
-  }
-
-  fclose (fp);
 
   /* Get IPPC state size */
   ipp_status = ippsMLDSA_GetSize (&state_size);

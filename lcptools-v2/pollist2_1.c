@@ -2157,40 +2157,21 @@ static lcp_signature_2_1 *read_lms_pubkey_file_2_1(const char *pubkey_file)
 static lcp_signature_2_1 *read_mldsa_pubkey_file_2_1(const char *pubkey_file)
 {
     lcp_signature_2_1 *sig = NULL;
-    FILE *fp = NULL;
-
-    fp = fopen(pubkey_file, "rb");
-    if (fp == NULL) {
-        ERROR("ERROR: cannot open ML-DSA public key file.\n");
-        return NULL;
-    }
-    /* Check file size matches ML-DSA-87 public key */
-    fseek(fp, 0, SEEK_END);
-    long fsize = ftell(fp);
-    if (fsize != MLDSA87_PUBKEY_SIZE) {
-        ERROR("ERROR: incorrect ML-DSA public key size: %ld (expected %d).\n",
-              fsize, MLDSA87_PUBKEY_SIZE);
-        fclose(fp);
-        return NULL;
-    }
-    fseek(fp, 0, SEEK_SET);
 
     sig = create_empty_mldsa_signature_2_1();
     if (sig == NULL) {
         ERROR("ERROR: failed to generate ML-DSA signature 2.1.\n");
-        fclose(fp);
         return NULL;
     }
 
-    /* Read the public key directly into the structure */
-    if (fread((void *) sig->KeyAndSignature.MldsaKeyAndSignature.Key.PubKey,
-              MLDSA87_PUBKEY_SIZE, 1, fp) != 1) {
-        ERROR("ERROR: failed to read ML-DSA public key file.\n");
-        fclose(fp);
+    /* Read the public key from PEM or DER file via crypto abstraction */
+    if (!crypto_read_mldsa_pubkey(pubkey_file,
+              sig->KeyAndSignature.MldsaKeyAndSignature.Key.PubKey,
+              MLDSA87_PUBKEY_SIZE)) {
+        ERROR("ERROR: failed to read ML-DSA public key from %s.\n", pubkey_file);
         free(sig);
         return NULL;
     }
-    fclose(fp);
 
     sig->KeyAndSignature.MldsaKeyAndSignature.Version = SIGNATURE_VERSION;
     sig->KeyAndSignature.MldsaKeyAndSignature.KeyAlg = TCG_ALG_MLDSA;

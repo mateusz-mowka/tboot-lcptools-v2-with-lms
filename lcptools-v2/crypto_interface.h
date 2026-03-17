@@ -90,12 +90,6 @@ crypto_lms_sign_data_internal (
   );
 
 bool
-crypto_mldsa_keygen_internal (
-  const char  *pubkey_file,
-  const char  *privkey_file
-  );
-
-bool
 crypto_mldsa_verify_signature_internal (
   const unsigned char  *msg,
   size_t               msg_len,
@@ -112,4 +106,11 @@ crypto_mldsa_sign_data_internal (
   unsigned char        *signature,
   size_t               *sig_len,
   const char           *privkey_file
+  );
+
+bool
+crypto_read_mldsa_pubkey_internal (
+  const char     *file,
+  unsigned char  *pubkey,
+  size_t         pubkey_size
   );
