@@ -556,10 +556,9 @@ bool sign_lcp_policy_list_t(sign_user_input user_input)
         free(pollist);
         return false;
     }
-    if ( (sig->rsa_signature.pubkey_size != 128 /* 1024 bits */)
-        && (sig->rsa_signature.pubkey_size != 256 /* 2048 bits */)
+    if ( (sig->rsa_signature.pubkey_size != 256 /* 2048 bits */)
         && (sig->rsa_signature.pubkey_size != 384 /* 3072 bits */) ) {
-        ERROR("Error: public key size is not 1024/2048/3072 bits\n");
+        ERROR("Error: public key size is not 2048/3072 bits\n");
         free(sig);
         free(pollist);
         return false;
