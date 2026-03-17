@@ -93,6 +93,7 @@ static const char help[] =
     "        [--priv <key file>]      PEM file of private key\n"
     "        [--rev <rev ctr>]        revocation counter value\n"
     "        [--nosig]                don't add SigBlock\n"
+    "        [--force]                skip LMS signing confirmation prompt\n"
     "        [--savesig <FILE>]       save LCP_SIGNATURE2_1 to file\n"
     "        --out <FILE>             policy list file to sign\n"
     "\n--addsig\n"
@@ -145,6 +146,7 @@ static struct option long_opts[] =
     {"sig",            required_argument,    NULL,     's'},
     {"listver",        required_argument,    NULL,     'l'},
     {"verbose",        no_argument,          NULL,     't'},
+    {"force",          no_argument,          NULL,     'f'},
 
     {0, 0, 0, 0}
 };
@@ -161,6 +163,7 @@ static char           sig_file[MAX_PATH] = "";
 static char           saved_sig_file[MAX_PATH] = "";
 static uint16_t       rev_ctr = 0;
 static bool           no_sigblock = false;
+static bool           force = false;
 static bool           dump_sigblock = false;
 static unsigned int   nr_files = 0;
 static char           files[MAX_FILES][MAX_PATH];
@@ -648,6 +651,11 @@ int main(int argc, char *argv[])
         case 't':
             verbose = true;
             break;
+
+        case 'f':            /* force */
+            force = true;
+            LOG("cmdline opt: force\n");
+            break;
         case 0:
         case -1:
             break;
@@ -721,6 +729,16 @@ int main(int argc, char *argv[])
                 sigalg_type != TPM_ALG_LMS &&
                 sigalg_type != TCG_ALG_MLDSA) {
                 ERROR("Error: Signature algorithm 0x%x unsupported.\n", sigalg_type);
+                return 1;
+            }
+        }
+        if (sigalg_type == TPM_ALG_LMS && !no_sigblock && !force) {
+            DISPLAY("Dear user, are you sure you want to sign using LMS? "
+                    "You are responsible for LMS private key protection "
+                    "and protecting LMS state. [Y/N]: ");
+            int answer = getchar();
+            if (answer != 'Y' && answer != 'y') {
+                DISPLAY("LMS signing aborted by user.\n");
                 return 1;
             }
         }

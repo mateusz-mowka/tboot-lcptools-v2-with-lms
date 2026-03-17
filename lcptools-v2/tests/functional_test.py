@@ -13,7 +13,7 @@ Test categories:
   5. Element       — element creation consistency
 
 Usage:
-  python3 functional_test.py [--config FILE] [--skip-build] [--skip-lms] [--verbose]
+  python3 functional_test.py [--config FILE] [--skip-build] [--skip-lms] [--lms-keys PATH] [--verbose]
 """
 
 import argparse
@@ -487,14 +487,14 @@ def test_sign_verify(config: dict, *, verbose: bool, skip_flags: dict):
                     shutil.copy2(unsigned, signed)
 
                     sign_args = [
-                        "--sign", "--sigalg", sigalg,
+                        "--sign", "--force", "--sigalg", sigalg,
                         "--pub", str(sig["pub"]),
                         "--priv", str(sig["priv"]),
                         "--out", str(signed),
                     ]
                     if listver == "0x300":
                         sign_args = [
-                            "--sign", "--sigalg", sigalg,
+                            "--sign", "--force", "--sigalg", sigalg,
                             "--hashalg", hashalg,
                             "--pub", str(sig["pub"]),
                             "--priv", str(sig["priv"]),
@@ -816,6 +816,108 @@ def test_element_consistency(config: dict, *, verbose: bool):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+#  Test 6: LMS signing prompt — decline and verify keys untouched
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_lms_prompt_decline(config: dict, *, verbose: bool,
+                            skip_flags: dict):
+    """Decline the LMS signing prompt and verify key files are unchanged."""
+    log_hdr("Test 6: LMS signing prompt decline")
+
+    if skip_flags.get("skip_lms"):
+        log_skip("LMS prompt test skipped (--skip-lms)")
+        return
+
+    # Only IPPC supports LMS
+    if "ippc" not in config["backends"]:
+        log_skip("LMS prompt test skipped (IPPC backend not available)")
+        return
+
+    # Find LMS key files
+    lms_pub = KEY_DIR / "lms.pub"
+    lms_priv = KEY_DIR / "lms.prv"
+    if not lms_pub.exists() or not lms_priv.exists():
+        log_skip("LMS prompt test skipped (no LMS keys)")
+        return
+
+    # Find an element for list creation
+    elts = list(ELT_DIR.glob("*.elt"))
+    if not elts:
+        log_skip("LMS prompt test skipped (no elements available)")
+        return
+
+    # Create an unsigned list
+    unsigned = LST_DIR / "unsigned_lms_prompt_test.lst"
+    rc, output = run_tool("ippc", "lcp2_crtpollist",
+                          "--create", "--listver", "0x300",
+                          "--out", str(unsigned), str(elts[0]),
+                          verbose=verbose)
+    if rc != 0:
+        log_fail("LMS prompt: failed to create unsigned list")
+        if verbose:
+            print(f"  {output}")
+        return
+
+    # Copy the unsigned list for signing attempt
+    sign_target = LST_DIR / "lms_prompt_decline_test.lst"
+    shutil.copy2(unsigned, sign_target)
+
+    # Record key file contents before
+    pub_before = lms_pub.read_bytes()
+    priv_before = lms_priv.read_bytes()
+    list_before = sign_target.read_bytes()
+
+    # Run signing WITHOUT --force, pipe "N" to decline the prompt
+    tool_path = str(IPPC_BIN_DIR / "lcp2_crtpollist")
+    env = os.environ.copy()
+    existing = env.get("LD_LIBRARY_PATH", "")
+    env["LD_LIBRARY_PATH"] = (
+        f"{IPPC_LIB}:{existing}" if existing else str(IPPC_LIB)
+    )
+
+    sign_cmd = [
+        tool_path,
+        "--sign", "--sigalg", "lms",
+        "--hashalg", "sha256",
+        "--pub", str(lms_pub),
+        "--priv", str(lms_priv),
+        "--out", str(sign_target),
+    ]
+
+    if verbose:
+        print(f"  {Colors.YELLOW}▸{Colors.NC} [ippc] "
+              f"{' '.join(sign_cmd[1:])} (stdin='N')")
+
+    result = subprocess.run(
+        sign_cmd, env=env, input="N\n",
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+
+    # Verify the tool aborted
+    if result.returncode != 0:
+        log_pass("LMS prompt decline: tool exited with non-zero status")
+    else:
+        log_fail("LMS prompt decline: tool should have exited non-zero")
+        if verbose:
+            print(f"  {result.stdout}")
+
+    # Verify key files are untouched
+    pub_after = lms_pub.read_bytes()
+    priv_after = lms_priv.read_bytes()
+    list_after = sign_target.read_bytes()
+
+    if pub_after == pub_before and priv_after == priv_before:
+        log_pass("LMS prompt decline: key files unchanged")
+    else:
+        log_fail("LMS prompt decline: key files were modified!")
+
+    if list_after == list_before:
+        log_pass("LMS prompt decline: list file unchanged")
+    else:
+        log_fail("LMS prompt decline: list file was modified!")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 #  Summary
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -856,12 +958,26 @@ def main():
                         help="Skip building backends (use existing binaries)")
     parser.add_argument("--skip-lms", action="store_true",
                         help="Skip LMS tests")
+    parser.add_argument("--lms-keys", type=Path, default=None,
+                        help="Base path to LMS keys (without extension), "
+                             "e.g. /path/to/lms_m24_h20_w4")
     parser.add_argument("--verbose", action="store_true",
                         help="Show tool invocations and failure output")
     args = parser.parse_args()
 
     # ── Load configuration ──
     config = load_config(args.config)
+
+    # Override LMS key paths if --lms-keys was given
+    if args.lms_keys:
+        base = args.lms_keys
+        for key_cfg in config["keys"].values():
+            if key_cfg.get("type") == "lms":
+                key_cfg["copy_from"] = {
+                    "pub":  str(base.with_suffix(".pub")),
+                    "priv": str(base.with_suffix(".prv")),
+                    "aux":  str(base.with_suffix(".aux")),
+                }
 
     # Map skip_flag values → CLI state
     skip_flags = {
@@ -886,6 +1002,8 @@ def main():
     test_policy(config, verbose=args.verbose)
     test_tamper(config, verbose=args.verbose)
     test_element_consistency(config, verbose=args.verbose)
+    test_lms_prompt_decline(config, verbose=args.verbose,
+                            skip_flags=skip_flags)
 
     # ── Summary ──
     sys.exit(print_summary())

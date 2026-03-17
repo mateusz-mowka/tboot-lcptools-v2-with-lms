@@ -69,14 +69,19 @@ This builds the four LCP tools:
 > **Note:** LMS/HSS signature support is only available with the IPPC
 > backend. The OpenSSL backend returns an error for LMS operations.
 
+> **Note:** When signing with LMS, `lcp2_crtpollist` displays an
+> interactive confirmation prompt reminding the user about LMS private
+> key and state protection. Pass `--force` (or `-f`) to skip the prompt
+> (e.g. in scripts or automated test runs).
+
 ### IPPC backend
 
 ```sh
 make USE_IPPC=1
 ```
 
-When `USE_IPPC=1` is set, the IPPC library under `ippc/` and the
-hash-sigs library (LMS support) are built automatically.
+When `USE_IPPC=1` is set, the IPPC library under `ippc/` is built
+automatically. LMS/HSS signature support is provided natively by IPPC.
 
 ### Clean build
 
@@ -152,6 +157,10 @@ sudo python3 functional_test.py --skip-build
 # Skip LMS tests (useful when LMS keys are not available)
 sudo python3 functional_test.py --skip-lms
 
+# Provide LMS key base path (without extension)
+# Expects {path}.pub, {path}.prv, {path}.aux
+sudo python3 functional_test.py --lms-keys /path/to/lms_m24_h20_w4
+
 # Verbose output (shows tool invocations and failure details)
 sudo python3 functional_test.py --verbose
 
@@ -192,8 +201,8 @@ The YAML file has five top-level sections:
    |------|-----------------|
    | `rsa` | `bits` (e.g. 2048, 3072) |
    | `ec` | `curve` (e.g. secp256k1, secp384r1) |
-   | `mldsa` | *(none — keys generated via `lcp2_crtpollist --keygen`)* |
-   | `lms` | `copy_from: {pub, priv, aux}` source filenames in `lcptools-v2/` |
+   | `mldsa` | `openssl`, `ld_library_path` (keys generated externally via `openssl genpkey -algorithm ML-DSA-87`) |
+   | `lms` | `copy_from: {pub, priv, aux}` source file paths (relative to `lcptools-v2/`, or absolute via `--lms-keys`) |
 
 2. **Add a signature entry** under `signatures`:
 

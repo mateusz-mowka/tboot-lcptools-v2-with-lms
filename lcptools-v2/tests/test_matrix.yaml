@@ -62,9 +62,9 @@ keys:
   lms:
     type: lms
     copy_from:
-      pub:  lms_m24_h20_w4.pub
-      priv: lms_m24_h20_w4.prv
-      aux:  lms_m24_h20_w4.aux
+      pub:  ../lms_m24_h20_w4.pub
+      priv: ../lms_m24_h20_w4.prv
+      aux:  ../lms_m24_h20_w4.aux
 
 
 # ─── Signature Configurations ───────────────────────────────────────────
