@@ -1120,10 +1120,10 @@ crypto_verify_ec_signature_internal (
     curveName = SN_sm2;
  #endif
   } else if ( hashalg == TPM_ALG_SHA256 ) {
-    curveId = NID_secp256k1;
+    curveId = NID_X9_62_prime256v1;
     mdtype  = EVP_sha256 ();
  #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-    curveName = SN_secp256k1;
+    curveName = SN_X9_62_prime256v1;
  #endif
   } else if ( hashalg == TPM_ALG_SHA384 ) {
     curveId = NID_secp384r1;

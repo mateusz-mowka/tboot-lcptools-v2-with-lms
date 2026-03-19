@@ -1095,6 +1095,7 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
     uint8_t* lms_sig = NULL;
     uint8_t* public_key = NULL;
     uint8_t *policy_list_data = NULL;
+    errno_t rc;
     sig = get_tpm20_signature_2_1(pollist);
     uint64_t signature_len = sizeof(lms_signature_block) + 4;		// +4 for NSPK
 	uint64_t publickey_len = sig->KeyAndSignature.LmsKeyAndSignature.Key.KeySize + 4;		// +4 for LEVELS
@@ -2131,7 +2132,7 @@ static lcp_signature_2_1 *read_lms_pubkey_file_2_1(const char *pubkey_file)
         ERROR("ERROR: cannot open file.\n");
         return NULL;
     }
-    //Cisco hash-sigs tool adds "levels" field to the key, we need to skip it
+    //LMS key format includes "levels" field, we need to skip it
     //but first make sure the key size is correct
     fseek(fp, 0, SEEK_END);
     if (ftell(fp) != LMS_MAX_PUBKEY_SIZE + sizeof(uint32_t)) {

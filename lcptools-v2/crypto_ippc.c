@@ -1460,306 +1460,7 @@ crypto_read_ecdsa_pubkey_internal (
   return crypto_ok;
 }
 
-/* ========================================================================== */
-/*  secp256k1 curve initialization helper                                     */
-/*                                                                            */
-/*  IPPC does not provide a built-in secp256k1 curve.  We initialise it       */
-/*  manually via ippsGFpInit (arbitrary prime) + ippsGFpECInit + the standard */
-/*  Koblitz parameters.                                                       */
-/*  y^2 = x^3 + 7  over  F_p  where                                          */
-/*    p  = FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE     */
-/*         FFFFFC2F                                                           */
-/*    a  = 0                                                                  */
-/*    b  = 7                                                                  */
-/*    Gx = 79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B     */
-/*         16F81798                                                           */
-/*    Gy = 483ADA77 26A3C465 5DA4FBFC 0E1108A8 FD17B448 A6855419 9C47D08F     */
-/*         FB10D4B8                                                           */
-/*    n  = FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE BAAEDCE6 AF48A03B BFD25E8C     */
-/*         D0364141                                                           */
-/*    h  = 1                                                                  */
-/* ========================================================================== */
 
-/* secp256k1 domain parameters (big-endian byte arrays, 32 bytes each) */
-static const uint8_t secp256k1_p[] = {
-  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-  0xFF, 0xFF, 0xFF, 0xFE, 0xFF, 0xFF, 0xFC, 0x2F
-};
-
-static const uint8_t secp256k1_b[] = {
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07
-};
-
-static const uint8_t secp256k1_Gx[] = {
-  0x79, 0xBE, 0x66, 0x7E, 0xF9, 0xDC, 0xBB, 0xAC,
-  0x55, 0xA0, 0x62, 0x95, 0xCE, 0x87, 0x0B, 0x07,
-  0x02, 0x9B, 0xFC, 0xDB, 0x2D, 0xCE, 0x28, 0xD9,
-  0x59, 0xF2, 0x81, 0x5B, 0x16, 0xF8, 0x17, 0x98
-};
-
-static const uint8_t secp256k1_Gy[] = {
-  0x48, 0x3A, 0xDA, 0x77, 0x26, 0xA3, 0xC4, 0x65,
-  0x5D, 0xA4, 0xFB, 0xFC, 0x0E, 0x11, 0x08, 0xA8,
-  0xFD, 0x17, 0xB4, 0x48, 0xA6, 0x85, 0x54, 0x19,
-  0x9C, 0x47, 0xD0, 0x8F, 0xFB, 0x10, 0xD4, 0xB8
-};
-
-static const uint8_t secp256k1_n[] = {
-  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE,
-  0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B,
-  0xBF, 0xD2, 0x5E, 0x8C, 0xD0, 0x36, 0x41, 0x41
-};
-
-static const uint8_t secp256k1_cofactor[] = {
-  0x00, 0x00, 0x00, 0x01
-};
-
-/*
- * Initialise GFp + EC context for secp256k1 using arbitrary-prime IPPC API.
- *
- * On success, *pp_gfp and *pp_ec point to malloc'd contexts that the caller
- * must free.  Returns ippStsNoErr on success.
- */
-static IppStatus
-init_secp256k1 (
-  IppsGFpState    **pp_gfp,
-  IppsGFpECState  **pp_ec
-  )
-{
-  IppStatus         status;
-  IppsGFpState      *gfp      = NULL;
-  IppsGFpECState    *ec       = NULL;
-  IppsBigNumState   *prime_bn = NULL;
-  IppsBigNumState   *order_bn = NULL;
-  IppsBigNumState   *cofac_bn = NULL;
-  IppsGFpElement    *elem_a   = NULL;
-  IppsGFpElement    *elem_b   = NULL;
-  IppsGFpElement    *elem_gx  = NULL;
-  IppsGFpElement    *elem_gy  = NULL;
-  int               gfp_size  = 0;
-  int               ec_size   = 0;
-  int               elem_size = 0;
-  int               bn_size   = 0;
-
-  *pp_gfp = NULL;
-  *pp_ec  = NULL;
-
-  /* --- Allocate BigNum for secp256k1 prime --- */
-  status = ippsBigNumGetSize (32, &bn_size);
-  if (status != ippStsNoErr) {
-    return status;
-  }
-
-  prime_bn = (IppsBigNumState *)malloc (bn_size);
-  if (prime_bn == NULL) {
-    return ippStsMemAllocErr;
-  }
-
-  status = ippsBigNumInit (32, prime_bn);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  status = ippsSetOctString_BN (secp256k1_p, 32, prime_bn);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  /* --- Initialise GFp with arbitrary prime --- */
-  status = ippsGFpGetSize (256, &gfp_size);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  gfp = (IppsGFpState *)malloc (gfp_size);
-  if (gfp == NULL) {
-    status = ippStsMemAllocErr;
-    goto fail;
-  }
-
-  status = ippsGFpInit (prime_bn, 256, ippsGFpMethod_pArb (), gfp);
-  if (status != ippStsNoErr) {
-    printf ("ERROR: ippsGFpInit for secp256k1 failed: %d\n", status);
-    goto fail;
-  }
-
-  /* --- Create GFp elements for curve coefficients a=0, b=7 --- */
-  status = ippsGFpElementGetSize (gfp, &elem_size);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  elem_a  = (IppsGFpElement *)malloc (elem_size);
-  elem_b  = (IppsGFpElement *)malloc (elem_size);
-  elem_gx = (IppsGFpElement *)malloc (elem_size);
-  elem_gy = (IppsGFpElement *)malloc (elem_size);
-  if (!elem_a || !elem_b || !elem_gx || !elem_gy) {
-    status = ippStsMemAllocErr;
-    goto fail;
-  }
-
-  /* a = 0 (use Ipp32u value 0) */
-  {
-    Ipp32u  zero = 0;
-    status = ippsGFpElementInit (&zero, 1, elem_a, gfp);
-    if (status != ippStsNoErr) {
-      goto fail;
-    }
-  }
-
-  /* b = 7 — set via octet string */
-  status = ippsGFpElementInit (NULL, 0, elem_b, gfp);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  status = ippsGFpSetElementOctString (secp256k1_b, 32, elem_b, gfp);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  /* --- Initialise EC context with (a, b) --- */
-  status = ippsGFpECGetSize (gfp, &ec_size);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  ec = (IppsGFpECState *)malloc (ec_size);
-  if (ec == NULL) {
-    status = ippStsMemAllocErr;
-    goto fail;
-  }
-
-  status = ippsGFpECInit (gfp, elem_a, elem_b, ec);
-  if (status != ippStsNoErr) {
-    printf ("ERROR: ippsGFpECInit for secp256k1 failed: %d\n", status);
-    goto fail;
-  }
-
-  /* --- Set the generator point (Gx, Gy), order n and cofactor h --- */
-  status = ippsGFpElementInit (NULL, 0, elem_gx, gfp);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  status = ippsGFpSetElementOctString (secp256k1_Gx, 32, elem_gx, gfp);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  status = ippsGFpElementInit (NULL, 0, elem_gy, gfp);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  status = ippsGFpSetElementOctString (secp256k1_Gy, 32, elem_gy, gfp);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  /* Order n */
-  status = ippsBigNumGetSize (32, &bn_size);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  order_bn = (IppsBigNumState *)malloc (bn_size);
-  if (order_bn == NULL) {
-    status = ippStsMemAllocErr;
-    goto fail;
-  }
-
-  status = ippsBigNumInit (32, order_bn);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  status = ippsSetOctString_BN (secp256k1_n, 32, order_bn);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  /* Cofactor h = 1 */
-  status = ippsBigNumGetSize (4, &bn_size);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  cofac_bn = (IppsBigNumState *)malloc (bn_size);
-  if (cofac_bn == NULL) {
-    status = ippStsMemAllocErr;
-    goto fail;
-  }
-
-  status = ippsBigNumInit (4, cofac_bn);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  status = ippsSetOctString_BN (secp256k1_cofactor, 4, cofac_bn);
-  if (status != ippStsNoErr) {
-    goto fail;
-  }
-
-  status = ippsGFpECSetSubgroup (elem_gx, elem_gy, order_bn, cofac_bn, ec);
-  if (status != ippStsNoErr) {
-    printf ("ERROR: ippsGFpECSetSubgroup for secp256k1 failed: %d\n", status);
-    goto fail;
-  }
-
-  /* Success — transfer ownership to caller */
-  *pp_gfp = gfp;
-  *pp_ec  = ec;
-  gfp     = NULL;
-  ec      = NULL;
-  status  = ippStsNoErr;
-
-fail:
-  /* Free temporaries (always) and contexts (on error) */
-  if (elem_a) {
-    free (elem_a);
-  }
-
-  if (elem_b) {
-    free (elem_b);
-  }
-
-  if (elem_gx) {
-    free (elem_gx);
-  }
-
-  if (elem_gy) {
-    free (elem_gy);
-  }
-
-  if (prime_bn) {
-    free (prime_bn);
-  }
-
-  if (order_bn) {
-    free (order_bn);
-  }
-
-  if (cofac_bn) {
-    free (cofac_bn);
-  }
-
-  if (gfp) {
-    free (gfp);
-  }
-
-  if (ec) {
-    free (ec);
-  }
-
-  return status;
-}
 
 /* Helper function to create BigNum from byte array */
 static IppStatus
@@ -2467,9 +2168,9 @@ crypto_verify_ec_signature_internal (
       break;
     case TB_HALG_SHA256:
       digest_size = SHA256_LENGTH;
-      /* secp256k1 curve (matches OpenSSL backend) */
+      /* P-256 curve (matches OpenSSL backend) */
       if (pubkey_x->size != 32) {
-        printf ("ERROR: SHA-256 requires 32-byte EC key (secp256k1)\n");
+        printf ("ERROR: SHA-256 requires 32-byte EC key (P-256)\n");
         return false;
       }
 
@@ -2516,23 +2217,13 @@ crypto_verify_ec_signature_internal (
   } else if (pubkey_x->size == 48) {
     gfp_method = ippsGFpMethod_p384r1 ();
   } else if (pubkey_x->size == 32) {
-    /* secp256k1 — no built-in method, use init_secp256k1 helper */
-    gfp_method = NULL;
+    gfp_method = ippsGFpMethod_p256r1 ();
   } else {
     printf ("ERROR: Unsupported EC key size: %zu bytes\n", pubkey_x->size);
     return false;
   }
 
-  if ((gfp_method == NULL) && !((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2))) {
-    /* secp256k1 — use arbitrary-curve initialisation */
-    status = init_secp256k1 (&gfp, &ec);
-    if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to initialise secp256k1 curve: %d\n", status);
-      return false;
-    }
-  } else {
-    /* Standard built-in curve */
-
+  {
     /* Get size for GFp context */
     status = ippsGFpGetSize (pubkey_x->size * 8, &gfp_size);
     if (status != ippStsNoErr) {
@@ -2571,6 +2262,8 @@ crypto_verify_ec_signature_internal (
     /* Initialize EC context with standard curve */
     if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
       status = ippsGFpECInitStdSM2 (gfp, ec);
+    } else if (pubkey_x->size == 32) {
+      status = ippsGFpECInitStd256r1 (gfp, ec);
     } else {
       status = ippsGFpECInitStd384r1 (gfp, ec);
     }
@@ -2579,7 +2272,7 @@ crypto_verify_ec_signature_internal (
       printf ("ERROR: Failed to initialize EC curve: %d\n", status);
       goto cleanup;
     }
-  }  /* end standard built-in curve */
+  }
 
   /* Create BigNum structures */
   if (create_bignum_from_bytes (digest, digest_size, &msg_digest_bn) != ippStsNoErr) {
@@ -2788,7 +2481,7 @@ crypto_ec_sign_data_internal (
     case TB_HALG_SHA256:
       digest_size = SHA256_LENGTH;
       if (priv_key_size != 32) {
-        printf ("ERROR: SHA-256 requires 32-byte EC key (secp256k1)\n");
+        printf ("ERROR: SHA-256 requires 32-byte EC key (P-256)\n");
         return false;
       }
 
@@ -2835,23 +2528,13 @@ crypto_ec_sign_data_internal (
   } else if (priv_key_size == 48) {
     gfp_method = ippsGFpMethod_p384r1 ();
   } else if (priv_key_size == 32) {
-    /* secp256k1 — no built-in method, use init_secp256k1 helper */
-    gfp_method = NULL;
+    gfp_method = ippsGFpMethod_p256r1 ();
   } else {
     printf ("ERROR: Unsupported EC key size: %d bytes\n", priv_key_size);
     return false;
   }
 
-  if ((gfp_method == NULL) && !((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2))) {
-    /* secp256k1 — use arbitrary-curve initialisation */
-    status = init_secp256k1 (&gfp, &ec);
-    if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to initialise secp256k1 curve: %d\n", status);
-      return false;
-    }
-  } else {
-    /* Standard built-in curve */
-
+  {
     /* Get size for GFp context */
     status = ippsGFpGetSize (priv_key_size * 8, &gfp_size);
     if (status != ippStsNoErr) {
@@ -2890,6 +2573,8 @@ crypto_ec_sign_data_internal (
     /* Initialize EC context with standard curve */
     if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
       status = ippsGFpECInitStdSM2 (gfp, ec);
+    } else if (priv_key_size == 32) {
+      status = ippsGFpECInitStd256r1 (gfp, ec);
     } else {
       status = ippsGFpECInitStd384r1 (gfp, ec);
     }
@@ -2898,7 +2583,7 @@ crypto_ec_sign_data_internal (
       printf ("ERROR: Failed to initialize EC curve: %d\n", status);
       goto cleanup;
     }
-  }  /* end standard built-in curve */
+  }
 
   /* Create BigNum structures */
   if (create_bignum_from_bytes (digest, digest_size, &msg_digest_bn) != ippStsNoErr) {
@@ -3416,7 +3101,7 @@ lms_keygen_rng_callback (
 #define LMS_SIGN_M   LMS_SIGNATURE_M_SIZE      /* 24 */
 
 /*
- * Hash-sigs private key file format for LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4:
+ * LMS private key file format for LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4:
  *
  * Offset  0: 8 bytes  - sequence counter (leaf index q, big-endian uint64)
  * Offset  8: 16 bytes - compressed parameter sets (2 bytes per HSS level, 0xFF padding)
@@ -3427,14 +3112,14 @@ lms_keygen_rng_callback (
  * Expected compressed params: LM type = 0x09 (LMS_SHA256_M24_H20 - 4),
  *                             LMOTS type = 0x07 (LMOTS_SHA256_N24_W4)
  */
-#define HASHSIGS_PRV_COUNTER_OFFSET     0
-#define HASHSIGS_PRV_COUNTER_SIZE       8
-#define HASHSIGS_PRV_PARAMS_OFFSET      8
-#define HASHSIGS_PRV_SEED_OFFSET        24
-#define HASHSIGS_PRV_I_SIZE             16
-#define HASHSIGS_PRV_EXPECTED_SIZE      (HASHSIGS_PRV_SEED_OFFSET + LMS_SIGN_N + HASHSIGS_PRV_I_SIZE) /* 64 */
-#define HASHSIGS_PRV_COMPRESSED_LM      0x09  /* LMS_SHA256_M24_H20 enum(13) - 4 */
-#define HASHSIGS_PRV_COMPRESSED_LMOTS   0x07  /* LMOTS_SHA256_N24_W4 enum(7) */
+#define LMS_PRV_COUNTER_OFFSET     0
+#define LMS_PRV_COUNTER_SIZE       8
+#define LMS_PRV_PARAMS_OFFSET      8
+#define LMS_PRV_SEED_OFFSET        24
+#define LMS_PRV_I_SIZE             16
+#define LMS_PRV_EXPECTED_SIZE      (LMS_PRV_SEED_OFFSET + LMS_SIGN_N + LMS_PRV_I_SIZE) /* 64 */
+#define LMS_PRV_COMPRESSED_LM      0x09  /* LMS_SHA256_M24_H20 enum(13) - 4 */
+#define LMS_PRV_COMPRESSED_LMOTS   0x07  /* LMOTS_SHA256_N24_W4 enum(7) */
 
 /*
  * Total serialized LMS signature size (including HSS NSPK prefix):
@@ -3451,7 +3136,7 @@ lms_keygen_rng_callback (
 
 /*
  * LMS signature generation using IPPC library.
- * Reads a hash-sigs format private key (LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4),
+ * Reads an LMS private key (LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4),
  * reconstructs the IPPC key state, signs the message, and serializes the signature
  * in wire format with HSS NSPK prefix.
  */
@@ -3502,32 +3187,32 @@ crypto_lms_sign_data_internal (
   }
 
   /* Validate exact file size */
-  if (file_size != HASHSIGS_PRV_EXPECTED_SIZE) {
+  if (file_size != LMS_PRV_EXPECTED_SIZE) {
     printf ("ERROR: Invalid LMS private key file size: %zu (expected %d)\n",
-            file_size, HASHSIGS_PRV_EXPECTED_SIZE);
+            file_size, LMS_PRV_EXPECTED_SIZE);
     free (file_data);
     return crypto_general_fail;
   }
 
   /* Validate compressed parameter sets match LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4 */
-  if (file_data[HASHSIGS_PRV_PARAMS_OFFSET] != HASHSIGS_PRV_COMPRESSED_LM) {
+  if (file_data[LMS_PRV_PARAMS_OFFSET] != LMS_PRV_COMPRESSED_LM) {
     printf ("ERROR: Unsupported LMS type in private key: 0x%02x (expected 0x%02x for LMS_SHA256_M24_H20)\n",
-            file_data[HASHSIGS_PRV_PARAMS_OFFSET], HASHSIGS_PRV_COMPRESSED_LM);
+            file_data[LMS_PRV_PARAMS_OFFSET], LMS_PRV_COMPRESSED_LM);
     free (file_data);
     return crypto_general_fail;
   }
 
-  if (file_data[HASHSIGS_PRV_PARAMS_OFFSET + 1] != HASHSIGS_PRV_COMPRESSED_LMOTS) {
+  if (file_data[LMS_PRV_PARAMS_OFFSET + 1] != LMS_PRV_COMPRESSED_LMOTS) {
     printf ("ERROR: Unsupported LMOTS type in private key: 0x%02x (expected 0x%02x for LMOTS_SHA256_N24_W4)\n",
-            file_data[HASHSIGS_PRV_PARAMS_OFFSET + 1], HASHSIGS_PRV_COMPRESSED_LMOTS);
+            file_data[LMS_PRV_PARAMS_OFFSET + 1], LMS_PRV_COMPRESSED_LMOTS);
     free (file_data);
     return crypto_general_fail;
   }
 
   /* Extract sequence counter (leaf index) - big-endian uint64 in first 8 bytes */
   uint64_t  seq_counter = 0;
-  for (int i = 0; i < HASHSIGS_PRV_COUNTER_SIZE; i++) {
-    seq_counter = (seq_counter << 8) | file_data[HASHSIGS_PRV_COUNTER_OFFSET + i];
+  for (int i = 0; i < LMS_PRV_COUNTER_SIZE; i++) {
+    seq_counter = (seq_counter << 8) | file_data[LMS_PRV_COUNTER_OFFSET + i];
   }
 
   leaf_q = (uint32_t)seq_counter;
@@ -3541,8 +3226,8 @@ crypto_lms_sign_data_internal (
   }
 
   /* Pointers into file data for seed and I */
-  const uint8_t  *seed  = file_data + HASHSIGS_PRV_SEED_OFFSET;
-  const uint8_t  *I_val = file_data + HASHSIGS_PRV_SEED_OFFSET + LMS_SIGN_N;
+  const uint8_t  *seed  = file_data + LMS_PRV_SEED_OFFSET;
+  const uint8_t  *I_val = file_data + LMS_PRV_SEED_OFFSET + LMS_SIGN_N;
 
   /* Check output buffer size */
   if (*sig_len < LMS_SIGN_TOTAL_SIZE) {
@@ -3695,14 +3380,14 @@ crypto_lms_sign_data_internal (
     }
 
     {
-      uint8_t  counter_bytes[HASHSIGS_PRV_COUNTER_SIZE];
+      uint8_t  counter_bytes[LMS_PRV_COUNTER_SIZE];
       uint64_t temp_counter = seq_counter;
-      for (int i = HASHSIGS_PRV_COUNTER_SIZE - 1; i >= 0; i--) {
+      for (int i = LMS_PRV_COUNTER_SIZE - 1; i >= 0; i--) {
         counter_bytes[i] = (uint8_t)(temp_counter & 0xFF);
         temp_counter >>= 8;
       }
 
-      if (fwrite (counter_bytes, HASHSIGS_PRV_COUNTER_SIZE, 1, fp) != 1) {
+      if (fwrite (counter_bytes, LMS_PRV_COUNTER_SIZE, 1, fp) != 1) {
         printf ("ERROR: Failed to update LMS private key counter — risk of key reuse\n");
         fclose (fp);
         result = crypto_crypto_operation_fail;

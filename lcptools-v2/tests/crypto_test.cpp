@@ -666,7 +666,7 @@ static void reverse_bytes(uint8_t *buf, size_t len) {
 
 #ifdef USE_IPPC
 /*
- * Helper: generate secp256k1 EC key pair as raw binary files.
+ * Helper: generate P-256 EC key pair as raw binary files.
  * Private key: 32 bytes (little-endian, TPM convention)
  * Public key:  64 bytes (qx_le || qy_le)
  *
@@ -676,8 +676,8 @@ static void reverse_bytes(uint8_t *buf, size_t len) {
  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-static bool generate_ec_secp256k1_binary_keys(const char *priv_path, const char *pub_path) {
-    EC_KEY *ec_key = EC_KEY_new_by_curve_name(NID_secp256k1);
+static bool generate_ec_p256_binary_keys(const char *priv_path, const char *pub_path) {
+    EC_KEY *ec_key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
     if (!ec_key || !EC_KEY_generate_key(ec_key)) {
         if (ec_key) EC_KEY_free(ec_key);
         return false;
@@ -726,13 +726,13 @@ static bool generate_ec_secp256k1_binary_keys(const char *priv_path, const char 
 
 #else /* OpenSSL backend */
 /*
- * Helper: generate secp256k1 EC key pair as PEM files.
+ * Helper: generate P-256 EC key pair as PEM files.
  * The OpenSSL crypto module reads ECC keys in PEM format.
  */
-static bool generate_ec_secp256k1_pem_keys(const char *priv_path, const char *pub_path) {
+static bool generate_ec_p256_pem_keys(const char *priv_path, const char *pub_path) {
     char cmd[1024];
     snprintf(cmd, sizeof(cmd),
-             "openssl ecparam -genkey -name secp256k1 -noout -out %s 2>/dev/null && "
+             "openssl ecparam -genkey -name prime256v1 -noout -out %s 2>/dev/null && "
              "openssl ec -in %s -pubout -out %s 2>/dev/null",
              priv_path, priv_path, pub_path);
     return system(cmd) == 0;
@@ -742,7 +742,7 @@ static bool generate_ec_secp256k1_pem_keys(const char *priv_path, const char *pu
 /*
  * ECC test fixture.
  * IPPC backend:   uses binary key files (little-endian TPM convention).
- * OpenSSL backend: uses PEM key files (secp256k1).
+ * OpenSSL backend: uses PEM key files (P-256).
  *
  * crypto_read_ecdsa_pubkey returns coordinates in LE (TPM convention).
  * crypto_verify_ec_signature expects coordinates in BE.
@@ -754,13 +754,13 @@ protected:
 #ifdef USE_IPPC
         prv_file_ = new TempFile(".bin");
         pub_file_ = new TempFile(".bin");
-        ASSERT_TRUE(generate_ec_secp256k1_binary_keys(prv_file_->c_str(), pub_file_->c_str()))
-            << "Failed to generate EC secp256k1 binary key pair";
+        ASSERT_TRUE(generate_ec_p256_binary_keys(prv_file_->c_str(), pub_file_->c_str()))
+            << "Failed to generate EC P-256 binary key pair";
 #else
         prv_file_ = new TempFile(".pem");
         pub_file_ = new TempFile(".pem");
-        ASSERT_TRUE(generate_ec_secp256k1_pem_keys(prv_file_->c_str(), pub_file_->c_str()))
-            << "Failed to generate EC secp256k1 PEM key pair";
+        ASSERT_TRUE(generate_ec_p256_pem_keys(prv_file_->c_str(), pub_file_->c_str()))
+            << "Failed to generate EC P-256 PEM key pair";
 #endif
 
         /* Read public key coordinates via the crypto module (returns LE) */
@@ -812,9 +812,9 @@ TEST_F(EccTest, ReadPubkey_NonexistentFile) {
     EXPECT_NE(st, crypto_ok);
 }
 
-/* ECDSA secp256k1 sign -> verify round-trip */
+/* ECDSA P-256 sign -> verify round-trip */
 TEST_F(EccTest, SignVerify_ECDSA) {
-    unsigned char msg[] = "Test message for ECDSA secp256k1 signing";
+    unsigned char msg[] = "Test message for ECDSA P-256 signing";
     crypto_sized_buffer data = {sizeof(msg) - 1, msg};
 
     unsigned char r_buf[32] = {}, s_buf[32] = {};
@@ -865,10 +865,10 @@ TEST_F(EccTest, Verify_WrongKey) {
     /* Generate a different key pair */
 #ifdef USE_IPPC
     TempFile prv2(".bin"), pub2(".bin");
-    ASSERT_TRUE(generate_ec_secp256k1_binary_keys(prv2.c_str(), pub2.c_str()));
+    ASSERT_TRUE(generate_ec_p256_binary_keys(prv2.c_str(), pub2.c_str()));
 #else
     TempFile prv2(".pem"), pub2(".pem");
-    ASSERT_TRUE(generate_ec_secp256k1_pem_keys(prv2.c_str(), pub2.c_str()));
+    ASSERT_TRUE(generate_ec_p256_pem_keys(prv2.c_str(), pub2.c_str()));
 #endif
 
     uint8_t *qx2 = NULL, *qy2 = NULL;

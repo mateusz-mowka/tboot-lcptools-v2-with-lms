@@ -200,7 +200,7 @@ The YAML file has five top-level sections:
    | Type | Required fields |
    |------|-----------------|
    | `rsa` | `bits` (e.g. 2048, 3072) |
-   | `ec` | `curve` (e.g. secp256k1, secp384r1) |
+   | `ec` | `curve` (e.g. prime256v1, secp384r1) |
    | `mldsa` | `openssl`, `ld_library_path` (keys generated externally via `openssl genpkey -algorithm ML-DSA-87`) |
    | `lms` | `copy_from: {pub, priv, aux}` source file paths (relative to `lcptools-v2/`, or absolute via `--lms-keys`) |
 

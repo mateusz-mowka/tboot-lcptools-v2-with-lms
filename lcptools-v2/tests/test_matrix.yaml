@@ -32,7 +32,7 @@ backends:
 #
 # Supported key types and their required fields:
 #   rsa   — bits: key size in bits
-#   ec    — curve: OpenSSL curve name (e.g. secp256k1, secp384r1)
+#   ec    — curve: OpenSSL curve name (e.g. prime256v1, secp384r1)
 #   mldsa — openssl: path to openssl binary (default: "openssl")
 #           ld_library_path: extra LD_LIBRARY_PATH for ML-DSA support (optional)
 #           Generated via: openssl genpkey -algorithm ML-DSA-87
@@ -48,7 +48,7 @@ keys:
 
   ec256:
     type: ec
-    curve: secp256k1
+    curve: prime256v1
 
   ec384:
     type: ec
