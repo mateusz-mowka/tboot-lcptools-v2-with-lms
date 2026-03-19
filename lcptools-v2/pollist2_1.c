@@ -1133,7 +1133,14 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
         goto CLEANUP;
     }
 
-    memcpy_s((void *) policy_list_data, pollist->KeySignatureOffset, (const void *) pollist, pollist->KeySignatureOffset);
+    rc = memcpy_s((void *) policy_list_data, pollist->KeySignatureOffset,
+                    (const void *) pollist, pollist->KeySignatureOffset);
+                    
+    if (rc != EOK) {
+        ERROR("Error: memcpy_s failed when copying policy list data (rc=%d).\n", rc);
+        free(policy_list_data);
+        return false;
+    }
 
     // Use crypto abstraction layer for LMS verification
     if (!crypto_lms_verify_signature(
@@ -1167,6 +1174,7 @@ bool verify_tpm20_pollist_2_1_mldsa_sig(const lcp_policy_list_t2_1 *pollist)
     bool status = false;
     lcp_signature_2_1 *sig = NULL;
     uint8_t *policy_list_data = NULL;
+    errno_t rc;
 
     sig = get_tpm20_signature_2_1(pollist);
     if (sig == NULL) {
@@ -1174,14 +1182,20 @@ bool verify_tpm20_pollist_2_1_mldsa_sig(const lcp_policy_list_t2_1 *pollist)
         return false;
     }
 
-    policy_list_data = malloc(pollist->KeySignatureOffset);
+    policy_list_data = calloc(1, pollist->KeySignatureOffset);
     if (policy_list_data == NULL) {
         ERROR("Error during malloc, policy_list_data.\n");
         return false;
     }
 
-    memcpy_s((void *) policy_list_data, pollist->KeySignatureOffset,
-             (const void *) pollist, pollist->KeySignatureOffset);
+    rc = memcpy_s((void *) policy_list_data, pollist->KeySignatureOffset,
+                    (const void *) pollist, pollist->KeySignatureOffset);
+                    
+    if (rc != EOK) {
+        ERROR("Error: memcpy_s failed when copying policy list data (rc=%d).\n", rc);
+        free(policy_list_data);
+        return false;
+    }
 
     /* Verify using raw public key and signature from the LCP structure */
     if (!crypto_mldsa_verify_signature(
@@ -2326,6 +2340,12 @@ bool lms_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     /* The signature returned by crypto_lms_sign_data already includes NSPK prefix
      * We skip the first 4 bytes (NSPK) and copy the rest into the structure */
     size_t bytes_to_copy = sig_len - sizeof(uint32_t);
+
+    if (sig_len < sizeof(uint32_t)) {
+        ERROR("Signature too short: total sig_len=%zu\n", sig_len);
+        goto CLEANUP;
+    }
+
     if (bytes_to_copy != sizeof(lms_signature_block)) {
         ERROR("Signature size mismatch: expected %zu, got %zu (total sig_len=%zu)\n", 
               sizeof(lms_signature_block), bytes_to_copy, sig_len);

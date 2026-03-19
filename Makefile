@@ -33,7 +33,7 @@ endif
 .PHONY: manifest
 
 dist-lcptools-v2/ippc:
-	$(MAKE) -C lcptools-v2/ippc dist
+	$(MAKE) -C lcptools-v2/ippc build
 manifest : build
 	lcptools/lcp_mlehash tboot/tboot.gz > mle_file
 	lcptools/lcp_crtpol -t 0 -m mle_file -o policy_file
@@ -85,7 +85,9 @@ world :
 	$(MAKE) clean
 #
 # Explicit rule for subdir with slash (for recursive make)
+ifdef USE_IPPC
 	$(MAKE) -C lcptools-v2/ippc build
+endif
 	$(MAKE) dist
 build-lcptools-v2/ippc:
 	$(MAKE) -C lcptools-v2/ippc build

@@ -822,7 +822,7 @@ lcp_signature_t2 *read_rsa_pubkey_file(const char *file)
         return NULL;
     }
 
-    lcp_signature_t2 *sig= malloc(sizeof(lcp_rsa_signature_t) + 2*keysize);
+    lcp_signature_t2 *sig= calloc(1, sizeof(lcp_rsa_signature_t) + 2*keysize);
     if ( sig == NULL ) {
         ERROR("Error: failed to allocate sig\n");
         free(key);

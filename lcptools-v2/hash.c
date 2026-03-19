@@ -75,7 +75,7 @@ bool are_hashes_equal(const tb_hash_t *hash1, const tb_hash_t *hash2,
 bool hash_buffer(const unsigned char* buf, size_t size, tb_hash_t *hash,
 		 uint16_t hash_alg)
 {
-    return (crypto_hash_buffer(buf, size, (unsigned char*)hash, hash_alg) == 0 ? true : false); 
+    return (crypto_hash_buffer(buf, size, (unsigned char*)hash, hash_alg) == crypto_ok); 
 }
 
 /*
@@ -96,7 +96,7 @@ bool extend_hash(tb_hash_t *hash1, const tb_hash_t *hash2, uint16_t hash_alg)
         memcpy_s(buf + sizeof(hash1->sha1), sizeof(buf) - sizeof(hash1->sha1),
                  &(hash2->sha1), sizeof(hash1->sha1));
 
-        return (crypto_hash_buffer(buf, (2*sizeof(hash1->sha1)), (unsigned char*)hash1->sha1, hash_alg) == 0 ? true : false);
+        return (crypto_hash_buffer(buf, (2*sizeof(hash1->sha1)), (unsigned char*)hash1->sha1, hash_alg) == crypto_ok);
     }
     else
         return false;

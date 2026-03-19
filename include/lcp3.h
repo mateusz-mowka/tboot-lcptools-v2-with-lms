@@ -219,7 +219,6 @@ typedef struct __packed {
 #define TPM_ALG_SM3_256	0x0012
 #define TPM_ALG_ECC     0x0023
 #define TPM_ALG_LMS     0x0070
-#define TCG_ALG_MLDSA   0x00A1
 
 #define TPM_ALG_MASK_NULL	    0x0000
 #define TPM_ALG_MASK_SHA1	    0x0001
