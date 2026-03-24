@@ -92,6 +92,8 @@ endif
 build-lcptools-v2/ippc:
 	$(MAKE) -C lcptools-v2/ippc build
 
+clean-lcptools-v2/ippc:
+	$(MAKE) -C lcptools-v2/ippc clean
 
 #
 #    clean

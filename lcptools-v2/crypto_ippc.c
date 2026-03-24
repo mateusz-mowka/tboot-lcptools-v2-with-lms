@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <arpa/inet.h>
 #include "ippc/cryptography-primitives/include/ippcp.h"
 #include "ippc/cryptography-primitives/include/ippcpdefs.h"
@@ -1508,7 +1509,8 @@ create_bignum_from_bytes (
 static IppsRSAPrivateKeyState *
 rsa_load_private_key_from_file (
   const char  *privkey_file,
-  int         *key_size_bits
+  int         *key_size_bits,
+  int         *key_ctx_size_out
   )
 {
   uint8_t                 *file_data = NULL;
@@ -1516,7 +1518,7 @@ rsa_load_private_key_from_file (
   uint8_t                 *der_buf   = NULL;
   uint16_t                der_size   = 0;
   uint8_t                 pem_type   = 0;
-  rsa_private_key_params  params;
+  rsa_private_key_params  params     = { 0 };
   IppStatus               ipp_status;
   IppsRSAPrivateKeyState  *priv_key = NULL;
   IppsBigNumState         *p_bn = NULL, *q_bn = NULL;
@@ -1626,31 +1628,50 @@ rsa_load_private_key_from_file (
     goto cleanup;
   }
 
+  if (key_ctx_size_out != NULL) {
+    *key_ctx_size_out = key_ctx_size;
+  }
+
 cleanup:
   /* Free temporary resources — zero key material first */
   if (der_buf) {
-    memset (der_buf, 0, der_size);
+    explicit_bzero (der_buf, der_size);
     free (der_buf);
   }
 
-  if (p_bn) {
-    free (p_bn);
-  }
+  /* Zero BigNum states holding private key factors before freeing.
+   * We recompute the state size via ippsBigNumGetSize for each. */
+  {
+    int bn_sz = 0;
+    if (p_bn) {
+      if (ippsBigNumGetSize (params.p.size, &bn_sz) == ippStsNoErr)
+        explicit_bzero (p_bn, bn_sz);
+      free (p_bn);
+    }
 
-  if (q_bn) {
-    free (q_bn);
-  }
+    if (q_bn) {
+      if (ippsBigNumGetSize (params.q.size, &bn_sz) == ippStsNoErr)
+        explicit_bzero (q_bn, bn_sz);
+      free (q_bn);
+    }
 
-  if (dp_bn) {
-    free (dp_bn);
-  }
+    if (dp_bn) {
+      if (ippsBigNumGetSize (params.dp.size, &bn_sz) == ippStsNoErr)
+        explicit_bzero (dp_bn, bn_sz);
+      free (dp_bn);
+    }
 
-  if (dq_bn) {
-    free (dq_bn);
-  }
+    if (dq_bn) {
+      if (ippsBigNumGetSize (params.dq.size, &bn_sz) == ippStsNoErr)
+        explicit_bzero (dq_bn, bn_sz);
+      free (dq_bn);
+    }
 
-  if (qinv_bn) {
-    free (qinv_bn);
+    if (qinv_bn) {
+      if (ippsBigNumGetSize (params.qinv.size, &bn_sz) == ippStsNoErr)
+        explicit_bzero (qinv_bn, bn_sz);
+      free (qinv_bn);
+    }
   }
 
   return priv_key;
@@ -1668,9 +1689,10 @@ crypto_rsa_sign_internal (
   IppsRSAPrivateKeyState  *priv_key    = NULL;
   const IppsHashMethod    *hash_method = NULL;
   IppStatus               status;
-  int                     key_size_bits   = 0;
-  int                     buffer_size     = 0;
-  uint8_t                 *scratch_buffer = NULL;
+  int                     key_size_bits    = 0;
+  int                     priv_key_ctx_sz  = 0;
+  int                     buffer_size      = 0;
+  uint8_t                 *scratch_buffer  = NULL;
 
   if ((sig_block == NULL) || (digest == NULL) || (privkey_file == NULL)) {
     printf ("ERROR: crypto_rsa_sign_internal called with NULL pointer\n");
@@ -1678,7 +1700,7 @@ crypto_rsa_sign_internal (
   }
 
   /* Load private key */
-  priv_key = rsa_load_private_key_from_file (privkey_file, &key_size_bits);
+  priv_key = rsa_load_private_key_from_file (privkey_file, &key_size_bits, &priv_key_ctx_sz);
   if (priv_key == NULL) {
     printf ("ERROR: Failed to load RSA private key\n");
     return crypto_general_fail;
@@ -1804,6 +1826,9 @@ crypto_rsa_sign_internal (
   result_code = crypto_ok;
 
 rsa_sign_cleanup:
+  if (priv_key) {
+    explicit_bzero (priv_key, priv_key_ctx_sz);
+  }
   free (priv_key);
   free (scratch_buffer);
   return result_code;
@@ -3014,7 +3039,12 @@ cleanup:
 /*
  * Mirror of IPPC internal _cpLMOTSSignatureState.
  * Must match the layout in sources/include/stateful_sig/lms_internal/lmots.h.
+ *
+ * WARNING: These mirror structs are tied to IPPC 1.4.0 internal layout.
+ * Any IPPC library update must re-validate them.  The algorithm fields are
+ * checked at runtime after keygen/sign as a sanity guard.
  */
+
 typedef struct {
   IppsLMOTSAlgo  _lmotsOIDAlgo;
   Ipp8u          *pC;
@@ -3314,6 +3344,20 @@ crypto_lms_sign_data_internal (
 
   /* ippsLMSKeyGen sets q=0. Restore the correct leaf index from the private key file. */
   lms_privkey_mirror  *priv_mirror = (lms_privkey_mirror *)priv_key;
+
+  /* Sanity check: validate mirror struct alignment by verifying the algorithm
+   * fields match what we configured.  If these don't match, the IPPC internal
+   * struct layout has changed and the mirror structs must be updated. */
+  if (priv_mirror->lmsOIDAlgo != LMS_SHA256_M24_H20 ||
+      priv_mirror->lmotsOIDAlgo != LMOTS_SHA256_N24_W4) {
+    printf ("ERROR: LMS private key mirror struct mismatch: lmsOID=%d lmotsOID=%d "
+            "(expected %d, %d)\n",
+            priv_mirror->lmsOIDAlgo, priv_mirror->lmotsOIDAlgo,
+            LMS_SHA256_M24_H20, LMOTS_SHA256_N24_W4);
+    printf ("       IPPC internal layout may have changed — update mirror structs\n");
+    goto cleanup;
+  }
+
   priv_mirror->q = leaf_q;
 
   /* Initialize signature state */
@@ -3332,6 +3376,18 @@ crypto_lms_sign_data_internal (
 
   /* Extract signature components via mirror struct and serialize into wire format */
   lms_sig_state_mirror  *sig_mirror = (lms_sig_state_mirror *)sig_state;
+
+  /* Sanity check signature state mirror alignment via algorithm fields */
+  if (sig_mirror->_lmsOIDAlgo != LMS_SHA256_M24_H20 ||
+      sig_mirror->_lmotsSig._lmotsOIDAlgo != LMOTS_SHA256_N24_W4) {
+    printf ("ERROR: LMS sig state mirror struct mismatch: lmsOID=%d lmotsOID=%d "
+            "(expected %d, %d)\n",
+            sig_mirror->_lmsOIDAlgo, sig_mirror->_lmotsSig._lmotsOIDAlgo,
+            LMS_SHA256_M24_H20, LMOTS_SHA256_N24_W4);
+    printf ("       IPPC internal layout may have changed — update mirror structs\n");
+    goto cleanup;
+  }
+
   unsigned char         *p_out      = signature;
 
   /* NSPK prefix: u32str(0) for single-level HSS tree */
@@ -3394,6 +3450,15 @@ crypto_lms_sign_data_internal (
         goto cleanup;
       }
 
+      /* Ensure the counter update reaches persistent storage before returning
+       * the signature.  LMS security depends on never reusing a leaf index. */
+      if (fflush (fp) != 0 || fsync (fileno (fp)) != 0) {
+        printf ("ERROR: Failed to flush LMS private key counter to disk — risk of key reuse\n");
+        fclose (fp);
+        result = crypto_crypto_operation_fail;
+        goto cleanup;
+      }
+
       fclose (fp);
     }
   }
@@ -3426,6 +3491,7 @@ cleanup:
   }
 
   if (file_data) {
+    explicit_bzero (file_data, file_size);
     free (file_data);
   }
 
@@ -3924,6 +3990,7 @@ cleanup:
   }
 
   if (prv_key) {
+    explicit_bzero (prv_key, (size_t)info.privateKeySize);
     free (prv_key);
   }
 

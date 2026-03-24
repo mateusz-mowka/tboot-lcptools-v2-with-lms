@@ -1,3 +1,5 @@
+#ifndef LCPT_CRYPTO_IPPC_DEFINES_H
+#define LCPT_CRYPTO_IPPC_DEFINES_H
 #define       PEMTYPE_INVALID      0xFF
 #define       PEMTYPE_UNKNOWN      0
 #define       PEMTYPE_EC_PRIVATE   1
@@ -7,6 +9,7 @@
 #define       PEMTYPE_RSA_PUBLIC   5
 #define       PEMTYPE_RSA_PARAMS   6
 #define       PEMTYPE__PRIVATE     7
+/* 8 intentionally skipped — legacy gap */
 #define       PEMTYPE__PUBLIC      9
 #define       PEMTYPE__PARAMS      10
 #define PEMTYPE_LMS_PRIVATE        11
@@ -54,3 +57,5 @@ buffer_reverse_byte_order (
   uint8_t  *buffer,
   size_t   length
   );
+
+#endif // LCPT_CRYPTO_IPPC_DEFINES_H

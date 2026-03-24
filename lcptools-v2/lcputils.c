@@ -417,7 +417,7 @@ uint32_t str_to_sig_alg_mask(const char *str, const uint16_t version, size_t siz
             return SIGN_ALG_MASK_SM2;
         }
         else if (strncmp(str, "lms", size) == 0) {
-            return (SIGN_ALG_MASK_LMS_P56B | SIGN_ALG_MASK_LMS_SHA256_M32_H20);
+            return (SIGN_ALG_MASK_LMS_P56B | SIGN_ALG_MASK_LMS_SHA256_M24_H20);
         }
         else if (strncmp(str, "mldsa", size) == 0) {
             return SIGN_ALG_MASK_MLDSA_87;
@@ -716,10 +716,6 @@ static const char *lms_type_to_str(uint16_t type)
     switch (type) {
         case LMOTS_SHA256_N24_W4:
             return "LMOTS_SHA256_N24_W4";
-        case LMOTS_SHA256_N32_W4:
-            return "LMOTS_SHA256_N32_W4";
-        case LMS_SHA256_M32_H20:
-            return "LMS_SHA256_M32_H20";
         case LMS_SHA256_M24_H20:
             return "LMS_SHA256_M24_H20";
         default:

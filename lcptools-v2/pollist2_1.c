@@ -1055,18 +1055,36 @@ Out: true if verifies false if not
     key_buffer->size = key_size_bytes;
     signature_buffer->size = key_size_bytes;
 
-    memcpy_s( (void *) list_data->data,
-              list_data->size,
-              (const void *) pollist,
-              pollist->KeySignatureOffset);
-    memcpy_s( (void *) key_buffer->data,
-              key_size_bytes,
-              (const void *) sig->KeyAndSignature.RsaKeyAndSignature.Key.Modulus,
-              key_size_bytes);
-    memcpy_s( (void *)signature_buffer->data,
-              key_size_bytes,
-              (const void *) sig->KeyAndSignature.RsaKeyAndSignature.Signature.Signature,
-              key_size_bytes);
+    if (memcpy_s( (void *) list_data->data,
+                  list_data->size,
+                  (const void *) pollist,
+                  pollist->KeySignatureOffset) != EOK) {
+        ERROR("Error: memcpy_s failed for list data.\n");
+        free(key_buffer);
+        free(signature_buffer);
+        free(list_data);
+        return false;
+    }
+    if (memcpy_s( (void *) key_buffer->data,
+                  key_size_bytes,
+                  (const void *) sig->KeyAndSignature.RsaKeyAndSignature.Key.Modulus,
+                  key_size_bytes) != EOK) {
+        ERROR("Error: memcpy_s failed for key buffer.\n");
+        free(key_buffer);
+        free(signature_buffer);
+        free(list_data);
+        return false;
+    }
+    if (memcpy_s( (void *)signature_buffer->data,
+                  key_size_bytes,
+                  (const void *) sig->KeyAndSignature.RsaKeyAndSignature.Signature.Signature,
+                  key_size_bytes) != EOK) {
+        ERROR("Error: memcpy_s failed for signature buffer.\n");
+        free(key_buffer);
+        free(signature_buffer);
+        free(list_data);
+        return false;
+    }
 
     //Remember that key and sig are LE in pollist file, must be BE for openssll
     buffer_reverse_byte_order((uint8_t *) signature_buffer->data, signature_buffer->size);
@@ -1139,8 +1157,8 @@ bool verify_tpm20_pollist_2_1_lms_sig(const lcp_policy_list_t2_1 *pollist)
                     
     if (rc != EOK) {
         ERROR("Error: memcpy_s failed when copying policy list data (rc=%d).\n", rc);
-        free(policy_list_data);
-        return false;
+        status = false;
+        goto CLEANUP;
     }
 
     // Use crypto abstraction layer for LMS verification
@@ -1168,7 +1186,7 @@ CLEANUP:
     return status;
 }
 
-bool verify_tpm20_pollist_2_1_mldsa_sig(const lcp_policy_list_t2_1 *pollist)
+static bool verify_tpm20_pollist_2_1_mldsa_sig(const lcp_policy_list_t2_1 *pollist)
 {
     LOG("[verify_tpm20_pollist_2_1_mldsa_sig]\n");
 
@@ -2200,7 +2218,7 @@ static lcp_signature_2_1 *read_mldsa_pubkey_file_2_1(const char *pubkey_file)
 }
 
 
-bool mldsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file)
+static bool mldsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_file)
 {
     lcp_signature_2_1 *sig = NULL;
     bool status = false;
@@ -2233,6 +2251,12 @@ bool mldsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey
 
     if (sign_result != crypto_ok) {
         ERROR("Error during generation of ML-DSA signature.\n");
+        free(mldsa_sig);
+        return false;
+    }
+
+    if(sig_len != MLDSA87_SIGNATURE_SIZE) {
+        ERROR("Error: unexpected ML-DSA signature size: expected %d, got %zu\n", MLDSA87_SIGNATURE_SIZE, sig_len);
         free(mldsa_sig);
         return false;
     }

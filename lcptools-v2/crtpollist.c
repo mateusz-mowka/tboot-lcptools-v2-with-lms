@@ -733,6 +733,12 @@ int main(int argc, char *argv[])
             }
         }
         if (sigalg_type == TPM_ALG_LMS && !no_sigblock && !force) {
+            if (!isatty(STDIN_FILENO)) {
+                 ERROR("Error: LMS signing requires interactive confirmation, "
+                       "but stdin is not a TTY. Re-run with --force to skip "
+                       "this prompt in non-interactive environments.\n");
+                 return 1;
+            }
             DISPLAY("Dear user, are you sure you want to sign using LMS? "
                     "You are responsible for LMS private key protection "
                     "and protecting LMS state. [Y/N]: ");

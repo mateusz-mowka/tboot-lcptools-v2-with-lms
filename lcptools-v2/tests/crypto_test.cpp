@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <vector>
 #include <string>
 #include <unistd.h>
@@ -72,10 +73,22 @@ public:
         char tmpl[] = "/tmp/crypto_test_XXXXXX";
         int fd = mkstemp(tmpl);
         EXPECT_NE(fd, -1);
-        if (fd != -1) close(fd);
-        path_ = std::string(tmpl) + suffix;
+        if (fd == -1) {
+            // mkstemp failed; leave path_ as the template so destructor cleanup is harmless
+            path_ = tmpl;
+            return;
+        }
+        close(fd);
+        std::string target = std::string(tmpl) + suffix;
         /* rename the mkstemp file to include the suffix */
-        rename(tmpl, path_.c_str());
+        if (rename(tmpl, target.c_str()) == 0) {
+            path_ = target;
+        } else {
+            ADD_FAILURE() << "Failed to rename temporary file '" << tmpl
+                          << "' to '" << target << "'";
+            // Fall back to using the original mkstemp path so destructor can clean it up
+            path_ = tmpl;
+        }
     }
     ~TempFile() { std::remove(path_.c_str()); }
     const char *c_str() const { return path_.c_str(); }
@@ -651,19 +664,6 @@ TEST_F(RsaTest, Sign_NonexistentKey) {
 /*  ECC functional tests                                               */
 /* ================================================================== */
 
-/*
- * Helper: reverse byte order in place (LE <-> BE conversion).
- * crypto_read_ecdsa_pubkey returns coordinates in LE (TPM convention),
- * but crypto_verify_ec_signature expects BE (OpenSSL / IPPC BigNum convention).
- */
-static void reverse_bytes(uint8_t *buf, size_t len) {
-    for (size_t i = 0; i < len / 2; i++) {
-        uint8_t tmp = buf[i];
-        buf[i] = buf[len - 1 - i];
-        buf[len - 1 - i] = tmp;
-    }
-}
-
 #ifdef USE_IPPC
 /*
  * Helper: generate P-256 EC key pair as raw binary files.
@@ -776,8 +776,8 @@ protected:
         free(qy);
 
         /* Convert LE → BE for verify (which uses BN_bin2bn / ippsSetOctString_BN) */
-        reverse_bytes(qx_.data(), qx_.size());
-        reverse_bytes(qy_.data(), qy_.size());
+        std::reverse(qx_.begin(), qx_.end());
+        std::reverse(qy_.begin(), qy_.end());
     }
 
     void TearDown() override {
@@ -876,8 +876,8 @@ TEST_F(EccTest, Verify_WrongKey) {
     ASSERT_EQ(crypto_read_ecdsa_pubkey(pub2.c_str(), &qx2, &qy2, &ks2), crypto_ok);
 
     /* Convert LE → BE for verify */
-    reverse_bytes(qx2, ks2);
-    reverse_bytes(qy2, ks2);
+    std::reverse(qx2, qx2 + ks2);
+    std::reverse(qy2, qy2 + ks2);
 
     crypto_sized_buffer wrong_qx = {ks2, qx2};
     crypto_sized_buffer wrong_qy = {ks2, qy2};
@@ -1121,9 +1121,9 @@ static bool copy_binary_file(const char *src, const char *dst) {
 class LmsTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        /* Use backup key files from the repository (relative to tests/ dir) */
-        prv_bak_ = "../lms_m24_h20_w4.prv.bak";
-        pub_bak_ = "../lms_m24_h20_w4.pub.bak";
+        /* Use key files from the tests/ directory (cwd when running tests) */
+        prv_bak_ = "lms_m24_h20_w4.prv";
+        pub_bak_ = "lms_m24_h20_w4.pub";
 
         pubkey_ = read_binary_file(pub_bak_);
         auto prv = read_binary_file(prv_bak_);
@@ -1142,7 +1142,7 @@ protected:
  * Done in one test to avoid repeated Merkle tree reconstruction.
  */
 TEST_F(LmsTest, SignVerify_And_TamperChecks) {
-    if (!has_keys_) GTEST_SKIP() << "LMS key files not found (lms_m24_h20_w4.prv.bak / .pub.bak)";
+    if (!has_keys_) GTEST_SKIP() << "LMS key files not found (lms_m24_h20_w4.prv / .pub)";
 
     /* Copy private key to temp file (signing increments the leaf counter) */
     TempFile prv_copy(".prv");

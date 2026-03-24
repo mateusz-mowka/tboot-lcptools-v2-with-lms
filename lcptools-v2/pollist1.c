@@ -241,11 +241,19 @@ lcp_policy_list_t *add_tpm12_policy_element(lcp_policy_list_t *pollist,
     /* we add at the beginning of the elements list (don't want to overwrite
        a signature) */
 
-    memmove_s((void *) &new_pollist->policy_elements + elt->size,
+    if (memmove_s((void *) &new_pollist->policy_elements + elt->size,
               old_size - offsetof(lcp_policy_list_t, policy_elements),
               &new_pollist->policy_elements,
-              old_size - offsetof(lcp_policy_list_t, policy_elements));
-    memcpy_s(&new_pollist->policy_elements, elt->size, elt, elt->size);
+              old_size - offsetof(lcp_policy_list_t, policy_elements)) != 0) {
+        ERROR("Error: memmove_s failed\n");
+        free(new_pollist);
+        return NULL;
+    }
+    if (memcpy_s(&new_pollist->policy_elements, elt->size, elt, elt->size) != 0) {
+        ERROR("Error: memcpy_s failed\n");
+        free(new_pollist);
+        return NULL;
+    }
     new_pollist->policy_elements_size += elt->size;
 
     return new_pollist;
@@ -328,12 +336,18 @@ bool verify_tpm12_pollist_sig(const lcp_policy_list_t *pollist)
     public_key->size = sig->pubkey_size;
     signature->size = sig->pubkey_size;
 
-    memcpy_s((void *) list_data->data, list_data->size,
-                                       (const void *) pollist, list_data->size);
-    memcpy_s((void *) public_key->data, public_key->size,
-                            (const void *) sig->pubkey_value, sig->pubkey_size);
-    memcpy_s((void *) signature->data, signature->size,
-                 (const void *) get_tpm12_sig_block(pollist), sig->pubkey_size);
+    if (memcpy_s((void *) list_data->data, list_data->size,
+                 (const void *) pollist, list_data->size) != 0 ||
+        memcpy_s((void *) public_key->data, public_key->size,
+                 (const void *) sig->pubkey_value, sig->pubkey_size) != 0 ||
+        memcpy_s((void *) signature->data, signature->size,
+                 (const void *) get_tpm12_sig_block(pollist), sig->pubkey_size) != 0) {
+        ERROR("Error: memcpy_s failed\n");
+        free(list_data);
+        free(public_key);
+        free(signature);
+        return false;
+    }
 
     //Key and sig must be BE for openssl, and are LE in list, so reverse:
     buffer_reverse_byte_order((uint8_t *) public_key->data, public_key->size);
@@ -400,7 +414,11 @@ lcp_policy_list_t *add_tpm12_signature(lcp_policy_list_t *pollist,
     lcp_signature_t *curr_sig = get_tpm12_signature(new_pollist);
     if ( curr_sig != NULL )
         sig_begin = (void *)curr_sig - (void *)new_pollist;
-    memcpy_s((void *)new_pollist + sig_begin, sig_size, sig, sig_size);
+    if (memcpy_s((void *)new_pollist + sig_begin, sig_size, sig, sig_size) != 0) {
+        ERROR("Error: memcpy_s failed\n");
+        free(new_pollist);
+        return NULL;
+    }
 
     return new_pollist;
 }
@@ -488,8 +506,11 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
     }
     digest->size = list_data_len;
     signature_block->size = sig->pubkey_size;
-    memcpy_s((void *) digest->data, digest->size,
-                    (const void *) pollist, list_data_len);
+    if (memcpy_s((void *) digest->data, digest->size,
+                    (const void *) pollist, list_data_len) != 0) {
+        ERROR("Error: memcpy_s failed\n");
+        goto ERROR;
+    }
     if (verbose) {
         DISPLAY("Data to sign:\n");
         print_hex("       ", (const unsigned char *) pollist, list_data_len);
@@ -512,8 +533,11 @@ bool rsa_sign_list1_data(lcp_policy_list_t *pollist, const char *privkey_file)
     }
 
     buffer_reverse_byte_order((uint8_t *) signature_block->data, signature_block->size);
-    memcpy_s((void *) sig->pubkey_value + sig->pubkey_size, sig->pubkey_size,
-                    (const void *) signature_block->data, signature_block->size);
+    if (memcpy_s((void *) sig->pubkey_value + sig->pubkey_size, sig->pubkey_size,
+                    (const void *) signature_block->data, signature_block->size) != 0) {
+        ERROR("Error: memcpy_s failed\n");
+        goto ERROR;
+    }
     if ( verbose ) {
         LOG("Signature: \n");
         display_tpm12_signature("    ", sig, false);

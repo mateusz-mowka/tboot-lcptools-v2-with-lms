@@ -8,7 +8,7 @@
 |---------|---------|
 | **gcc** / **g++** | C99 and C++17 compiler |
 | **GNU make** | Build system |
-| **OpenSSL** (libssl-dev / openssl-devel, ≥ 1.1; **≥ 3.5 for ML-DSA-87**) | Cryptographic backend & key generation |
+| **OpenSSL** (libssl-dev / openssl-devel, ≥ 3.0.0; **≥ 3.5 for ML-DSA-87**) | Cryptographic backend & key generation |
 | **zlib** (zlib1g-dev / zlib-devel) | Compression support |
 | **SafeStringLib** | Safe C string operations (built from `safestringlib/` in the repo root) |
 

@@ -1,4 +1,16 @@
-#pragma once
+#ifndef LCPT_CRYPTO_H
+#define LCPT_CRYPTO_H
+
+/*
+ * tboot is a freestanding 32-bit pre-kernel module built with -nostdinc.
+ * It supplies its own type definitions via types.h (guarded by __TYPES_H__).
+ * Only pull in the standard headers when building userspace tools.
+ */
+#ifndef __TYPES_H__
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+#endif
 
 #define CRYPTO_SHA1_LENGTH    20
 #define CRYPTO_SHA256_LENGTH  32
@@ -170,3 +182,5 @@ crypto_read_mldsa_pubkey (
   unsigned char  *pubkey,
   size_t         pubkey_size
   );
+
+#endif /* LCPT_CRYPTO_H */

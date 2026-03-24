@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef LCPT_CRYPTOINTERFACE_H
+#define LCPT_CRYPTOINTERFACE_H
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -114,3 +117,5 @@ crypto_read_mldsa_pubkey_internal (
   unsigned char  *pubkey,
   size_t         pubkey_size
   );
+
+#endif // LCPT_CRYPTOINTERFACE_H

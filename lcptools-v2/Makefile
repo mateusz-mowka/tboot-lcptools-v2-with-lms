@@ -58,6 +58,9 @@ $(INST_TARGET) : $(notdir $(INST_TARGET))
 
 clean :
 	rm -f *~ *.a *.so *.o *.rpm $(DEP_FILES) $(LCP2_TARGETS)
+ifdef USE_IPPC
+	$(MAKE) -C ippc clean
+endif
 
 mrproper : clean
 

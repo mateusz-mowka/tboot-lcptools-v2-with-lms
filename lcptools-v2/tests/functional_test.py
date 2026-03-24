@@ -963,6 +963,8 @@ def main():
                              "e.g. /path/to/lms_m24_h20_w4")
     parser.add_argument("--verbose", action="store_true",
                         help="Show tool invocations and failure output")
+    parser.add_argument("--no-cleanup", action="store_true",
+                        help="Keep test collaterals in functional_work/")
     args = parser.parse_args()
 
     # ── Load configuration ──
@@ -1004,6 +1006,13 @@ def main():
     test_element_consistency(config, verbose=args.verbose)
     test_lms_prompt_decline(config, verbose=args.verbose,
                             skip_flags=skip_flags)
+
+    # ── Cleanup ──
+    if args.no_cleanup:
+        log(f"Keeping test collaterals in {WORK_DIR}")
+    elif WORK_DIR.exists():
+        shutil.rmtree(WORK_DIR)
+        log(f"Purged {WORK_DIR}")
 
     # ── Summary ──
     sys.exit(print_summary())

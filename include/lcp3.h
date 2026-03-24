@@ -238,7 +238,7 @@ typedef struct __packed {
 #define SIGN_ALG_MASK_ECDSA_P384            BITN(13) //Sha 384
 #define SIGN_ALG_MASK_LMS_P56B              BITN(14) //Public key size 56 bytes
 #define SIGN_ALG_MASK_SM2                   BITN(16) //ok
-#define SIGN_ALG_MASK_LMS_SHA256_M32_H20    BITN(17) //LMS LMOTS_SHA256_N32_W4 is used with
+#define SIGN_ALG_MASK_LMS_SHA256_M24_H20    BITN(17) //LMS LMOTS_SHA256_N24_W4 is used with
 #define SIGN_ALG_MASK_MLDSA_87              BITN(18) //ML-DSA-87 (NIST level 5)
 
 
@@ -383,10 +383,8 @@ typedef struct __packed {
 } rsa_key_and_signature;
 
 //LCP supports these LMS and LMOTS types:
-#define LMS_SHA256_M32_H20   0x8
-#define LMS_SHA256_M24_H20   0xD
+#define LMS_SHA256_M24_H20   0x0000000D
 #define LMOTS_SHA256_N24_W4  0x00000007
-#define LMOTS_SHA256_N32_W4  0x00000003
 
 #define LMOTS_SIGNATURE_N_SIZE SHA256_192_DIGEST_SIZE // bytes in SHA256/192 digest
 #define LMOTS_SIGNATURE_P_SIZE 51 // Number of n-byte string elements that make up the LMOTS signature
@@ -407,7 +405,7 @@ typedef struct __packed {
 
 typedef struct __packed {
     uint32_t LmsType; //Must be 0xD (LMS_SHA256_M24_H20)
-    uint32_t LmotsType; //Must be 0x3 (LMOTS_SHA256_N24_W4)
+    uint32_t LmotsType; //Must be 0x7 (LMOTS_SHA256_N24_W4)
     uint8_t  I[16]; //LMS key identifier
     uint8_t  T1[24]; //24-byte string associated with the 1st node of binary Merkel tree.
 } lms_xdr_key_data;
@@ -419,7 +417,7 @@ typedef struct __packed {
 } lms_public_key;
 
 typedef struct __packed {
-    uint32_t Type; // Must be 0x3 (LMOTS_SHA256_N24_W4)
+    uint32_t Type; // Must be 0x7 (LMOTS_SHA256_N24_W4)
     uint8_t  Seed[SHA256_192_DIGEST_SIZE];
     uint8_t  Y[LMOTS_SIGNATURE_BLOCK_SIZE];
 } lmots_signature;
@@ -427,7 +425,7 @@ typedef struct __packed {
 typedef struct __packed {
     uint32_t        Q; //Leaf number
     lmots_signature Lmots;
-    uint32_t        LmsType; //Must be 0x8 (LMS_SHA256_M32_H20)
+    uint32_t        LmsType; //Must be 0xD (LMS_SHA256_M24_H20)
     uint8_t         Path[LMS_SIGNATURE_BLOCK_SIZE];
 } lms_signature_block;
 

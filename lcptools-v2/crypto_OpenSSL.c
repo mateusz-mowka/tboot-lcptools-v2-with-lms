@@ -295,10 +295,14 @@ crypto_read_ecdsa_pubkey_internal (
   }
 
  #endif
-  *key_size_bytes = BN_num_bytes (x);
-  if (BN_num_bytes (x) != BN_num_bytes (y)) {
-    ERROR ("ERROR: key coordinates are not the same length.");
-    goto ERROR;
+  /* Use the larger coordinate size to determine field width.  BN_num_bytes
+     returns the minimum byte count, so a coordinate with a leading zero byte
+     will report one fewer than the field size.  Taking the max ensures we
+     use the correct field width (32 for P-256, 48 for P-384). */
+  {
+    int x_bytes = BN_num_bytes (x);
+    int y_bytes = BN_num_bytes (y);
+    *key_size_bytes = (x_bytes > y_bytes) ? (size_t)x_bytes : (size_t)y_bytes;
   }
 
   if ((((*key_size_bytes)*8) != 256) && (((*key_size_bytes)*8) != 384)) {
@@ -324,11 +328,13 @@ crypto_read_ecdsa_pubkey_internal (
     goto ERROR;
   }
 
-  if (!BN_bn2bin (x, *qx)) {
+  /* BN_bn2binpad writes exactly key_size_bytes, zero-padding coordinates
+     that have fewer significant bytes than the field width. */
+  if (!BN_bn2binpad (x, *qx, (int)(*key_size_bytes))) {
     goto OPENSSL_ERROR;
   }
 
-  if (!BN_bn2bin (y, *qy)) {
+  if (!BN_bn2binpad (y, *qy, (int)(*key_size_bytes))) {
     goto OPENSSL_ERROR;
   }
 
@@ -349,9 +355,7 @@ crypto_read_ecdsa_pubkey_internal (
 
   // Errors:
 OPENSSL_ERROR:
-  ERR_load_crypto_strings ();
   ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-  ERR_free_strings ();
 ERROR:
   // Free all allocated mem
   if (fp != NULL) {
@@ -430,9 +434,7 @@ rsa_get_sig_ctx (
   return context;
 
 OPENSSL_ERROR:
-  ERR_load_crypto_strings ();
   ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-  ERR_free_strings ();
 ERROR:
   if (fp != NULL) {
     fclose (fp);
@@ -581,9 +583,7 @@ rsa_ssa_pss_sign (
 
   // Error handling
 OPENSSL_ERROR:
-  ERR_load_crypto_strings ();
   printf ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-  ERR_free_strings ();
   OPENSSL_cleanse (hash_buf, sizeof (hash_buf));
   return false;
 }
@@ -751,11 +751,6 @@ crypto_verify_rsa_signature_internal (
 
   if ( !OSSL_PARAM_BLD_push_BN (params_build, "e", exponent)) {
     ERROR ("Error: failed to push exponent into param build.\n");
-    goto OPENSSL_ERROR;
-  }
-
-  if ( !OSSL_PARAM_BLD_push_BN (params_build, "d", NULL)) {
-    ERROR ("Error: failed to push NULL into param build.\n");
     goto OPENSSL_ERROR;
   }
 
@@ -938,19 +933,17 @@ crypto_verify_rsa_signature_internal (
     goto EXIT;
   }
 
-  status = EVP_PKEY_verify (evp_context, signature->data, pubkey->size, (const unsigned char *)digest, get_hash_size (hashAlg));
+  status = EVP_PKEY_verify (evp_context, signature->data, signature->size, (const unsigned char *)digest, get_hash_size (hashAlg));
   if (status < 0) {
-    // Error occurred
+    /* Error occurred */
     goto OPENSSL_ERROR;
   } else {
-    // EVP_PKEY_verify executed successfully
+    /* EVP_PKEY_verify returns 1=valid, 0=invalid; both fall through to EXIT */
     goto EXIT;
   }
 
 OPENSSL_ERROR:
-  ERR_load_crypto_strings ();
   ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-  ERR_free_strings ();
   status = 0;
 EXIT:
  #if OPENSSL_VERSION_NUMBER >= 0x30000000L
@@ -1332,9 +1325,7 @@ crypto_verify_ec_signature_internal (
 
   goto EXIT;
 OPENSSL_ERROR:
-  ERR_load_crypto_strings ();
   ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-  ERR_free_strings ();
   result = 0;
 EXIT:
   // cleanup:
@@ -1568,15 +1559,19 @@ crypto_ec_sign_data_internal (
     goto OPENSSL_ERROR;
   }
 
-  BN_bn2bin (sig_r, r->data);
-  BN_bn2bin (sig_s, s->data);
+  /* Use BN_bn2binpad to zero-pad signature components to the full
+     field width.  BN_bn2bin would silently write fewer bytes when a
+     component has a leading zero, corrupting the output. */
+  if (!BN_bn2binpad (sig_r, r->data, (int)r->size) ||
+      !BN_bn2binpad (sig_s, s->data, (int)s->size)) {
+    ERROR ("Error: failed to serialize signature components.\n");
+    goto OPENSSL_ERROR;
+  }
 
   goto EXIT;
 OPENSSL_ERROR:
   DISPLAY ("Error.\n");
-  ERR_load_crypto_strings ();
   ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-  ERR_free_strings ();
   result = 0;
 EXIT:
  #if OPENSSL_VERSION_NUMBER < 0x30000000L
@@ -1732,9 +1727,7 @@ crypto_read_mldsa_pubkey_internal (
   goto EXIT;
 
 OPENSSL_ERROR:
-  ERR_load_crypto_strings ();
   ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-  ERR_free_strings ();
 EXIT:
   if (pkey != NULL) {
     EVP_PKEY_free (pkey);
@@ -1823,9 +1816,7 @@ crypto_mldsa_sign_data_internal (
   goto EXIT;
 
 OPENSSL_ERROR:
-  ERR_load_crypto_strings ();
   ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-  ERR_free_strings ();
 EXIT:
   if (mctx != NULL) {
     EVP_MD_CTX_free (mctx);
@@ -1896,9 +1887,7 @@ crypto_mldsa_verify_signature_internal (
   goto EXIT;
 
 OPENSSL_ERROR:
-  ERR_load_crypto_strings ();
   ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-  ERR_free_strings ();
 EXIT:
   if (mctx != NULL) {
     EVP_MD_CTX_free (mctx);
