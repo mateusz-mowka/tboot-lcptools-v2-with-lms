@@ -115,7 +115,6 @@ static bool read_processor_info(void)
     if ( (g_cpuid_ext_feat_info & CPUID_X86_FEATURE_VMX) ||
          (g_cpuid_ext_feat_info & CPUID_X86_FEATURE_SMX) ) {
         g_feat_ctrl_msr = rdmsr(MSR_IA32_FEATURE_CONTROL);
-        printk(TBOOT_DETA"IA32_FEATURE_CONTROL_MSR: %08lx\n", g_feat_ctrl_msr);        
     }
 
     return true;
@@ -128,7 +127,6 @@ static bool supports_vmx(void)
         printk(TBOOT_ERR"ERR: CPU does not support VMX\n");
         return false;
     }
-    printk(TBOOT_INFO"CPU is VMX-capable\n");
 
     /* and that VMX is enabled in the feature control MSR */
     if ( !(g_feat_ctrl_msr & IA32_FEATURE_CONTROL_MSR_ENABLE_VMX_IN_SMX) ) {
@@ -147,10 +145,9 @@ static bool supports_smx(void)
         printk(TBOOT_ERR"ERR: CPU does not support SMX\n");
         return false;
     }
-    printk(TBOOT_INFO"CPU is SMX-capable\n");
 
     /*
-     * and that SMX is enabled in the feature control MSR
+     * and that SMX is supported in the feature control MSR
      */
 
     /* check that the MSR is locked -- BIOS should always lock it */
@@ -213,7 +210,6 @@ tb_error_t supports_txt(void)
 
     /* testing for chipset support requires enabling SMX on the processor */
     write_cr4(read_cr4() | CR4_SMXE);
-    printk(TBOOT_INFO"SMX is enabled\n");
 
     /*
      * verify that an TXT-capable chipset is present and
@@ -224,7 +220,6 @@ tb_error_t supports_txt(void)
     if ( cap.chipset_present ) {
         if ( cap.senter && cap.sexit && cap.parameters && cap.smctrl &&
              cap.wakeup ) {
-            printk(TBOOT_INFO"TXT chipset and all needed capabilities present\n");
             return TB_ERR_NONE;
         }
         else

@@ -424,8 +424,31 @@ void begin_launch(void *addr, uint32_t magic)
     if ( get_tboot_call_racm_check() )
         check_racm_result(); /* never return */
 
-    if (is_launched()) printk(TBOOT_INFO"SINIT ACM successfully returned...\n");
-    if ( s3_flag ) printk(TBOOT_INFO"Resume from S3...\n");
+    if (supports_txt() == TB_ERR_NONE) {
+        printk(TBOOT_DETA"IA32_FEATURE_CONTROL_MSR: %08llx\n",
+               rdmsr(MSR_IA32_FEATURE_CONTROL));
+        printk(TBOOT_INFO"CPU is SMX-capable and VMX-capable.\n");
+
+        if ((read_cr4() & CR4_SMXE) == CR4_SMXE) {
+            printk(TBOOT_INFO"SMX is enabled\n");
+        }
+        else {
+            printk(TBOOT_INFO"SMX is not enabled\n");
+        }
+
+        printk(TBOOT_INFO"TXT chipset and all needed capabilities present\n");
+    }
+    else {
+        printk(TBOOT_INFO"TXT not supported\n");
+    }
+
+    if (is_launched()) {
+        printk(TBOOT_INFO"SINIT ACM successfully returned...\n");
+    }
+
+    if (s3_flag) {
+        printk(TBOOT_INFO"Resume from S3...\n");
+    }
 
     /* RLM scaffolding
        if (g_ldr_ctx->type == 2)
