@@ -96,13 +96,150 @@ All binaries and `liblcp.a` are produced in the `lcptools-v2/` directory.
 
 ---
 
+## Usage
+
+Four tools are built: `lcp2_crtpolelt`, `lcp2_crtpollist`, `lcp2_crtpol`,
+and `lcp2_mlehash`. They are used together to create, sign, and provision
+Launch Control Policies.
+
+### Typical workflow
+
+```
+1. Generate keys       (openssl)
+2. Create elements     (lcp2_crtpolelt)
+3. Create list         (lcp2_crtpollist --create)
+4. Sign list           (lcp2_crtpollist --sign)
+5. Create policy       (lcp2_crtpol --create)
+6. Provision to TPM NV (external tooling)
+```
+
+### Key generation
+
+```sh
+# RSA-2048
+openssl genrsa -out privkey.pem 2048
+openssl rsa -pubout -in privkey.pem -out pubkey.pem
+
+# ECDSA P-256
+openssl ecparam -name prime256v1 -genkey -noout -out ec_priv.pem
+openssl ec -in ec_priv.pem -pubout -out ec_pub.pem
+
+# ML-DSA-87 (requires OpenSSL ≥ 3.5)
+openssl genpkey -algorithm ML-DSA-87 -out mldsa_priv.pem
+openssl pkey -in mldsa_priv.pem -pubout -out mldsa_pub.pem
+```
+
+ML-DSA keys can also be supplied as DER or raw binary files (2592-byte
+public key, 4896-byte private key). The format is auto-detected.
+
+### `lcp2_crtpolelt` — create policy elements
+
+```sh
+# Create an MLE2 element with a SHA-256 hash
+lcp2_crtpolelt --create --type mle2 --alg sha256 \
+    --minver 0x00 --ctrl 0x00 mle_hash.txt --out mle.elt
+
+# Show element contents
+lcp2_crtpolelt --show mle.elt
+```
+
+Element types: `mle`, `mle2`, `pconf`, `pconf2`, `sbios`, `stm`, `custom`.
+Each type has its own options — run `lcp2_crtpolelt --help` for the full list.
+
+### `lcp2_crtpollist` — create, sign, and verify policy lists
+
+#### Create an unsigned list
+
+```sh
+# v3.0 list (required for RSA-PSS, LMS, ML-DSA)
+lcp2_crtpollist --create --listver 0x300 --out list.lst mle.elt
+
+# v2.0 list (RSA-SSA, ECDSA)
+lcp2_crtpollist --create --listver 0x200 --sigalg rsa --out list.lst mle.elt
+```
+
+#### Sign a list
+
+The `--out` file is read, signed, and **written back in place**.
+
+```sh
+# RSA-SSA (v2.0 / v2.1)
+lcp2_crtpollist --sign --sigalg rsa --hashalg sha256 \
+    --pub pubkey.pem --priv privkey.pem --out list.lst
+
+# RSA-PSS (v3.0)
+lcp2_crtpollist --sign --sigalg rsapss --hashalg sha256 \
+    --pub pubkey.pem --priv privkey.pem --out list.lst
+
+# ECDSA (v2.0 / v2.1 / v3.0)
+lcp2_crtpollist --sign --sigalg ecdsa --hashalg sha256 \
+    --pub ec_pub.pem --priv ec_priv.pem --out list.lst
+
+# ML-DSA-87 (v3.0 only)
+lcp2_crtpollist --sign --sigalg mldsa --hashalg sha256 \
+    --pub mldsa_pub.pem --priv mldsa_priv.pem --out list.lst
+
+# LMS (v3.0 only, IPPC backend required)
+lcp2_crtpollist --sign --sigalg lms --hashalg sha256 \
+    --pub lms.pub --priv lms.prv --force --out list.lst
+```
+
+Key files for `--pub` and `--priv` accept PEM, DER, or raw binary
+formats — the crypto layer auto-detects the encoding.
+
+#### Verify a signed list
+
+```sh
+lcp2_crtpollist --verify list.lst
+```
+
+#### Show list contents
+
+```sh
+lcp2_crtpollist --show list.lst
+```
+
+### `lcp2_crtpol` — create LCP policy
+
+```sh
+lcp2_crtpol --create --type list --polver 3.0 \
+    --alg sha256 --mask sha256 --mask sha384 \
+    --sign rsa-2048-sha256 --sign ecdsa-p256 \
+    --pol policy.pol --data poldata.bin list.lst
+```
+
+Supported `--sign` values: `rsa-2048-sha1`, `rsa-2048-sha256`,
+`rsa-3072-sha256`, `rsa-3072-sha384`, `ecdsa-p256`, `ecdsa-p384`, `sm2`.
+
+> **Note:** ML-DSA and LMS are not yet supported as `--sign` arguments
+> for policy creation — they are used for list-level signing only.
+
+### `lcp2_mlehash` — compute MLE hash
+
+```sh
+lcp2_mlehash --create --alg sha256 --cmdline "intel_iommu=on"
+```
+
+### Supported algorithm / list version matrix
+
+| Signature algorithm | `--sigalg` value | Supported `--listver` |
+|---------------------|------------------|-----------------------|
+| RSA-SSA (PKCS#1)   | `rsa`            | `0x200`, `0x201`      |
+| RSA-PSS            | `rsapss`         | `0x300`               |
+| ECDSA              | `ecdsa`          | `0x200`, `0x201`, `0x300` |
+| SM2                | `sm2`            | `0x200`, `0x201`, `0x300` |
+| LMS/HSS            | `lms`            | `0x300` (IPPC only)   |
+| ML-DSA-87          | `mldsa`          | `0x300`               |
+
+---
+
 ## Running Tests
 
 ### Unit tests (Google Test)
 
 The unit tests are in `tests/crypto_test.cpp` and cover hashing, RSA,
-ECDSA, NULL-parameter guards, and ML-DSA-87. LMS tests require the
-IPPC backend.
+ECDSA, NULL-parameter guards, and ML-DSA-87 (including PEM, DER, and
+raw binary key formats). LMS tests require the IPPC backend.
 
 #### Build and run with OpenSSL backend
 
@@ -201,7 +338,7 @@ The YAML file has five top-level sections:
    |------|-----------------|
    | `rsa` | `bits` (e.g. 2048, 3072) |
    | `ec` | `curve` (e.g. prime256v1, secp384r1) |
-   | `mldsa` | `openssl`, `ld_library_path` (keys generated externally via `openssl genpkey -algorithm ML-DSA-87`) |
+   | `mldsa` | `openssl`, `ld_library_path` (keys generated externally via `openssl genpkey -algorithm ML-DSA-87`); optional `key_format`: `pem` (default), `der`, or `raw` |
    | `lms` | `copy_from: {pub, priv, aux}` source file paths (relative to `lcptools-v2/`, or absolute via `--lms-keys`) |
 
 2. **Add a signature entry** under `signatures`:
