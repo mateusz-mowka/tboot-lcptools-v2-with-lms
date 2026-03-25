@@ -3798,8 +3798,14 @@ crypto_read_mldsa_pubkey_internal (
     /* Already DER */
     der_buf  = file_data;
     der_size = (uint16_t)file_size;
+  } else if (file_size == MLDSA87_PUBKEY_SIZE) {
+    /* Raw binary public key */
+    memcpy (pubkey, file_data, MLDSA87_PUBKEY_SIZE);
+    free (file_data);
+    return true;
   } else {
-    printf ("ERROR: ML-DSA public key file is not PEM or DER: %s\n", file);
+    printf ("ERROR: ML-DSA public key file is not PEM, DER, or raw (%zu bytes): %s\n",
+            file_size, file);
     free (file_data);
     return false;
   }
@@ -3855,8 +3861,15 @@ read_mldsa_privkey_from_pem (
   } else if (file_data[0] == 0x30) {
     der_buf  = file_data;
     der_size = (uint16_t)file_size;
+  } else if (file_size == MLDSA87_PRIVKEY_SIZE) {
+    /* Raw binary expanded private key */
+    memcpy (privkey, file_data, MLDSA87_PRIVKEY_SIZE);
+    *privkey_len = MLDSA87_PRIVKEY_SIZE;
+    free (file_data);
+    return true;
   } else {
-    printf ("ERROR: ML-DSA private key file is not PEM or DER: %s\n", file);
+    printf ("ERROR: ML-DSA private key file is not PEM, DER, or raw (%zu bytes): %s\n",
+            file_size, file);
     free (file_data);
     return false;
   }

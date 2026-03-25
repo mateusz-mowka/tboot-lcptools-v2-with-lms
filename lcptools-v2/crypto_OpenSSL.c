@@ -1702,7 +1702,21 @@ crypto_read_mldsa_pubkey_internal (
   fclose (fp);
 
   if (pkey == NULL) {
-    ERROR ("ERROR: Failed to read ML-DSA-87 public key (not PEM or DER): %s\n", file);
+    /* PEM and DER both failed — try raw binary (exactly 2592 bytes) */
+    fp = fopen (file, "rb");
+    if (fp != NULL) {
+      fseek (fp, 0, SEEK_END);
+      long fsize = ftell (fp);
+      if (fsize == MLDSA87_PUBKEY_SIZE) {
+        fseek (fp, 0, SEEK_SET);
+        if (fread (pubkey, 1, MLDSA87_PUBKEY_SIZE, fp) == MLDSA87_PUBKEY_SIZE) {
+          fclose (fp);
+          return true;
+        }
+      }
+      fclose (fp);
+    }
+    ERROR ("ERROR: Failed to read ML-DSA-87 public key (not PEM, DER, or raw): %s\n", file);
     goto OPENSSL_ERROR;
   }
 
@@ -1778,8 +1792,33 @@ crypto_mldsa_sign_data_internal (
   fp = NULL;
 
   if (pkey == NULL) {
-    ERROR ("ERROR: Failed to read ML-DSA-87 private key (not PEM or DER): %s\n", privkey_file);
-    goto OPENSSL_ERROR;
+    /* PEM and DER both failed — try raw binary (exactly 4896 bytes) */
+    fp = fopen (privkey_file, "rb");
+    if (fp != NULL) {
+      fseek (fp, 0, SEEK_END);
+      long fsize = ftell (fp);
+      if (fsize == MLDSA87_PRIVKEY_SIZE) {
+        unsigned char raw_priv[MLDSA87_PRIVKEY_SIZE];
+        fseek (fp, 0, SEEK_SET);
+        if (fread (raw_priv, 1, MLDSA87_PRIVKEY_SIZE, fp) == MLDSA87_PRIVKEY_SIZE) {
+          fclose (fp);
+          fp = NULL;
+          pkey = EVP_PKEY_new_raw_private_key_ex (NULL, "ML-DSA-87", NULL,
+                                                   raw_priv, MLDSA87_PRIVKEY_SIZE);
+        } else {
+          fclose (fp);
+          fp = NULL;
+        }
+      } else {
+        fclose (fp);
+        fp = NULL;
+      }
+    }
+    if (pkey == NULL) {
+      ERROR ("ERROR: Failed to read ML-DSA-87 private key (not PEM, DER, or raw): %s\n",
+             privkey_file);
+      goto OPENSSL_ERROR;
+    }
   }
 
   /* Verify algorithm */

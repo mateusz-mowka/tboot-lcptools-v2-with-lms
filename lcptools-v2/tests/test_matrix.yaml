@@ -35,6 +35,7 @@ backends:
 #   ec    — curve: OpenSSL curve name (e.g. prime256v1, secp384r1)
 #   mldsa — openssl: path to openssl binary (default: "openssl")
 #           ld_library_path: extra LD_LIBRARY_PATH for ML-DSA support (optional)
+#           key_format: pem (default), der, or raw
 #           Generated via: openssl genpkey -algorithm ML-DSA-87
 #   lms   — copy_from: {pub, priv, aux} source filenames in lcptools-v2/
 keys:
@@ -56,6 +57,18 @@ keys:
 
   mldsa:
     type: mldsa
+    openssl: /usr/local/bin/openssl
+    ld_library_path: /usr/local/lib64
+
+  mldsa_raw:
+    type: mldsa
+    key_format: raw
+    openssl: /usr/local/bin/openssl
+    ld_library_path: /usr/local/lib64
+
+  mldsa_der:
+    type: mldsa
+    key_format: der
     openssl: /usr/local/bin/openssl
     ld_library_path: /usr/local/lib64
 
@@ -106,6 +119,16 @@ signatures:
   - sigalg: mldsa
     hashalg: sha256
     key: mldsa
+    list_versions: ["0x300"]
+
+  - sigalg: mldsa
+    hashalg: sha256
+    key: mldsa_raw
+    list_versions: ["0x300"]
+
+  - sigalg: mldsa
+    hashalg: sha256
+    key: mldsa_der
     list_versions: ["0x300"]
 
   - sigalg: lms

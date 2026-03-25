@@ -1085,6 +1085,257 @@ TEST_F(MldsaTest, SignVerify_MinimalMessage) {
 }
 
 /* ================================================================== */
+/*  ML-DSA-87: raw binary and DER key format tests                     */
+/* ================================================================== */
+
+/*
+ * Helper: extract raw private key bytes from a PEM file.
+ * Uses EVP_PKEY_get_raw_private_key() (OpenSSL 3.5+).
+ * Returns empty vector on failure.
+ */
+static std::vector<unsigned char> extract_raw_privkey(const char *pem_path) {
+    std::vector<unsigned char> raw;
+    FILE *fp = fopen(pem_path, "rb");
+    if (!fp) return raw;
+    EVP_PKEY *pkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL);
+    fclose(fp);
+    if (!pkey) return raw;
+
+    size_t len = 0;
+    if (EVP_PKEY_get_raw_private_key(pkey, NULL, &len) != 1 || len == 0) {
+        EVP_PKEY_free(pkey);
+        return raw;
+    }
+    raw.resize(len);
+    if (EVP_PKEY_get_raw_private_key(pkey, raw.data(), &len) != 1) {
+        raw.clear();
+    }
+    EVP_PKEY_free(pkey);
+    return raw;
+}
+
+/*
+ * Helper: write a DER-encoded public key file from a PEM public key file.
+ * Returns true on success.
+ */
+static bool write_der_pubkey(const char *pem_path, const char *der_path) {
+    FILE *fp = fopen(pem_path, "rb");
+    if (!fp) return false;
+    EVP_PKEY *pkey = PEM_read_PUBKEY(fp, NULL, NULL, NULL);
+    fclose(fp);
+    if (!pkey) return false;
+
+    fp = fopen(der_path, "wb");
+    if (!fp) { EVP_PKEY_free(pkey); return false; }
+    int rc = i2d_PUBKEY_fp(fp, pkey);
+    fclose(fp);
+    EVP_PKEY_free(pkey);
+    return rc == 1;
+}
+
+/*
+ * Helper: write a DER-encoded private key file (PKCS#8) from PEM.
+ * Returns true on success.
+ */
+static bool write_der_privkey(const char *pem_path, const char *der_path) {
+    FILE *fp = fopen(pem_path, "rb");
+    if (!fp) return false;
+    EVP_PKEY *pkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL);
+    fclose(fp);
+    if (!pkey) return false;
+
+    fp = fopen(der_path, "wb");
+    if (!fp) { EVP_PKEY_free(pkey); return false; }
+    int rc = i2d_PKCS8PrivateKey_fp(fp, pkey, NULL, NULL, 0, NULL, NULL);
+    fclose(fp);
+    EVP_PKEY_free(pkey);
+    return rc == 1;
+}
+
+/*
+ * Helper: write raw bytes to a file.
+ * Returns true on success.
+ */
+static bool write_binary_file(const char *path,
+                              const unsigned char *data, size_t len) {
+    FILE *fp = fopen(path, "wb");
+    if (!fp) return false;
+    bool ok = fwrite(data, 1, len, fp) == len;
+    fclose(fp);
+    return ok;
+}
+
+/* Read a raw binary public key and confirm it matches PEM-loaded key */
+TEST_F(MldsaTest, ReadPubkey_RawBinary) {
+    TempFile raw_pub(".bin");
+    ASSERT_TRUE(write_binary_file(raw_pub.c_str(),
+                                  pubkey_.data(), pubkey_.size()));
+
+    std::vector<unsigned char> loaded(MLDSA87_PUBKEY_SIZE);
+    ASSERT_TRUE(crypto_read_mldsa_pubkey(raw_pub.c_str(),
+                loaded.data(), loaded.size()));
+
+    EXPECT_EQ(memcmp(pubkey_.data(), loaded.data(), MLDSA87_PUBKEY_SIZE), 0)
+        << "Raw binary pubkey does not match PEM-loaded pubkey";
+}
+
+/* Sign with raw binary private key, verify with PEM-loaded public key */
+TEST_F(MldsaTest, SignVerify_RawBinaryPrivkey) {
+    /* Extract raw private key from PEM */
+    std::vector<unsigned char> raw_priv = extract_raw_privkey(prv_file_->c_str());
+    ASSERT_EQ(raw_priv.size(), (size_t)MLDSA87_PRIVKEY_SIZE)
+        << "Failed to extract raw ML-DSA-87 private key";
+
+    TempFile raw_prv(".bin");
+    ASSERT_TRUE(write_binary_file(raw_prv.c_str(),
+                                  raw_priv.data(), raw_priv.size()));
+
+    const unsigned char msg[] = "Raw binary privkey sign test";
+    std::vector<unsigned char> sig(MLDSA87_SIGNATURE_SIZE);
+    size_t sig_len = sig.size();
+
+    crypto_status st = crypto_mldsa_sign_data(
+        msg, sizeof(msg) - 1,
+        sig.data(), &sig_len,
+        raw_prv.c_str());
+    ASSERT_EQ(st, crypto_ok) << "Signing with raw binary private key failed";
+    EXPECT_EQ(sig_len, (size_t)MLDSA87_SIGNATURE_SIZE);
+
+    EXPECT_TRUE(crypto_mldsa_verify_signature(
+        msg, sizeof(msg) - 1,
+        sig.data(), sig_len,
+        pubkey_.data(), pubkey_.size()))
+        << "Verification failed for signature from raw binary key";
+}
+
+/* Full round-trip with raw binary keys: sign with raw privkey, verify with raw pubkey */
+TEST_F(MldsaTest, SignVerify_RawBinaryRoundTrip) {
+    /* Extract raw private key */
+    std::vector<unsigned char> raw_priv = extract_raw_privkey(prv_file_->c_str());
+    ASSERT_EQ(raw_priv.size(), (size_t)MLDSA87_PRIVKEY_SIZE);
+
+    TempFile raw_prv(".bin");
+    ASSERT_TRUE(write_binary_file(raw_prv.c_str(),
+                                  raw_priv.data(), raw_priv.size()));
+
+    /* Write raw binary public key */
+    TempFile raw_pub(".bin");
+    ASSERT_TRUE(write_binary_file(raw_pub.c_str(),
+                                  pubkey_.data(), pubkey_.size()));
+
+    /* Load pubkey from raw binary file */
+    std::vector<unsigned char> pub_loaded(MLDSA87_PUBKEY_SIZE);
+    ASSERT_TRUE(crypto_read_mldsa_pubkey(raw_pub.c_str(),
+                pub_loaded.data(), pub_loaded.size()));
+
+    /* Sign and verify */
+    const unsigned char msg[] = "Raw binary round-trip test";
+    std::vector<unsigned char> sig(MLDSA87_SIGNATURE_SIZE);
+    size_t sig_len = sig.size();
+
+    ASSERT_EQ(crypto_mldsa_sign_data(msg, sizeof(msg) - 1,
+                                     sig.data(), &sig_len,
+                                     raw_prv.c_str()), crypto_ok);
+
+    EXPECT_TRUE(crypto_mldsa_verify_signature(
+        msg, sizeof(msg) - 1,
+        sig.data(), sig_len,
+        pub_loaded.data(), pub_loaded.size()));
+}
+
+/* Read a DER-encoded public key */
+TEST_F(MldsaTest, ReadPubkey_DER) {
+    TempFile der_pub(".der");
+    ASSERT_TRUE(write_der_pubkey(pub_file_->c_str(), der_pub.c_str()));
+
+    std::vector<unsigned char> loaded(MLDSA87_PUBKEY_SIZE);
+    ASSERT_TRUE(crypto_read_mldsa_pubkey(der_pub.c_str(),
+                loaded.data(), loaded.size()));
+
+    EXPECT_EQ(memcmp(pubkey_.data(), loaded.data(), MLDSA87_PUBKEY_SIZE), 0)
+        << "DER pubkey does not match PEM-loaded pubkey";
+}
+
+/* Sign with a DER-encoded private key */
+TEST_F(MldsaTest, SignVerify_DERPrivkey) {
+    TempFile der_prv(".der");
+    ASSERT_TRUE(write_der_privkey(prv_file_->c_str(), der_prv.c_str()));
+
+    const unsigned char msg[] = "DER privkey sign test";
+    std::vector<unsigned char> sig(MLDSA87_SIGNATURE_SIZE);
+    size_t sig_len = sig.size();
+
+    crypto_status st = crypto_mldsa_sign_data(
+        msg, sizeof(msg) - 1,
+        sig.data(), &sig_len,
+        der_prv.c_str());
+    ASSERT_EQ(st, crypto_ok) << "Signing with DER private key failed";
+
+    EXPECT_TRUE(crypto_mldsa_verify_signature(
+        msg, sizeof(msg) - 1,
+        sig.data(), sig_len,
+        pubkey_.data(), pubkey_.size()))
+        << "Verification failed for signature from DER key";
+}
+
+/* Cross-format: sign with DER privkey, verify with raw binary pubkey */
+TEST_F(MldsaTest, SignVerify_DERSign_RawVerify) {
+    TempFile der_prv(".der");
+    ASSERT_TRUE(write_der_privkey(prv_file_->c_str(), der_prv.c_str()));
+
+    TempFile raw_pub(".bin");
+    ASSERT_TRUE(write_binary_file(raw_pub.c_str(),
+                                  pubkey_.data(), pubkey_.size()));
+
+    std::vector<unsigned char> pub_loaded(MLDSA87_PUBKEY_SIZE);
+    ASSERT_TRUE(crypto_read_mldsa_pubkey(raw_pub.c_str(),
+                pub_loaded.data(), pub_loaded.size()));
+
+    const unsigned char msg[] = "Cross-format: DER sign, raw verify";
+    std::vector<unsigned char> sig(MLDSA87_SIGNATURE_SIZE);
+    size_t sig_len = sig.size();
+
+    ASSERT_EQ(crypto_mldsa_sign_data(msg, sizeof(msg) - 1,
+                                     sig.data(), &sig_len,
+                                     der_prv.c_str()), crypto_ok);
+
+    EXPECT_TRUE(crypto_mldsa_verify_signature(
+        msg, sizeof(msg) - 1,
+        sig.data(), sig_len,
+        pub_loaded.data(), pub_loaded.size()));
+}
+
+/* Cross-format: sign with raw binary privkey, verify with DER-loaded pubkey */
+TEST_F(MldsaTest, SignVerify_RawSign_DERVerify) {
+    std::vector<unsigned char> raw_priv = extract_raw_privkey(prv_file_->c_str());
+    ASSERT_EQ(raw_priv.size(), (size_t)MLDSA87_PRIVKEY_SIZE);
+
+    TempFile raw_prv(".bin");
+    ASSERT_TRUE(write_binary_file(raw_prv.c_str(),
+                                  raw_priv.data(), raw_priv.size()));
+
+    TempFile der_pub(".der");
+    ASSERT_TRUE(write_der_pubkey(pub_file_->c_str(), der_pub.c_str()));
+
+    std::vector<unsigned char> pub_loaded(MLDSA87_PUBKEY_SIZE);
+    ASSERT_TRUE(crypto_read_mldsa_pubkey(der_pub.c_str(),
+                pub_loaded.data(), pub_loaded.size()));
+
+    const unsigned char msg[] = "Cross-format: raw sign, DER verify";
+    std::vector<unsigned char> sig(MLDSA87_SIGNATURE_SIZE);
+    size_t sig_len = sig.size();
+
+    ASSERT_EQ(crypto_mldsa_sign_data(msg, sizeof(msg) - 1,
+                                     sig.data(), &sig_len,
+                                     raw_prv.c_str()), crypto_ok);
+
+    EXPECT_TRUE(crypto_mldsa_verify_signature(
+        msg, sizeof(msg) - 1,
+        sig.data(), sig_len,
+        pub_loaded.data(), pub_loaded.size()));
+}
+
+/* ================================================================== */
 /*  LMS functional tests (IPPC backend)                                */
 /*  Note: LMS sign is computationally expensive (~30-60s) due to the   */
 /*  H20 Merkle tree reconstruction. All assertions are combined into   */

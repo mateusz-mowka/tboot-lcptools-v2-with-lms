@@ -149,19 +149,30 @@ def run_tool(backend: str, tool: str, *args: str,
 #  Key filename helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
-def key_pub_file(name: str, key_type: str) -> Path:
+# Map key_format → file extension for ML-DSA keys
+_MLDSA_PUB_EXT = {"pem": ".pem", "der": ".der", "raw": ".bin"}
+_MLDSA_PRIV_EXT = {"pem": ".pem", "der": ".der", "raw": ".bin"}
+
+
+def key_pub_file(name: str, key_type: str, key_format: str = "pem") -> Path:
     """Return the public key file path for a given key name and type."""
-    if key_type in ("rsa", "ec", "mldsa"):
+    if key_type in ("rsa", "ec"):
         return KEY_DIR / f"{name}_pub.pem"
+    if key_type == "mldsa":
+        ext = _MLDSA_PUB_EXT.get(key_format, ".pem")
+        return KEY_DIR / f"{name}_pub{ext}"
     if key_type == "lms":
         return KEY_DIR / f"{name}.pub"
     raise ValueError(f"Unknown key type: {key_type}")
 
 
-def key_priv_file(name: str, key_type: str) -> Path:
+def key_priv_file(name: str, key_type: str, key_format: str = "pem") -> Path:
     """Return the private key file path for a given key name and type."""
-    if key_type in ("rsa", "ec", "mldsa"):
+    if key_type in ("rsa", "ec"):
         return KEY_DIR / f"{name}_priv.pem"
+    if key_type == "mldsa":
+        ext = _MLDSA_PRIV_EXT.get(key_format, ".pem")
+        return KEY_DIR / f"{name}_priv{ext}"
     if key_type == "lms":
         return KEY_DIR / f"{name}.prv"
     raise ValueError(f"Unknown key type: {key_type}")
@@ -272,6 +283,28 @@ def check_existing_binaries():
 #  Key generation  (driven by config['keys'])
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _extract_raw_mldsa_key(der_path: str, raw_path: str, raw_size: int):
+    """Extract raw ML-DSA-87 key bytes from a DER file.
+
+    For ML-DSA-87 SubjectPublicKeyInfo DER (2614 bytes), the raw 2592-byte
+    public key occupies the final 2592 bytes.  For PKCS#8 DER (4962 bytes),
+    the raw 4896-byte expanded private key occupies the final 4896 bytes.
+    """
+    # Expected DER envelope sizes for ML-DSA-87
+    expected_der_sizes = {2592: 2614, 4896: 4962}
+    data = Path(der_path).read_bytes()
+    expected = expected_der_sizes.get(raw_size)
+    if expected and len(data) != expected:
+        raise ValueError(
+            f"DER file {der_path} has unexpected size {len(data)} "
+            f"(expected {expected} for ML-DSA-87 raw_size={raw_size})")
+    if len(data) < raw_size:
+        raise ValueError(
+            f"DER file {der_path} too small ({len(data)} bytes) "
+            f"for raw extraction ({raw_size} bytes)")
+    Path(raw_path).write_bytes(data[-raw_size:])
+
+
 def generate_keys(config: dict, *, verbose: bool):
     """Generate (or copy) all keys defined in the config."""
     log_hdr("Generating signing keys")
@@ -313,8 +346,9 @@ def generate_keys(config: dict, *, verbose: bool):
             log(f"Generated EC ({curve}) key pair")
 
         elif key_type == "mldsa":
-            pub = str(key_pub_file(key_name, key_type))
-            priv = str(key_priv_file(key_name, key_type))
+            key_format = key_cfg.get("key_format", "pem")
+            pub = str(key_pub_file(key_name, key_type, key_format))
+            priv = str(key_priv_file(key_name, key_type, key_format))
             openssl_bin = key_cfg.get("openssl", "openssl")
             openssl_env = os.environ.copy()
             ld_path = key_cfg.get("ld_library_path", "")
@@ -324,19 +358,64 @@ def generate_keys(config: dict, *, verbose: bool):
                     f"{ld_path}:{existing}" if existing else ld_path
                 )
             try:
+                # Always generate PEM first, then convert if needed
+                pem_priv = str(KEY_DIR / f"{key_name}_priv_tmp.pem")
+                pem_pub = str(KEY_DIR / f"{key_name}_pub_tmp.pem")
                 subprocess.run(
                     [openssl_bin, "genpkey", "-algorithm", "ML-DSA-87",
-                     "-out", priv],
+                     "-out", pem_priv],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     check=True, env=openssl_env,
                 )
                 subprocess.run(
-                    [openssl_bin, "pkey", "-in", priv,
-                     "-pubout", "-out", pub],
+                    [openssl_bin, "pkey", "-in", pem_priv,
+                     "-pubout", "-out", pem_pub],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     check=True, env=openssl_env,
                 )
-                log(f"Generated ML-DSA-87 key pair ({key_name})")
+
+                if key_format == "pem":
+                    Path(pem_priv).rename(priv)
+                    Path(pem_pub).rename(pub)
+                elif key_format == "der":
+                    subprocess.run(
+                        [openssl_bin, "pkey", "-in", pem_priv,
+                         "-outform", "DER", "-out", priv],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        check=True, env=openssl_env,
+                    )
+                    subprocess.run(
+                        [openssl_bin, "pkey", "-in", pem_pub,
+                         "-pubin", "-outform", "DER", "-out", pub],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        check=True, env=openssl_env,
+                    )
+                    Path(pem_priv).unlink()
+                    Path(pem_pub).unlink()
+                elif key_format == "raw":
+                    subprocess.run(
+                        [openssl_bin, "pkey", "-in", pem_priv,
+                         "-outform", "DER", "-out", priv + ".der"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        check=True, env=openssl_env,
+                    )
+                    subprocess.run(
+                        [openssl_bin, "pkey", "-in", pem_pub,
+                         "-pubin", "-outform", "DER", "-out", pub + ".der"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        check=True, env=openssl_env,
+                    )
+                    # Extract raw bytes: ML-DSA-87 pubkey = last 2592
+                    # bytes of DER SPKI, privkey = last 4896 of DER PKCS#8
+                    _extract_raw_mldsa_key(pub + ".der", pub, 2592)
+                    _extract_raw_mldsa_key(priv + ".der", priv, 4896)
+                    Path(pub + ".der").unlink()
+                    Path(priv + ".der").unlink()
+                    Path(pem_priv).unlink()
+                    Path(pem_pub).unlink()
+
+                log(f"Generated ML-DSA-87 key pair ({key_name}, "
+                    f"format={key_format})")
             except (subprocess.CalledProcessError, FileNotFoundError) as e:
                 log_skip(f"ML-DSA key generation failed ({e}) "
                          "— ML-DSA tests will be skipped")
@@ -412,9 +491,10 @@ def active_signatures(config: dict, skip_flags: dict[str, bool]):
         key_name = sig["key"]
         key_cfg = config["keys"][key_name]
         key_type = key_cfg["type"]
+        key_format = key_cfg.get("key_format", "pem")
 
-        pub = key_pub_file(key_name, key_type)
-        priv = key_priv_file(key_name, key_type)
+        pub = key_pub_file(key_name, key_type, key_format)
+        priv = key_priv_file(key_name, key_type, key_format)
         if not pub.exists() or not priv.exists():
             continue  # key not available (e.g. mldsa keygen failed)
 
