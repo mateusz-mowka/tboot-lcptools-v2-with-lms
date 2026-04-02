@@ -386,30 +386,6 @@ typedef struct __packed {
 #define LMS_SHA256_M24_H20   0x0000000D
 #define LMOTS_SHA256_N24_W4  0x00000007
 
-#define LMOTS_SIGNATURE_N_SIZE SHA256_192_DIGEST_SIZE // bytes in SHA256/192 digest
-#define LMOTS_SIGNATURE_P_SIZE 51 // Number of n-byte string elements that make up the LMOTS signature
-// With N and P we calculate the size of the signature block:
-#define LMOTS_SIGNATURE_BLOCK_SIZE (LMOTS_SIGNATURE_N_SIZE * LMOTS_SIGNATURE_P_SIZE)
-
-#define LMS_SIGNATURE_H_HEIGHT 20 // Height of the LMS tree
-#define LMS_SIGNATURE_M_SIZE SHA256_192_DIGEST_SIZE // Number of bytes in each LMS tree node
-
-// With H and M we calculate the size of the LMS signature:
-#define LMS_SIGNATURE_BLOCK_SIZE (LMS_SIGNATURE_H_HEIGHT * LMS_SIGNATURE_M_SIZE)
-
-#define LMS_MAX_PUBKEY_SIZE 48
-
-// Maximum LMS signature size returned by crypto_lms_sign_data
-// (4-byte NSPK prefix + Q + lmots_signature + LmsType + Path)
-// = 4 + 4 + (4 + N + P*N) + 4 + (H * M)
-#define LMS_MAX_SIGNATURE_SIZE ( \
-    sizeof(uint32_t) /* NSPK prefix */ + \
-    sizeof(uint32_t) /* Q */ + \
-    sizeof(uint32_t) + LMOTS_SIGNATURE_N_SIZE + LMOTS_SIGNATURE_BLOCK_SIZE /* lmots_signature */ + \
-    sizeof(uint32_t) /* LmsType */ + \
-    LMS_SIGNATURE_BLOCK_SIZE /* Path */ \
-    )
-
 typedef struct __packed {
     uint32_t LmsType; //Must be 0xD (LMS_SHA256_M24_H20)
     uint32_t LmotsType; //Must be 0x7 (LMOTS_SHA256_N24_W4)
@@ -450,20 +426,6 @@ typedef struct __packed {
     uint16_t SigScheme;
     lms_signature Signature;
 } lms_key_and_signature;
-
-/* ML-DSA-87 sizes (NIST FIPS 204, security level 5) */
-#define MLDSA87_PUBKEY_SIZE   2592
-#define MLDSA87_PRIVKEY_SIZE  4896
-#define MLDSA87_SIGNATURE_SIZE 4627
-
-/* ML-DSA-87 public key sub-field sizes (FIPS 204 Table 1) */
-#define MLDSA87_RHO_SIZE           32   /* Seed used to generate matrix A */
-#define MLDSA87_T1_SIZE          2560   /* High-order bits of polynomial vector t */
-
-/* ML-DSA-87 signature sub-field sizes (FIPS 204 Algorithm 3) */
-#define MLDSA87_COMMIT_HASH_SIZE   64   /* Commitment hash (c_tilde) */
-#define MLDSA87_RESP_VECTOR_SIZE 4480   /* Response vector of l polynomials (z) */
-#define MLDSA87_HINT_VECTOR_SIZE   83   /* Hint vector (h) */
 
 typedef struct __packed {
     uint8_t  Version;

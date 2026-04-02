@@ -22,10 +22,9 @@ make -C ../safestringlib
 
 | Package | Purpose |
 |---------|---------|
-| **Intel IPP Crypto** | IPPC cryptographic backend (built from `ippc/` sub-directory) |
+| **Intel IPP Crypto** | IPPC cryptographic backend (built from `ippc/` sub-directory), IPP Crypto ≥ 1.4.0 is required for ML-DSA-87 and LMS support. |
 
 The IPPC library is built automatically when `USE_IPPC=1` is passed to `make`.
-IPP Crypto ≥ 1.4.0 is required for ML-DSA-87 and LMS support.
 
 ### Required for unit tests (Google Test)
 
@@ -83,6 +82,10 @@ make USE_IPPC=1
 
 When `USE_IPPC=1` is set, the IPPC library under `ippc/` is built
 automatically. LMS/HSS signature support is provided natively by IPPC.
+
+> **Note:** User is responsible for safe handling, storage and update of 
+> the LMS private key.
+
 ML-DSA-87 support is available in both the OpenSSL (≥ 3.5) and IPPC backends.
 
 ### Clean build

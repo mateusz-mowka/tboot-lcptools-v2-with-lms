@@ -78,7 +78,7 @@ crypto_hash_buffer_internal (
   /* Get required context size */
   status = ippsHashGetSize_rmf (&ctx_size);
   if (status != ippStsNoErr) {
-    printf ("Error getting hash context size: %d\n", status);
+    printf ("Error getting hash context size: %s\n", ippcpGetStatusString (status));
     return crypto_operation_fail;
   }
 
@@ -92,7 +92,7 @@ crypto_hash_buffer_internal (
   /* Initialize context */
   status = ippsHashInit_rmf (p_ctx, method);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Hash initialization failed: %d\n", status);
+    printf ("ERROR: Hash initialization failed: %s\n", ippcpGetStatusString (status));
     free (p_ctx);
     return crypto_operation_fail;
   }
@@ -101,7 +101,7 @@ crypto_hash_buffer_internal (
   if (size > 0) {
     status = ippsHashUpdate_rmf (buf, size, p_ctx);
     if (status != ippStsNoErr) {
-      printf ("ERROR: Hash update failed: %d\n", status);
+      printf ("ERROR: Hash update failed: %s\n", ippcpGetStatusString (status));
       free (p_ctx);
       return crypto_operation_fail;
     }
@@ -110,7 +110,7 @@ crypto_hash_buffer_internal (
   /* Finalize and get digest */
   status = ippsHashFinal_rmf (hash, p_ctx);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Hash finalization failed: %d\n", status);
+    printf ("ERROR: Hash finalization failed: %s\n", ippcpGetStatusString (status));
     free (p_ctx);
     return crypto_operation_fail;
   }
@@ -414,7 +414,8 @@ parse_rsa_public_key_pkcs1 (
   size_t         *modulus_len
   )
 {
-  size_t   offset = 0;
+  size_t   offset  = 0;
+  size_t   seq_len = 0;
   uint8_t  *temp_value;
   size_t   temp_len;
 
@@ -426,7 +427,6 @@ parse_rsa_public_key_pkcs1 (
 
   offset++;
 
-  size_t  seq_len;
   if (der_parse_length (der_buf, &offset, der_size, &seq_len) != 0) {
     printf ("ERROR: Failed to parse SEQUENCE length\n");
     return -1;
@@ -699,7 +699,12 @@ parse_ec_public_key_spki (
   /* Copy qx || qy to key_buf */
   memcpy (key_buf, &der_buf[offset], bitstring_len);
 
-  /* Reverse each coordinate to LE (match binary key format used by IPPC) */
+  /*
+   * DER/ASN.1 encodes integers in big-endian order, so coordinates parsed
+   * from PEM/DER files are always BE.  Reverse each coordinate to LE to
+   * match the binary key format expected by IPPC and LCP policy structures.
+   * Binary key files bypass this parser and are already stored in LE.
+   */
   buffer_reverse_byte_order (key_buf, coord_size);
   buffer_reverse_byte_order (key_buf + coord_size, coord_size);
 
@@ -1602,7 +1607,7 @@ rsa_load_private_key_from_file (
   /* Get size for private key context */
   ipp_status = ippsRSA_GetSizePrivateKeyType2 (factor_bits_p, factor_bits_q, &key_ctx_size);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: Failed to get RSA private key size: %d\n", ipp_status);
+    printf ("ERROR: Failed to get RSA private key size: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
@@ -1616,7 +1621,7 @@ rsa_load_private_key_from_file (
   /* Initialize private key */
   ipp_status = ippsRSA_InitPrivateKeyType2 (factor_bits_p, factor_bits_q, priv_key, key_ctx_size);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: Failed to initialize RSA private key: %d\n", ipp_status);
+    printf ("ERROR: Failed to initialize RSA private key: %s\n", ippcpGetStatusString (ipp_status));
     free (priv_key);
     priv_key = NULL;
     goto cleanup;
@@ -1625,7 +1630,7 @@ rsa_load_private_key_from_file (
   /* Set private key parameters */
   ipp_status = ippsRSA_SetPrivateKeyType2 (p_bn, q_bn, dp_bn, dq_bn, qinv_bn, priv_key);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: Failed to set RSA private key parameters: %d\n", ipp_status);
+    printf ("ERROR: Failed to set RSA private key parameters: %s\n", ippcpGetStatusString (ipp_status));
     free (priv_key);
     priv_key = NULL;
     goto cleanup;
@@ -1722,7 +1727,7 @@ crypto_rsa_sign_internal (
   /* Get buffer size for signing operation */
   status = ippsRSA_GetBufferSizePrivateKey (&buffer_size, priv_key);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get RSA buffer size: %d\n", status);
+    printf ("ERROR: Failed to get RSA buffer size: %s\n", ippcpGetStatusString (status));
     goto rsa_sign_cleanup;
   }
 
@@ -1822,7 +1827,7 @@ crypto_rsa_sign_internal (
   }
 
   if (status != ippStsNoErr) {
-    printf ("ERROR: RSA signing failed with status: %d\n", status);
+    printf ("ERROR: RSA signing failed with status: %s\n", ippcpGetStatusString (status));
     goto rsa_sign_cleanup;
   }
 
@@ -2040,7 +2045,7 @@ crypto_verify_rsa_signature_internal (
   /* Get size for public key context */
   status = ippsRSA_GetSizePublicKey (key_size_bits, pub_exp_bits, &pub_key_size);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get RSA public key size: %d\n", status);
+    printf ("ERROR: Failed to get RSA public key size: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2054,21 +2059,21 @@ crypto_verify_rsa_signature_internal (
   /* Initialize public key */
   status = ippsRSA_InitPublicKey (key_size_bits, pub_exp_bits, pub_key, pub_key_size);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to initialize RSA public key: %d\n", status);
+    printf ("ERROR: Failed to initialize RSA public key: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
   /* Set public key parameters */
   status = ippsRSA_SetPublicKey (modulus_bn, exp_bn, pub_key);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to set RSA public key: %d\n", status);
+    printf ("ERROR: Failed to set RSA public key: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
   /* Get buffer size for verification */
   status = ippsRSA_GetBufferSizePublicKey (&buffer_size, pub_key);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get RSA buffer size: %d\n", status);
+    printf ("ERROR: Failed to get RSA buffer size: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2118,7 +2123,7 @@ crypto_verify_rsa_signature_internal (
   }
 
   if (status != ippStsNoErr) {
-    printf ("ERROR: RSA verification failed with status: %d\n", status);
+    printf ("ERROR: RSA verification failed with status: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2255,7 +2260,7 @@ crypto_verify_ec_signature_internal (
     /* Get size for GFp context */
     status = ippsGFpGetSize (pubkey_x->size * 8, &gfp_size);
     if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to get GFp size: %d\n", status);
+      printf ("ERROR: Failed to get GFp size: %s\n", ippcpGetStatusString (status));
       return false;
     }
 
@@ -2269,14 +2274,14 @@ crypto_verify_ec_signature_internal (
     /* Initialize GFp context */
     status = ippsGFpInitFixed (pubkey_x->size * 8, gfp_method, gfp);
     if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to initialize GFp context: %d\n", status);
+      printf ("ERROR: Failed to initialize GFp context: %s\n", ippcpGetStatusString (status));
       goto cleanup;
     }
 
     /* Get size for EC context */
     status = ippsGFpECGetSize (gfp, &ec_size);
     if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to get EC size: %d\n", status);
+      printf ("ERROR: Failed to get EC size: %s\n", ippcpGetStatusString (status));
       goto cleanup;
     }
 
@@ -2297,7 +2302,7 @@ crypto_verify_ec_signature_internal (
     }
 
     if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to initialize EC curve: %d\n", status);
+      printf ("ERROR: Failed to initialize EC curve: %s\n", ippcpGetStatusString (status));
       goto cleanup;
     }
   }
@@ -2331,7 +2336,7 @@ crypto_verify_ec_signature_internal (
   /* Get size for EC point */
   status = ippsGFpECPointGetSize (ec, &point_size);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get EC point size: %d\n", status);
+    printf ("ERROR: Failed to get EC point size: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2345,20 +2350,20 @@ crypto_verify_ec_signature_internal (
   /* Initialize and set EC point with public key coordinates */
   status = ippsGFpECPointInit (NULL, NULL, pub_point, ec);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to initialize EC point: %d\n", status);
+    printf ("ERROR: Failed to initialize EC point: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
   status = ippsGFpECSetPointRegular (pubkey_x_bn, pubkey_y_bn, pub_point, ec);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to set EC point coordinates: %d\n", status);
+    printf ("ERROR: Failed to set EC point coordinates: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
   /* Get scratch buffer size — ECDSA verify uses 2 scalar multiplications */
   status = ippsGFpECScratchBufferSize (2, ec, &scratch_size);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get scratch buffer size: %d\n", status);
+    printf ("ERROR: Failed to get scratch buffer size: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2395,7 +2400,7 @@ crypto_verify_ec_signature_internal (
   }
 
   if (status != ippStsNoErr) {
-    printf ("ERROR: EC signature verification failed with status: %d\n", status);
+    printf ("ERROR: EC signature verification failed with status: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2566,7 +2571,7 @@ crypto_ec_sign_data_internal (
     /* Get size for GFp context */
     status = ippsGFpGetSize (priv_key_size * 8, &gfp_size);
     if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to get GFp size: %d\n", status);
+      printf ("ERROR: Failed to get GFp size: %s\n", ippcpGetStatusString (status));
       return false;
     }
 
@@ -2580,14 +2585,14 @@ crypto_ec_sign_data_internal (
     /* Initialize GFp context */
     status = ippsGFpInitFixed (priv_key_size * 8, gfp_method, gfp);
     if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to initialize GFp context: %d\n", status);
+      printf ("ERROR: Failed to initialize GFp context: %s\n", ippcpGetStatusString (status));
       goto cleanup;
     }
 
     /* Get size for EC context */
     status = ippsGFpECGetSize (gfp, &ec_size);
     if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to get EC size: %d\n", status);
+      printf ("ERROR: Failed to get EC size: %s\n", ippcpGetStatusString (status));
       goto cleanup;
     }
 
@@ -2608,7 +2613,7 @@ crypto_ec_sign_data_internal (
     }
 
     if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to initialize EC curve: %d\n", status);
+      printf ("ERROR: Failed to initialize EC curve: %s\n", ippcpGetStatusString (status));
       goto cleanup;
     }
   }
@@ -2632,7 +2637,7 @@ crypto_ec_sign_data_internal (
   /* Allocate BigNum for signature components (r and s) */
   status = ippsBigNumGetSize (priv_key_size, &bn_size);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get BigNum size: %d\n", status);
+    printf ("ERROR: Failed to get BigNum size: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2650,20 +2655,20 @@ crypto_ec_sign_data_internal (
 
   status = ippsBigNumInit (priv_key_size, sig_r_bn);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to initialize BigNum for signature R: %d\n", status);
+    printf ("ERROR: Failed to initialize BigNum for signature R: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
   status = ippsBigNumInit (priv_key_size, sig_s_bn);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to initialize BigNum for signature S: %d\n", status);
+    printf ("ERROR: Failed to initialize BigNum for signature S: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
   /* Get size for EC point */
   status = ippsGFpECPointGetSize (ec, &point_size);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get EC point size: %d\n", status);
+    printf ("ERROR: Failed to get EC point size: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2677,14 +2682,14 @@ crypto_ec_sign_data_internal (
   /* Initialize EC point */
   status = ippsGFpECPointInit (NULL, NULL, pub_point, ec);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to initialize EC point: %d\n", status);
+    printf ("ERROR: Failed to initialize EC point: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
   /* Get scratch buffer size */
   status = ippsGFpECScratchBufferSize (2, ec, &scratch_size);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to get scratch buffer size: %d\n", status);
+    printf ("ERROR: Failed to get scratch buffer size: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2698,7 +2703,7 @@ crypto_ec_sign_data_internal (
   /* Derive public key from private key */
   status = ippsGFpECPublicKey (priv_key_bn, pub_point, ec, scratch_buffer);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to derive public key: %d\n", status);
+    printf ("ERROR: Failed to derive public key: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2709,7 +2714,7 @@ crypto_ec_sign_data_internal (
     int  eph_bn_size = 0;
     status = ippsBigNumGetSize (priv_key_size, &eph_bn_size);
     if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to get BigNum size for ephemeral key: %d\n", status);
+      printf ("ERROR: Failed to get BigNum size for ephemeral key: %s\n", ippcpGetStatusString (status));
       goto cleanup;
     }
 
@@ -2721,13 +2726,13 @@ crypto_ec_sign_data_internal (
 
     status = ippsBigNumInit (priv_key_size, eph_key_bn);
     if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to initialize ephemeral key BigNum: %d\n", status);
+      printf ("ERROR: Failed to initialize ephemeral key BigNum: %s\n", ippcpGetStatusString (status));
       goto cleanup;
     }
 
     status = ippsTRNGenRDSEED_BN (eph_key_bn, priv_key_size * 8, NULL);
     if (status != ippStsNoErr) {
-      printf ("ERROR: Failed to generate ephemeral key via RDSEED: %d\n", status);
+      printf ("ERROR: Failed to generate ephemeral key via RDSEED: %s\n", ippcpGetStatusString (status));
       goto cleanup;
     }
   }
@@ -2740,7 +2745,7 @@ crypto_ec_sign_data_internal (
   }
 
   if (status != ippStsNoErr) {
-    printf ("ERROR: EC signing failed with status: %d\n", status);
+    printf ("ERROR: EC signing failed with status: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2755,13 +2760,13 @@ crypto_ec_sign_data_internal (
   /* Convert BigNum to octet string */
   status = ippsGetOctString_BN (r_data, priv_key_size, sig_r_bn);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to extract signature R: %d\n", status);
+    printf ("ERROR: Failed to extract signature R: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
   status = ippsGetOctString_BN (s_data, priv_key_size, sig_s_bn);
   if (status != ippStsNoErr) {
-    printf ("ERROR: Failed to extract signature S: %d\n", status);
+    printf ("ERROR: Failed to extract signature S: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2921,19 +2926,19 @@ crypto_lms_verify_signature_internal (
   /* Get required buffer sizes */
   status = ippsLMSPublicKeyStateGetSize (&pubkey_size, algo_type);
   if (status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSPublicKeyStateGetSize failed: %d\n", status);
+    printf ("ERROR: ippsLMSPublicKeyStateGetSize failed: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
   status = ippsLMSSignatureStateGetSize (&sig_size, algo_type);
   if (status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSSignatureStateGetSize failed: %d\n", status);
+    printf ("ERROR: ippsLMSSignatureStateGetSize failed: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
   status = ippsLMSVerifyBufferGetSize (&buffer_size, (Ipp32s)msg_len, algo_type);
   if (status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSVerifyBufferGetSize failed: %d\n", status);
+    printf ("ERROR: ippsLMSVerifyBufferGetSize failed: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -2982,7 +2987,7 @@ crypto_lms_verify_signature_internal (
   /* Initialize public key state */
   status = ippsLMSSetPublicKeyState (algo_type, pI, pK, pubkey_state);
   if (status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSSetPublicKeyState failed: %d\n", status);
+    printf ("ERROR: ippsLMSSetPublicKeyState failed: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -3001,14 +3006,14 @@ crypto_lms_verify_signature_internal (
   /* Initialize signature state */
   status = ippsLMSSetSignatureState (algo_type, q, pC, pY, pAuthPath, sig_state);
   if (status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSSetSignatureState failed: %d\n", status);
+    printf ("ERROR: ippsLMSSetSignatureState failed: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
   /* Verify the signature */
   status = ippsLMSVerify (msg, (Ipp32s)msg_len, sig_state, &is_valid, pubkey_state, buffer);
   if (status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSVerify failed: %d\n", status);
+    printf ("ERROR: ippsLMSVerify failed: %s\n", ippcpGetStatusString (status));
     goto cleanup;
   }
 
@@ -3282,31 +3287,31 @@ crypto_lms_sign_data_internal (
   /* Get required IPPC state sizes */
   ipp_status = ippsLMSPrivateKeyStateGetSize (&priv_key_size, algo_type, extra_buf_sz);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSPrivateKeyStateGetSize failed: %d\n", ipp_status);
+    printf ("ERROR: ippsLMSPrivateKeyStateGetSize failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
   ipp_status = ippsLMSPublicKeyStateGetSize (&pub_key_size, algo_type);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSPublicKeyStateGetSize failed: %d\n", ipp_status);
+    printf ("ERROR: ippsLMSPublicKeyStateGetSize failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
   ipp_status = ippsLMSSignatureStateGetSize (&sig_size, algo_type);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSSignatureStateGetSize failed: %d\n", ipp_status);
+    printf ("ERROR: ippsLMSSignatureStateGetSize failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
   ipp_status = ippsLMSKeyGenBufferGetSize (&keygen_buf_sz, algo_type);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSKeyGenBufferGetSize failed: %d\n", ipp_status);
+    printf ("ERROR: ippsLMSKeyGenBufferGetSize failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
   ipp_status = ippsLMSSignBufferGetSize (&sign_buf_sz, (Ipp32s)msg_len, algo_type);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSSignBufferGetSize failed: %d\n", ipp_status);
+    printf ("ERROR: ippsLMSSignBufferGetSize failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
@@ -3326,7 +3331,7 @@ crypto_lms_sign_data_internal (
   /* Initialize key pair states */
   ipp_status = ippsLMSInitKeyPair (algo_type, extra_buf_sz, priv_key, pub_key);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSInitKeyPair failed: %d\n", ipp_status);
+    printf ("ERROR: ippsLMSInitKeyPair failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
@@ -3341,7 +3346,7 @@ crypto_lms_sign_data_internal (
 
   ipp_status = ippsLMSKeyGen (priv_key, pub_key, lms_keygen_rng_callback, &rng_ctx, keygen_buf);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSKeyGen failed: %d\n", ipp_status);
+    printf ("ERROR: ippsLMSKeyGen failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
@@ -3366,14 +3371,14 @@ crypto_lms_sign_data_internal (
   /* Initialize signature state */
   ipp_status = ippsLMSInitSignature (algo_type, sig_state);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSInitSignature failed: %d\n", ipp_status);
+    printf ("ERROR: ippsLMSInitSignature failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
   /* Sign the message */
   ipp_status = ippsLMSSign (msg, (Ipp32s)msg_len, priv_key, sig_state, NULL, NULL, sign_buf);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsLMSSign failed: %d\n", ipp_status);
+    printf ("ERROR: ippsLMSSign failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
@@ -3909,7 +3914,7 @@ crypto_mldsa_sign_data_internal (
   /* Get key sizes */
   ipp_status = ippsMLDSA_GetInfo (&info, ML_DSA_87);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_GetInfo failed: %d\n", ipp_status);
+    printf ("ERROR: ippsMLDSA_GetInfo failed: %s\n", ippcpGetStatusString (ipp_status));
     return crypto_operation_fail;
   }
 
@@ -3937,7 +3942,7 @@ crypto_mldsa_sign_data_internal (
   /* Get IPPC state size */
   ipp_status = ippsMLDSA_GetSize (&state_size);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_GetSize failed: %d\n", ipp_status);
+    printf ("ERROR: ippsMLDSA_GetSize failed: %s\n", ippcpGetStatusString (ipp_status));
     free (prv_key);
     return crypto_operation_fail;
   }
@@ -3952,14 +3957,14 @@ crypto_mldsa_sign_data_internal (
   /* Initialize state for ML-DSA-87, maxMessageLength must be >= msg_len */
   ipp_status = ippsMLDSA_Init (state, (Ipp32s)msg_len, ML_DSA_87);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_Init failed: %d\n", ipp_status);
+    printf ("ERROR: ippsMLDSA_Init failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
   /* Get sign scratch buffer size */
   ipp_status = ippsMLDSA_SignBufferGetSize (&sign_buf_sz, state);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_SignBufferGetSize failed: %d\n", ipp_status);
+    printf ("ERROR: ippsMLDSA_SignBufferGetSize failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
@@ -3980,7 +3985,7 @@ crypto_mldsa_sign_data_internal (
   );
 
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_Sign failed: %d\n", ipp_status);
+    printf ("ERROR: ippsMLDSA_Sign failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
@@ -4037,14 +4042,14 @@ crypto_mldsa_verify_signature_internal (
   /* Get key sizes for validation */
   ipp_status = ippsMLDSA_GetInfo (&info, ML_DSA_87);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_GetInfo failed: %d\n", ipp_status);
+    printf ("ERROR: ippsMLDSA_GetInfo failed: %s\n", ippcpGetStatusString (ipp_status));
     return false;
   }
 
   /* Get IPPC state size */
   ipp_status = ippsMLDSA_GetSize (&state_size);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_GetSize failed: %d\n", ipp_status);
+    printf ("ERROR: ippsMLDSA_GetSize failed: %s\n", ippcpGetStatusString (ipp_status));
     return false;
   }
 
@@ -4057,14 +4062,14 @@ crypto_mldsa_verify_signature_internal (
   /* Initialize state for ML-DSA-87, maxMessageLength must be >= msg_len */
   ipp_status = ippsMLDSA_Init (state, (Ipp32s)msg_len, ML_DSA_87);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_Init failed: %d\n", ipp_status);
+    printf ("ERROR: ippsMLDSA_Init failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
   /* Get verify scratch buffer size */
   ipp_status = ippsMLDSA_VerifyBufferGetSize (&verify_buf_sz, state);
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_VerifyBufferGetSize failed: %d\n", ipp_status);
+    printf ("ERROR: ippsMLDSA_VerifyBufferGetSize failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
@@ -4085,7 +4090,7 @@ crypto_mldsa_verify_signature_internal (
   );
 
   if (ipp_status != ippStsNoErr) {
-    printf ("ERROR: ippsMLDSA_Verify failed: %d\n", ipp_status);
+    printf ("ERROR: ippsMLDSA_Verify failed: %s\n", ippcpGetStatusString (ipp_status));
     goto cleanup;
   }
 
