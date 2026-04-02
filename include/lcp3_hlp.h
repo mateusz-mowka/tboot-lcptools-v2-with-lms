@@ -61,7 +61,6 @@ static inline size_t get_tpm12_policy_list_size(const lcp_policy_list_t *pollist
     size = offsetof(lcp_policy_list_t, policy_elements) +
            pollist->policy_elements_size;
 
-    /* add sig size */
     if ( pollist->sig_alg == LCP_POLSALG_RSA_PKCS_15 )
         size += get_tpm12_signature_size(get_tpm12_signature(pollist));
 

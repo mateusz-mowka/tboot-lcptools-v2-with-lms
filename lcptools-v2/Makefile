@@ -76,7 +76,7 @@ LDFLAGS += -L.
 
 # LCP v2
 
-POLELT_PLUGINS := custom_elt.o mle_elt_legacy.o pconf_legacy.o sbios_elt.o stm_elt.o pconf2_elt.o mle_elt.o
+POLELT_PLUGINS := custom_elt.o sbios_elt.o stm_elt.o pconf2_elt.o mle_elt.o
 
 LCP2_LIB := liblcp.a
 
@@ -95,7 +95,7 @@ else
 LCP_CRYPTO_OBJ := crypto_OpenSSL.o
 endif
 
-$(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o pollist1.o crypto.o $(LCP_CRYPTO_OBJ)
+$(LCP2_LIB) : pol.o poldata.o pollist2.o pollist2_1.o polelt.o lcputils.o hash.o crypto.o $(LCP_CRYPTO_OBJ)
 	$(AR) rc $@ $^
 
 lcp2_crtpolelt : crtpolelt.o $(POLELT_PLUGINS) $(LCP2_LIB)

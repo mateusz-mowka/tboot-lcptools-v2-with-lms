@@ -136,7 +136,6 @@ static lcp_policy_element_t *create(void)
         goto err;
     }
     if (pcrs.alg == 0) {
-        /* do we want to default to sha1 instead of error? */
         ERROR("Error: no PCR has algorithm specified\n");
         goto err;
     }
@@ -285,7 +284,7 @@ static polelt_plugin_t plugin = {
     "pconf2",
     opts,
     "      pconf2\n"
-    "        --alg <sha1|sha256|sha384|sha512>      PCR hash alg\n"
+    "        --alg <sha256|sha384|sha512>      PCR hash alg\n"
     "        [--pcr0 <hash_value>]       PCR0 value\n"
     "        [--pcr1 <hash_value>]       PCR1 value\n"
     "        [--pcr2 <hash_value>]       PCR2 value\n"

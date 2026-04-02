@@ -44,11 +44,11 @@ The \fB--create\fR command requires additional parameters depending on the eleme
 .TP
 \fBmle2 \fR[\fB--minver \fIver\fR] \fR[\fB--alg \fIalgorithm\fR] \fIfile\fR [\fIfile\fR...]\fP
 .RS
-.TP \w'\fB--alg\ \fI<sha1|sha256|sha386|sha512>\fP'u+1n
+.TP \w'\fB--alg\ \fI<sha256|sha386|sha512>\fP'u+1n
 \fB--minver \fIver\fP
 minimum version of SINIT (hex or decimal)
 .TP
-\fB--alg \fI<sha1|sha256|sha386|sha512>\fP
+\fB--alg \fI<sha256|sha386|sha512>\fP
 hash algorithm
 .TP
 \fR\fIfile\fR [\fIfile\fR...]\fP
@@ -68,8 +68,8 @@ file containing element data
 .TP
 \fBsbios \fR[\fB--alg \fIalgorithm\fR] \fIfile\fR [\fIfile\fR...]\fP
 .RS
-.TP \w'\fB--alg\ \fI<sha1|sha256|sha386|sha512>\fP'u+1n
-\fB--alg \fI<sha1|sha256|sha386|sha512>\fP
+.TP \w'\fB--alg\ \fI<sha256|sha386|sha512>\fP'u+1n
+\fB--alg \fI<sha256|sha386|sha512>\fP
 hash algorithm
 .TP
 \fR\fIfile\fR [\fIfile\fR...]\fP
@@ -79,8 +79,8 @@ the first hash in the first file will be the fallback hash
 .TP
 \fBstm \fR[\fB--alg \fIalgorithm\fR] \fIfile\fR [\fIfile\fR...]\fP
 .RS
-.TP \w'\fB--alg\ \fI<sha1|sha256|sha386|sha512>\fP'u+1n
-\fB--alg \fI<sha1|sha256|sha386|sha512> \fP
+.TP \w'\fB--alg\ \fI<sha256|sha386|sha512>\fP'u+1n
+\fB--alg \fI<sha256|sha386|sha512> \fP
 hash algorithm
 .TP
 \fIfile\fR [\fIfile\fR...]\fP
@@ -89,8 +89,8 @@ one or more text files, each containing one or more STM hashes (as text, one has
 .TP
 \fBpconf2 \fB--alg \fIalgorithm\fR [\fB--pcrN \fIhash_value\fR]\fP
 .RS
-.TP \w'\fB--alg\ \fI<sha1|sha256|sha386|sha512>\fP'u+1n
-\fB--alg \fI<sha1|sha256|sha386|sha512>\fR \fP
+.TP \w'\fB--alg\ \fI<sha256|sha386|sha512>\fP'u+1n
+\fB--alg \fI<sha256|sha386|sha512>\fR \fP
 PCR hash algorithm
 .TP
 \fB--pcrN \fIhash_value\fP
@@ -103,7 +103,6 @@ PCR value for PCR #N, where 0 <= N <= 7.
 minimum version of SINIT (hex or decimal)
 .TP
 \fR\fIfile\fR [\fIfile\fR...]\fP
-one or more text files, each containing one or more MLE SHA1 hashes (as text, one hash per line); 
 Hash files can be created with lcp2_mlehash.
 .RE
 .TP

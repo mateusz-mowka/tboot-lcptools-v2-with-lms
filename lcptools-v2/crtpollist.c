@@ -56,7 +56,6 @@
 #include "pollist2.h"
 #include "pollist2_1.h"
 #include "polelt.h"
-#include "pollist1.h"
 
 #define TOOL_VER_MAJOR 0x1
 #define TOOL_VER_MINOR 0x2
@@ -88,7 +87,7 @@ static const char help[] =
     "Signs policy list file\n"
     "        --sigalg                 <rsa|rsapss|ecdsa|sm2|lms|mldsa> signature algorithm\n"
     "        [--hashalg]              LCP_POLICY_LIST2_1 option:\n"
-    "                                 <sha1|sha256|sha384|sha512|sm2> hash algorithm\n"
+    "                                 <sha256|sha384|sha512|sm2> hash algorithm\n"
     "        --pub <key file>         PEM file of public key\n"
     "        [--priv <key file>]      PEM file of private key\n"
     "        [--rev <rev ctr>]        revocation counter value\n"
@@ -220,25 +219,14 @@ static int create(void)
     LOG("[create]\n");
     uint16_t major_ver = MAJOR_VER(version);
     uint16_t minor_ver = MINOR_VER(version);
-    if ( major_ver != MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION) &&
-         major_ver != MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION) &&
+    if ( major_ver != MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION) &&
          major_ver != MAJOR_VER(LCP_TPM20_POLICY_LIST2_1_VERSION_300) ) {
-        ERROR("Error: only list versions 0x100, 0x200, 0x201 or 0x300 are supported\n");
+        ERROR("Error: only list versions 0x200, 0x201 or 0x300 are supported\n");
         return 1;
     }
 
     switch (major_ver)
     {
-    case MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION):
-        if (minor_ver > LCP_TPM12_POLICY_LIST_MAX_MINOR) {
-            ERROR("Error: minor version 0x%02x not supported\n", minor_ver);
-            return 1;
-        }
-        pollist = (lcp_list_t *) create_empty_tpm12_policy_list();
-        if (pollist == NULL)
-            return 1;
-        break;
-
     case MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION):
         if (minor_ver > LCP_TPM20_POLICY_LIST2_MAX_MINOR) {
             ERROR("Error: minor version 0x%02x not supported\n", minor_ver);
@@ -275,18 +263,12 @@ static int create(void)
         }
         if (major_ver == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION))
             pollist = (lcp_list_t*) add_tpm20_policy_element(&(pollist->tpm20_policy_list), elt);
-        else if (major_ver == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION))
-            pollist = (lcp_list_t*) add_tpm12_policy_element(&(pollist->tpm12_policy_list), elt);
         if ( pollist == NULL )
             return 1;
     }
     if (major_ver == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION))
         write_ok = write_tpm20_policy_list_file(pollist_file,
                                                 &(pollist->tpm20_policy_list));
-    else if (major_ver == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION))
-        write_ok = write_tpm12_policy_list_file(pollist_file,
-                                                &(pollist->tpm12_policy_list));
-
 
     free(pollist);
     return write_ok ? 0 : 1;
@@ -327,19 +309,7 @@ static int sign(void)
         ERROR("Error: cannot copy saved signature file name.\n");
         return 1;
     }
-    if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION) ) {
-        LOG("sign: LCP_POLICY_LIST,sig_alg=LCP_POLSALG_RSA_PKCS_15\n");
-        result = sign_lcp_policy_list_t(user_input);
-        if (result) {
-            DISPLAY("List signed successfully and written to %s\n", user_input.list_file);
-            return 0;
-        }
-        else {
-            DISPLAY("Failed to sign and write LCP list.\n");
-            return 1;
-        }
-    }
-    else if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION) ) {
+    if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION) ) {
         LOG("sign: LCP_POLICY_LIST2,sig_alg=0x%x\n", user_input.sig_alg);
         result = sign_lcp_policy_list_t2(user_input);
         if (result) {
@@ -458,18 +428,6 @@ static int show(void)
     uint16_t  version;
     memcpy_s((void*)&version, sizeof(uint16_t), (const void *)pollist, sizeof(uint16_t));
     free(pollist);
-    if (MAJOR_VER(version) == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION) ) {
-        pollist = read_policy_list_file(files[0], false, &no_sigblock_ok);
-        if (pollist == NULL) {
-            ERROR("Error: failed to read policy list file.\n");
-            return 1;
-        }
-        LOG("show: version == 0x0100\n");
-        DISPLAY("policy list file: %s\n", files[0]);
-        display_tpm12_policy_list("", &(pollist->tpm12_policy_list), false);
-        free(pollist);
-        return 0;
-    }
     if (MAJOR_VER(version) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION) ) {
         pollist = read_policy_list_file(files[0], false, &no_sigblock_ok);
         if (pollist == NULL) {

@@ -81,7 +81,7 @@
 #define LCP_MAX_LISTS      8
 
 /*Digest sizes*/
-#define SHA1_DIGEST_SIZE 	20
+#define SHA1_DIGEST_SIZE    20
 #define SHA256_DIGEST_SIZE	32
 #define SHA384_DIGEST_SIZE	48
 #define SHA512_DIGEST_SIZE	64
@@ -92,16 +92,13 @@
 #define LCP_SIG_EXPONENT    65537
 
 /*--------- with LCP_POLICY version 2.0 ------------*/
-#define SHA1_LENGTH        20
 #define SHA256_LENGTH      32
 
 typedef union {
-    uint8_t    sha1[SHA1_LENGTH];
     uint8_t    sha256[SHA256_LENGTH];
 } lcp_hash_t;
 
 /*--------- legacy LCP alg names ------------*/
-#define LCP_POLHALG_SHA1           0
 #define LCP_POLSALG_NONE           0
 #define LCP_POLSALG_RSA_PKCS_15    1
 
@@ -129,7 +126,7 @@ typedef struct __packed {
 
 typedef struct __packed {
     uint8_t      sinit_min_version;
-    uint8_t      hash_alg; //LCP_POLHALG_SHA1
+    uint8_t      hash_alg;
     uint16_t     num_hashes;
     lcp_hash_t  hashes[];
 } lcp_mle_element_t;
@@ -196,7 +193,7 @@ typedef struct __packed {
 #define LCP_DEFAULT_POLICY_VERSION_2   0x0202
 typedef struct __packed {
     uint16_t    version;         /* must be 0x0204    */
-    uint8_t     hash_alg;        /* LCP_POLHALG_SHA1* */
+    uint8_t     hash_alg;
     uint8_t     policy_type;     /* one of LCP_POLTYPE_* */
     uint8_t     sinit_min_version;
     uint8_t     reserved1;
@@ -206,12 +203,11 @@ typedef struct __packed {
     uint8_t     reserved2;
     uint16_t    reserved3;
     uint32_t    reserved4;
-    lcp_hash_t  policy_hash; //Must be SHA1 - 20 bytes
+    lcp_hash_t  policy_hash;
 } lcp_policy_t;
 
 /*--------- LCP_POLICY version 3.x ------------*/
 #define TPM_ALG_RSA     0x0001
-#define TPM_ALG_SHA1	0x0004
 #define TPM_ALG_SHA256	0x000B
 #define TPM_ALG_SHA384	0x000C
 #define TPM_ALG_SHA512	0x000D
@@ -221,7 +217,6 @@ typedef struct __packed {
 #define TPM_ALG_LMS     0x0070
 
 #define TPM_ALG_MASK_NULL	    0x0000
-#define TPM_ALG_MASK_SHA1	    0x0001
 #define TPM_ALG_MASK_SHA256	    0x0008
 #define TPM_ALG_MASK_SM3_256	0x0020
 #define TPM_ALG_MASK_SHA384	    0x0040
@@ -251,7 +246,6 @@ typedef struct __packed {
 #define TCG_ALG_MLDSA   0x00A1
 
 typedef union {
-    uint8_t    sha1[SHA1_DIGEST_SIZE];
     uint8_t    sha256[SHA256_DIGEST_SIZE];
     uint8_t    sha384[SHA384_DIGEST_SIZE];
     uint8_t    sha512[SHA512_DIGEST_SIZE];

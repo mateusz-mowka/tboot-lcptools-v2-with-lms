@@ -48,10 +48,6 @@ crypto_hash_buffer_internal (
   }
 
   switch (hash_alg) {
-    case TB_HALG_SHA1_LG:
-    case TB_HALG_SHA1:
-      md = EVP_sha1 ();
-      break;
     case TB_HALG_SHA256:
       md = EVP_sha256 ();
       break;
@@ -521,10 +517,6 @@ rsa_ssa_pss_sign (
   }
 
   switch (hash_alg) {
-    case TB_HALG_SHA1_LG:
-    case TB_HALG_SHA1:
-      evp_hash_alg = EVP_sha1 ();
-      break;
     case TB_HALG_SHA256:
       evp_hash_alg = EVP_sha256 ();
       break;
@@ -668,7 +660,7 @@ http://mpqs.free.fr/h11300-pkcs-1v2-2-rsa-cryptography-standard-wp_EMC_Corporati
   // Read oid size:
   oid_size = *data;
   if (oid_size == 0x05) {
-    return TPM_ALG_SHA1;     // Only Sha1 has this size
+    return TPM_ALG_NULL;
   }
 
   // Move to the last byte to see what alg is used
@@ -840,9 +832,7 @@ crypto_verify_rsa_signature_internal (
     goto OPENSSL_ERROR;
   }
 
-  if ( hashAlg == TPM_ALG_SHA1 ) {
-    status = EVP_PKEY_CTX_set_signature_md (evp_context, EVP_sha1 ());
-  } else if ( hashAlg == TPM_ALG_SHA256 ) {
+  if ( hashAlg == TPM_ALG_SHA256 ) {
     status = EVP_PKEY_CTX_set_signature_md (evp_context, EVP_sha256 ());
   } else if ( hashAlg == TPM_ALG_SHA384 ) {
     status = EVP_PKEY_CTX_set_signature_md (evp_context, EVP_sha384 ());

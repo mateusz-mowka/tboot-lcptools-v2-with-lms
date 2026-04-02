@@ -220,7 +220,7 @@ lcp2_crtpol --create --type list --polver 3.0 \
     --pol policy.pol --data poldata.bin list.lst
 ```
 
-Supported `--sign` values: `rsa-2048-sha1`, `rsa-2048-sha256`,
+Supported `--sign` values: `rsa-2048-sha256`,
 `rsa-3072-sha256`, `rsa-3072-sha384`, `ecdsa-p256`, `ecdsa-p384`, `sm2`,
 `lms`, `mldsa`.
 

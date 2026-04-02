@@ -46,8 +46,6 @@
 /*--------- LCP FILE SIGNATURE ------------*/
 #define LCP_POLICY_DATA_FILE_SIGNATURE   "Intel(R) TXT LCP_POLICY_DATA\0\0\0\0"
 
-/*--------- LCP Policy Algorithm ------------*/
-#define LCP_POLHALG_SHA1    0
 
 /*--------- LCP Policy Type ------------*/
 #define LCP_POLTYPE_LIST    0
@@ -71,11 +69,9 @@
 
 
 /*--------- Other data structures of LCP Policy ------------*/
-#define SHA1_LENGTH        20
 #define SHA256_LENGTH      32
 
 typedef union {
-    uint8_t    sha1[SHA1_LENGTH];
     uint8_t    sha256[SHA256_LENGTH];
 } lcp_hash_t;
 

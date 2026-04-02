@@ -12,7 +12,6 @@
 #include <stdbool.h>
 #endif
 
-#define CRYPTO_SHA1_LENGTH    20
 #define CRYPTO_SHA256_LENGTH  32
 #define CRYPTO_SM3_LENGTH     32
 #define CRYPTO_SHA384_LENGTH  48

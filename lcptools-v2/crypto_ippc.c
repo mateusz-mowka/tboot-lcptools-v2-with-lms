@@ -34,13 +34,6 @@ get_ipp_hash_method (
     case TB_HALG_SHA512:
       method = ippsHashMethod_SHA512 ();
       break;
-    case TB_HALG_SHA1:
-    case TB_HALG_SHA1_LG:
-      #pragma GCC diagnostic push
-      #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-      method = ippsHashMethod_SHA1 ();
-      #pragma GCC diagnostic pop
-      break;
     case TB_HALG_SM3:
       method = ippsHashMethod_SM3 ();
       break;
@@ -1757,10 +1750,6 @@ crypto_rsa_sign_internal (
 
     /* Determine salt length based on hash algorithm */
     switch (hash_alg) {
-      case TB_HALG_SHA1:
-      case TB_HALG_SHA1_LG:
-        salt_len = 20;
-        break;
       case TB_HALG_SHA256:
         salt_len = 32;
         break;
@@ -1883,7 +1872,7 @@ pkcs_get_hashalg (
   /* Read oid size */
   oid_size = *data;
   if (oid_size == 0x05) {
-    return TPM_ALG_SHA1;     /* Only SHA1 has this size */
+    return TPM_ALG_NULL;
   }
 
   /* Move to the last byte of the OID to determine hash algorithm.
@@ -2189,16 +2178,6 @@ crypto_verify_ec_signature_internal (
 
   /* Determine digest size and curve based on hash algorithm (match OpenSSL behavior) */
   switch (hashalg) {
-    case TB_HALG_SHA1:
-    case TB_HALG_SHA1_LG:
-      digest_size = SHA1_LENGTH;
-      /* For SHA-1, use key size to determine curve */
-      if ((pubkey_x->size != ECC_KEY_LEN_MIN_BYTES) && (pubkey_x->size != ECC_KEY_LEN_MAX_BYTES)) {
-        printf ("ERROR: Unsupported EC key size: %zu bytes\n", pubkey_x->size);
-        return false;
-      }
-
-      break;
     case TB_HALG_SHA256:
       digest_size = SHA256_LENGTH;
       /* P-256 curve (matches OpenSSL backend) */
@@ -2502,15 +2481,6 @@ crypto_ec_sign_data_internal (
 
   /* Determine digest size based on hash algorithm and validate key size */
   switch (hashalg) {
-    case TB_HALG_SHA1:
-    case TB_HALG_SHA1_LG:
-      digest_size = SHA1_LENGTH;
-      if ((priv_key_size != ECC_KEY_LEN_MIN_BYTES) && (priv_key_size != ECC_KEY_LEN_MAX_BYTES)) {
-        printf ("ERROR: Unsupported EC key size: %d bytes\n", priv_key_size);
-        return false;
-      }
-
-      break;
     case TB_HALG_SHA256:
       digest_size = SHA256_LENGTH;
       if (priv_key_size != ECC_KEY_LEN_MIN_BYTES) {

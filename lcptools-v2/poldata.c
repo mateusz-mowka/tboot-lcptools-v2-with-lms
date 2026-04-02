@@ -51,7 +51,7 @@
 #include "lcputils.h"
 #include "pollist2.h"
 #include "pollist2_1.h"
-#include "pollist1.h"
+
 
 size_t get_policy_data_size(const lcp_policy_data_t2 *poldata)
 {
@@ -62,13 +62,7 @@ size_t get_policy_data_size(const lcp_policy_data_t2 *poldata)
     for ( unsigned int i = 0; i < poldata->num_lists; i++ ) {
         uint16_t  version ;
         memcpy_s((void*)&version,sizeof(version),(const void *)pollist,sizeof(uint16_t));
-        if ( MAJOR_VER(version) == 1 ) {
-	    LOG("get_policy_data_size: version=0x0100\n");
-            size += get_tpm12_policy_list_size(&(pollist->tpm12_policy_list));
-            pollist = (void *)pollist +
-                    get_tpm12_policy_list_size(&(pollist->tpm12_policy_list));
-        }
-        else if ( MAJOR_VER(version) == 2 ) {
+        if ( MAJOR_VER(version) == 2 ) {
             LOG("get_policy_data_size: version=0x0200\n");
             size += get_tpm20_policy_list_size(&(pollist->tpm20_policy_list));
             pollist = (void *)pollist +
@@ -116,15 +110,7 @@ bool verify_policy_data(const lcp_policy_data_t2 *poldata, size_t size)
         LOG("verifying list %u:\n", i);
         uint16_t version ;
         memcpy_s((void*)&version,sizeof(version),(const void *)pollist,sizeof(uint16_t));
-        if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION)) {
-             if ( !verify_tpm12_policy_list(&(pollist->tpm12_policy_list),
-                           size, NULL, false) )
-                 return false;
-
-             pollist = (void *)pollist +
-                     get_tpm12_policy_list_size(&(pollist->tpm12_policy_list));
-        }
-        else if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION)) {
+        if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION)) {
              if ( !verify_tpm20_policy_list(&(pollist->tpm20_policy_list),
                            size, NULL, false) )
                  return false;
@@ -166,12 +152,6 @@ void display_policy_data(const char *prefix, const lcp_policy_data_t2 *poldata,
         DISPLAY("%s list %u:\n", prefix, i);
         uint16_t version ;
         memcpy_s((void*)&version,sizeof(version),(const void *)pollist,sizeof(uint16_t));
-        if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION) ) {
-            display_tpm12_policy_list(new_prefix,
-                    &(pollist->tpm12_policy_list), brief);
-            pollist = (void *)pollist +
-                    get_tpm12_policy_list_size(&(pollist->tpm12_policy_list));
-        }
         if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION) ) {
             display_tpm20_policy_list(new_prefix,
                     &(pollist->tpm20_policy_list), brief);
@@ -192,32 +172,6 @@ void display_policy_data(const char *prefix, const lcp_policy_data_t2 *poldata,
             pollist = (void *)pollist + get_raw_tpm20_list_2_1_size(&pollist->tpm20_policy_list_2_1);
         }
     }
-}
-
-lcp_policy_data_t2 *add_tpm12_policy_list(lcp_policy_data_t2 *poldata,
-                                   const lcp_policy_list_t *pollist)
-{
-    if ( poldata == NULL || pollist == NULL )
-        return NULL;
-
-    LOG("[add_tpm12_policy_list]\n");
-    /* adding a policy list requires growing the policy data */
-    size_t old_size = get_policy_data_size(poldata);
-    size_t list_size = get_tpm12_policy_list_size(pollist);
-    lcp_policy_data_t2 *new_poldata = realloc(poldata, old_size + list_size);
-    if ( new_poldata == NULL ) {
-        ERROR("Error: failed to allocate memory\n");
-        free(poldata);
-        return NULL;
-    }
-
-    /* realloc() copies over previous contents */
-    /* add to end */
-    memcpy_s((void *)new_poldata + old_size, list_size, pollist, list_size);
-    new_poldata->num_lists++;
-
-    LOG("add tpm12 policy list succeed!\n");
-    return new_poldata;
 }
 
 lcp_policy_data_t2 *add_tpm20_policy_list2_1(lcp_policy_data_t2 *poldata,
@@ -316,14 +270,6 @@ void calc_policy_data_hash(const lcp_policy_data_t2 *poldata, lcp_hash_t2 *hash,
     for ( unsigned int i = 0; i < poldata->num_lists; i++ ) {
         uint16_t  version ;
         memcpy_s((void*)&version,sizeof(version),(const void *)pollist,sizeof(uint16_t));
-        if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION) ) {
-            LOG("calc_policy_data_hash:version=0x0100\n" );
-            calc_tpm12_policy_list_hash(&(pollist->tpm12_policy_list),
-                    curr_hash, hash_alg);
-            pollist = (void *)pollist +
-                    get_tpm12_policy_list_size(&(pollist->tpm12_policy_list));
-            curr_hash = (void *)curr_hash + hash_size;
-        }
         if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION) ) {
             LOG("calc_policy_data_hash:version=0x0200\n" );
             calc_tpm20_policy_list_hash(&(pollist->tpm20_policy_list),

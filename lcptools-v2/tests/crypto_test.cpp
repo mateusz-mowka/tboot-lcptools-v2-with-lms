@@ -36,6 +36,9 @@ extern "C" {
 #include "crypto.h"
 }
 
+/* Digest lengths*/
+#define CRYPTO_SHA1_LENGTH    20
+
 /* Constants from lcp3.h that we need for tests */
 #define TPM_ALG_SHA1    0x0004
 #define TPM_ALG_SHA256  0x000B
@@ -139,18 +142,12 @@ class CryptoHashTest : public ::testing::Test {};
  * SHA-1("abc") = a9993e36 4706816a ba3e2571 7850c26c 9cd0d89d
  * (RFC 3174 test vector)
  */
-TEST_F(CryptoHashTest, SHA1_KnownVector) {
+TEST_F(CryptoHashTest, SHA1_UnknownHashAlg) {
     const unsigned char msg[] = "abc";
     unsigned char digest[CRYPTO_SHA1_LENGTH] = {};
-    const unsigned char expected[] = {
-        0xa9, 0x99, 0x3e, 0x36, 0x47, 0x06, 0x81, 0x6a,
-        0xba, 0x3e, 0x25, 0x71, 0x78, 0x50, 0xc2, 0x6c,
-        0x9c, 0xd0, 0xd8, 0x9d
-    };
 
     crypto_status st = crypto_hash_buffer(msg, 3, digest, TPM_ALG_SHA1);
-    ASSERT_EQ(st, crypto_ok);
-    EXPECT_EQ(memcmp(digest, expected, CRYPTO_SHA1_LENGTH), 0);
+    ASSERT_EQ(st, crypto_unknown_hashalg);
 }
 
 /*
