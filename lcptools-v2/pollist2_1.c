@@ -670,7 +670,7 @@ bool get_ecc_signature_2_1_data(lcp_signature_2_1 *empty_sig, void *raw_data)
     signature_struct_offset = sigscheme_offset +
                 sizeof(empty_sig->KeyAndSignature.RsaKeyAndSignature.SigScheme);
 
-    if ( key_size_bytes != 32 && key_size_bytes != 48 ) {
+    if ( key_size_bytes != MIN_ECC_KEY_SIZE && key_size_bytes != MAX_ECC_KEY_SIZE ) {
         ERROR("ERROR: Key size not supported.\n");
         return false;
     }
@@ -719,7 +719,7 @@ bool get_rsa_signature_2_1_data(lcp_signature_2_1 *empty_sig, void *raw_data)
     signature_struct_offset = sigscheme_offset +
                 sizeof(empty_sig->KeyAndSignature.RsaKeyAndSignature.SigScheme);
 
-    if ( key_size_bytes != 256 && key_size_bytes != 384 ) {
+    if ( key_size_bytes != MIN_RSA_KEY_SIZE && key_size_bytes != MAX_RSA_KEY_SIZE ) {
         ERROR("ERROR: Key size not supported.\n");
         return false;
     }
@@ -997,7 +997,7 @@ Out: true if verifies false if not
         return false;
     }
 
-    if (key_size_bytes != 256 && key_size_bytes != 384) {
+    if (key_size_bytes != MIN_RSA_KEY_SIZE && key_size_bytes != MAX_RSA_KEY_SIZE) {
         ERROR("ERROR: key size %d not supported.\n", key_size_bytes);
         return false;
     }
@@ -1996,7 +1996,7 @@ bool rsa_sign_list_2_1_data(lcp_policy_list_t2_1 *pollist, const char *privkey_f
     lcp_signature_2_1 *sig = NULL;
     sized_buffer *digest = NULL;
     sized_buffer *sig_block = NULL;  //Buffer for generated sig
-    crypto_status c_status = crypto_general_fail;
+    crypto_status c_status = crypto_operation_fail;
 
     LOG("rsa_sign_list_2_1_data\n");
     if ( pollist == NULL || privkey_file == NULL )
@@ -2103,7 +2103,7 @@ static lcp_signature_2_1 *read_ecdsa_pubkey_file_2_1(const char *pubkey_file)
     sig->KeyAndSignature.EccKeyAndSignature.Signature.Version = SIGNATURE_VERSION;
     sig->KeyAndSignature.EccKeyAndSignature.Signature.KeySize = key_size_bytes*8;
 
-    if ((key_size_bytes*8) == 256) { //256 bit key with sha256
+    if (key_size_bytes == MIN_ECC_KEY_SIZE) { //256 bit key with sha256
         sig->KeyAndSignature.EccKeyAndSignature.Signature.HashAlg = TPM_ALG_SHA256;
     }
     else { //384 bit key with sha384
@@ -2519,8 +2519,8 @@ lcp_policy_list_t2_1 *policy_list2_1_rsa_sign(lcp_policy_list_t2_1 *pollist,
     sig->KeyAndSignature.RsaKeyAndSignature.Signature.HashAlg = hash_alg;
     sig->RevocationCounter = rev_ctr;
 
-    if ( sig->KeyAndSignature.RsaKeyAndSignature.Key.KeySize / 8 != 256 &&
-         sig->KeyAndSignature.RsaKeyAndSignature.Key.KeySize / 8 != 384 ) {
+    if ( sig->KeyAndSignature.RsaKeyAndSignature.Key.KeySize / 8 != MIN_RSA_KEY_SIZE &&
+         sig->KeyAndSignature.RsaKeyAndSignature.Key.KeySize / 8 != MAX_RSA_KEY_SIZE ) {
             ERROR("Error: public key size is not 2048/3072 bits\n");
             free(sig);
             free(pollist);

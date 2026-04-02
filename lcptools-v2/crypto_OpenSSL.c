@@ -37,14 +37,14 @@ crypto_hash_buffer_internal (
   )
 {
   if ( hash == NULL ) {
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   EVP_MD_CTX    *ctx = EVP_MD_CTX_create ();
   const EVP_MD  *md;
 
   if (ctx == NULL) {
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   switch (hash_alg) {
@@ -122,7 +122,7 @@ crypto_read_rsa_pubkey_internal (
   fp = NULL;
 
   *keysize = (size_t)EVP_PKEY_get_size (pubkey);
-  if ((*keysize != 256) && (*keysize != 384)) {
+  if ((*keysize != MIN_RSA_KEY_SIZE) && (*keysize != MAX_RSA_KEY_SIZE)) {
     printf ("Error: public key size %ld is not supported\n", *keysize);
     goto ERROR;
   }
@@ -170,7 +170,7 @@ ERROR:
   EVP_PKEY_free(pubkey);
   }
 
-  return crypto_general_fail;
+  return crypto_operation_fail;
 }
 
 crypto_status
@@ -233,7 +233,7 @@ crypto_read_ecdsa_pubkey_internal (
     *key_size_bytes = (x_bytes > y_bytes) ? (size_t)x_bytes : (size_t)y_bytes;
   }
 
-  if ((((*key_size_bytes)*8) != 256) && (((*key_size_bytes)*8) != 384)) {
+  if ((*key_size_bytes != MIN_ECC_KEY_SIZE) && (*key_size_bytes != MAX_ECC_KEY_SIZE)) {
     ERROR (
            "ERROR: keySize 0x%X is not 0x%X or 0x%X.\n",
            (unsigned int)(*key_size_bytes),
@@ -304,7 +304,7 @@ ERROR:
     BN_free (y);
   }
 
-  return crypto_general_fail;
+  return crypto_operation_fail;
 }
 
 static EVP_PKEY_CTX *
@@ -514,7 +514,7 @@ crypto_rsa_sign_internal (
   context = rsa_get_sig_ctx (privkey_file, sig_block->size);
   if ( context == NULL) {
     printf ("ERROR: failed to initialize EVP context.\n");
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   // Sign
@@ -522,7 +522,7 @@ crypto_rsa_sign_internal (
 
   EVP_PKEY_CTX_free (context);
 
-  return (sign_status == true ? crypto_ok : crypto_general_fail);
+  return (sign_status == true ? crypto_ok : crypto_operation_fail);
 }
 
 static uint16_t
@@ -551,7 +551,7 @@ http://mpqs.free.fr/h11300-pkcs-1v2-2-rsa-cryptography-standard-wp_EMC_Corporati
          H  - hash of a secret message
 */
 {
-  uint8_t  der_oid = 0x06;
+  uint8_t  der_oid = DER_TAG_OID;
   size_t   oid_size;
 
   if (data == NULL) {
@@ -1509,7 +1509,7 @@ crypto_mldsa_sign_data_internal (
   EVP_PKEY       *pkey      = NULL;
   EVP_MD_CTX     *mctx      = NULL;
   FILE           *fp        = NULL;
-  crypto_status  result     = crypto_general_fail;
+  crypto_status  result     = crypto_operation_fail;
 
   LOG ("[mldsa_sign_data]\n");
 
@@ -1628,7 +1628,7 @@ crypto_mldsa_verify_signature_internal (
   EVP_PKEY    *pkey   = NULL;
   EVP_MD_CTX  *mctx   = NULL;
   bool        result  = false;
-  int         vr;
+  int         verify_result;
 
   LOG ("[mldsa_verify_signature]\n");
 
@@ -1654,13 +1654,13 @@ crypto_mldsa_verify_signature_internal (
     goto OPENSSL_ERROR;
   }
 
-  vr = EVP_DigestVerify (mctx, signature, sig_len, msg, msg_len);
-  if (vr < 0) {
+  verify_result = EVP_DigestVerify (mctx, signature, sig_len, msg, msg_len);
+  if (verify_result < 0) {
     ERROR ("ERROR: EVP_DigestVerify error for ML-DSA-87\n");
     goto OPENSSL_ERROR;
   }
 
-  if (vr != 1) {
+  if (verify_result != 1) {
     ERROR ("ERROR: ML-DSA-87 signature verification failed (invalid signature)\n");
     goto EXIT;
   }

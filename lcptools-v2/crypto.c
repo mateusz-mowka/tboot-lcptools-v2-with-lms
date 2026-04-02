@@ -11,11 +11,17 @@ crypto_hash_buffer (
   uint16_t             hash_alg
   )
 {
-  if ((NULL == buf) || (NULL == hash)) {
-    fprintf (stderr, "crypto_hash_buffer called with NULL parameter\n");
+  if (NULL == hash) {
+    fprintf (stderr, "crypto_hash_buffer called with NULL hash parameter\n");
     return crypto_nullptr_error;
   }
 
+  if ((NULL == buf) && (size != 0)) {
+    fprintf (stderr, "crypto_hash_buffer called with NULL buf and non-zero size\n");
+    return crypto_nullptr_error;
+  }
+
+  /* size == 0 is valid: produces the hash of an empty message */
   return crypto_hash_buffer_internal (buf, size, hash, hash_alg);
 }
 

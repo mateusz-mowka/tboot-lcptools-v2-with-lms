@@ -79,7 +79,7 @@ crypto_hash_buffer_internal (
   status = ippsHashGetSize_rmf (&ctx_size);
   if (status != ippStsNoErr) {
     printf ("Error getting hash context size: %d\n", status);
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   /* Allocate context */
@@ -94,7 +94,7 @@ crypto_hash_buffer_internal (
   if (status != ippStsNoErr) {
     printf ("ERROR: Hash initialization failed: %d\n", status);
     free (p_ctx);
-    return crypto_crypto_operation_fail;
+    return crypto_operation_fail;
   }
 
   /* Update with message data (skip when size is 0 — hashing empty input is valid) */
@@ -103,7 +103,7 @@ crypto_hash_buffer_internal (
     if (status != ippStsNoErr) {
       printf ("ERROR: Hash update failed: %d\n", status);
       free (p_ctx);
-      return crypto_crypto_operation_fail;
+      return crypto_operation_fail;
     }
   }
 
@@ -112,7 +112,7 @@ crypto_hash_buffer_internal (
   if (status != ippStsNoErr) {
     printf ("ERROR: Hash finalization failed: %d\n", status);
     free (p_ctx);
-    return crypto_crypto_operation_fail;
+    return crypto_operation_fail;
   }
 
   free (p_ctx);
@@ -311,7 +311,7 @@ parse_rsa_private_key_der (
   size_t   temp_len;
 
   /* Parse outer SEQUENCE */
-  if (der_buf[offset] != 0x30) {
+  if (der_buf[offset] != DER_TAG_SEQUENCE) {
     printf ("ERROR: Expected SEQUENCE tag (0x30)\n");
     return -1;
   }
@@ -419,7 +419,7 @@ parse_rsa_public_key_pkcs1 (
   size_t   temp_len;
 
   /* Parse outer SEQUENCE */
-  if (der_buf[offset] != 0x30) {
+  if (der_buf[offset] != DER_TAG_SEQUENCE) {
     printf ("ERROR: Expected SEQUENCE tag (0x30) at offset %zu\n", offset);
     return -1;
   }
@@ -465,7 +465,7 @@ parse_rsa_public_key_spki (
   };
 
   /* Parse outer SEQUENCE (SubjectPublicKeyInfo) */
-  if (der_buf[offset] != 0x30) {
+  if (der_buf[offset] != DER_TAG_SEQUENCE) {
     printf ("ERROR: Expected SEQUENCE tag (0x30)\n");
     return -1;
   }
@@ -478,7 +478,7 @@ parse_rsa_public_key_spki (
   }
 
   /* Parse algorithm identifier SEQUENCE */
-  if (der_buf[offset] != 0x30) {
+  if (der_buf[offset] != DER_TAG_SEQUENCE) {
     printf ("ERROR: Expected algorithm SEQUENCE tag (0x30)\n");
     return -1;
   }
@@ -507,7 +507,7 @@ parse_rsa_public_key_spki (
   offset = alg_seq_end;
 
   /* Parse BIT STRING containing the public key */
-  if (offset >= der_size || der_buf[offset] != 0x03) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_BIT_STRING) {
     printf ("ERROR: Expected BIT STRING tag (0x03)\n");
     return -1;
   }
@@ -612,7 +612,7 @@ parse_ec_public_key_spki (
   };
 
   /* Parse outer SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != 0x30) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
     return -1;
   }
 
@@ -623,7 +623,7 @@ parse_ec_public_key_spki (
   }
 
   /* Parse algorithm identifier SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != 0x30) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
     return -1;
   }
 
@@ -648,7 +648,7 @@ parse_ec_public_key_spki (
   offset = alg_seq_end;
 
   /* Parse BIT STRING containing the public key point */
-  if (offset >= der_size || der_buf[offset] != 0x03) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_BIT_STRING) {
     printf ("ERROR: Expected BIT STRING tag for EC public key\n");
     return -1;
   }
@@ -668,7 +668,7 @@ parse_ec_public_key_spki (
   bitstring_len--;
 
   /* Check for uncompressed point marker (0x04) */
-  if (offset >= der_size || der_buf[offset] != 0x04) {
+  if (offset >= der_size || der_buf[offset] != EC_POINT_UNCOMPRESSED) {
     printf ("ERROR: Only uncompressed EC points are supported\n");
     return -1;
   }
@@ -720,7 +720,7 @@ parse_ec_private_key_sec1 (
   size_t  seq_len, int_len, octet_len;
 
   /* Parse outer SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != 0x30) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
     return -1;
   }
 
@@ -749,7 +749,7 @@ parse_ec_private_key_sec1 (
   offset++;
 
   /* Parse private key OCTET STRING */
-  if (offset >= der_size || der_buf[offset] != 0x04) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_OCTET_STRING) {
     printf ("ERROR: Expected OCTET STRING for EC private key\n");
     return -1;
   }
@@ -803,7 +803,7 @@ get_key_from_der (
 
     if (parse_rsa_public_key_pkcs1 (der_buf, der_size, &modulus, &modulus_len) != 0) {
       printf ("ERROR: Failed to parse RSA public key (PKCS#1)\n");
-      return crypto_general_fail;
+      return crypto_operation_fail;
     }
 
     *key_size = modulus_len;
@@ -815,7 +815,7 @@ get_key_from_der (
 
     if (parse_rsa_public_key_spki (der_buf, der_size, &modulus, &modulus_len) != 0) {
       printf ("ERROR: Failed to parse RSA public key (SubjectPublicKeyInfo)\n");
-      return crypto_general_fail;
+      return crypto_operation_fail;
     }
 
     *key_size = modulus_len;
@@ -828,7 +828,7 @@ get_key_from_der (
     rsa_private_key_params  params;
     if (parse_rsa_private_key_der (der_buf, der_size, &params) != 0) {
       printf ("ERROR: Failed to parse RSA private key DER structure\n");
-      return crypto_general_fail;
+      return crypto_operation_fail;
     }
 
     /* Return the modulus size as the key size for algorithm detection */
@@ -837,7 +837,7 @@ get_key_from_der (
   }
 
   printf ("WARNING: get_key_from_der does not support pem_type %d\n", pem_type);
-  return crypto_general_fail;
+  return crypto_operation_fail;
 }
 
 static uint8_t
@@ -877,7 +877,7 @@ get_der_from_pem (
   }
 
   *(pem_data_buf+i) = 0;
-  if (*(pem_data_buf+i-1) == 0x0D) {
+  if (i > 0 && *(pem_data_buf+i-1) == 0x0D) {
     *(pem_data_buf + i - 1) = 0;
   }
 
@@ -1013,7 +1013,7 @@ handle_pem_type_validation (
     case PEMTYPE__PUBLIC:
       if (is_private) {
         printf ("ERROR: Wrong key type (%s)\n", filename);
-        return crypto_general_fail;
+        return crypto_operation_fail;
       }
       break;
     case PEMTYPE_EC_PRIVATE:
@@ -1022,7 +1022,7 @@ handle_pem_type_validation (
     case PEMTYPE__PRIVATE:
       if (!is_private) {
         printf ("ERROR: Wrong key type (%s)\n", filename);
-        return crypto_general_fail;
+        return crypto_operation_fail;
       }
       break;
     case PEMTYPE_UNKNOWN:
@@ -1068,7 +1068,7 @@ handle_der_format_key (
       }
       return crypto_ok;
     }
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   /* Handle EC public key (BEGIN EC PUBLIC KEY - rare but supported) */
@@ -1080,7 +1080,7 @@ handle_der_format_key (
       }
       return crypto_ok;
     }
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   /* RSA key handling */
@@ -1101,7 +1101,7 @@ handle_der_format_key (
     if ((pem_type == PEMTYPE_RSA_PUBLIC) || (pem_type == PEMTYPE__PUBLIC)) {
       if (extract_rsa_public_key_to_buffer (p_der_buf, der_size, pem_type, key_buf, orig_key_buf_size, key_size) != 0) {
         printf ("ERROR: Failed to extract RSA public key modulus\n");
-        return crypto_general_fail;
+        return crypto_operation_fail;
       }
     }
     /* For RSA private keys, the DER parsing just validates and returns size */
@@ -1127,7 +1127,7 @@ handle_binary_ecc_private_key (
   if (*key_size < file_data_size) {
     printf ("ERROR: Key too large %zu (max: %d)\n", file_data_size, *key_size);
     *key_size = 0;
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   memcpy (key_buf, p_file_data_buf, file_data_size);
@@ -1153,7 +1153,7 @@ handle_binary_ecc_public_key (
   if (*key_size * 2 < file_data_size) {
     printf ("ERROR: Key too large %zu (max: %d)\n", file_data_size, *key_size);
     *key_size = 0;
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   memcpy (key_buf, p_file_data_buf, file_data_size);
@@ -1248,17 +1248,17 @@ handle_binary_format_key (
   )
 {
   /* Binary ECC private key */
-  if (is_private && ((file_data_size == 32) || (file_data_size == 48))) {
+  if (is_private && ((file_data_size == ECC_KEY_LEN_MIN_BYTES) || (file_data_size == ECC_KEY_LEN_MAX_BYTES))) {
     return handle_binary_ecc_private_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
   }
   
   /* Binary ECC public key */
-  if (!is_private && ((file_data_size == (2*32)) || (file_data_size == (2*48)))) {
+  if (!is_private && ((file_data_size == (2*ECC_KEY_LEN_MIN_BYTES)) || (file_data_size == (2*ECC_KEY_LEN_MAX_BYTES)))) {
     return handle_binary_ecc_public_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
   }
   
   /* Binary RSA key */
-  if ((file_data_size == 256) || (file_data_size == 384)) {
+  if ((file_data_size == RSA_KEY_MIN_BYTES) || (file_data_size == RSA_KEY_MAX_BYTES)) {
     return handle_binary_rsa_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
   }
   
@@ -1274,7 +1274,7 @@ handle_binary_format_key (
     return handle_binary_lms_private_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
   }
 
-  return crypto_general_fail;
+  return crypto_operation_fail;
 }
 
 crypto_status
@@ -1301,7 +1301,7 @@ crypto_read_key (
   p_file_data_buf = (uint8_t *)read_file (filename, &file_data_size, false);
   if (p_file_data_buf == NULL) {
     printf ("Error reading Key file\n");
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   /* Check if file is PEM format and convert to DER if needed */
@@ -1311,7 +1311,7 @@ crypto_read_key (
     if (der_size == 0) {
       printf ("ERROR: Corrupted PEM file\n");
       free ((void *)p_file_data_buf);
-      return crypto_general_fail;
+      return crypto_operation_fail;
     }
 
     /* Validate PEM type and set algorithm ID */
@@ -1330,7 +1330,7 @@ crypto_read_key (
   }
 
   /* Try to handle as DER format */
-  if ((der_size != 0) && (*p_der_buf == 0x30)) {
+  if ((der_size != 0) && (*p_der_buf == DER_TAG_SEQUENCE)) {
     status = handle_der_format_key (p_der_buf, der_size, pem_type, key_buf, key_size, alg_id);
     
     if (status == crypto_ok) {
@@ -1358,7 +1358,7 @@ crypto_read_key (
   /* No valid format found */
   printf ("ERROR: Invalid Key (%s)\n", filename);
   free ((void *)p_file_data_buf);
-  return crypto_general_fail;
+  return crypto_operation_fail;
 }
 
 crypto_status
@@ -1544,7 +1544,7 @@ rsa_load_private_key_from_file (
       printf ("ERROR: Failed to convert PEM to DER\n");
       return NULL;
     }
-  } else if (file_data[0] == 0x30) {
+  } else if (file_data[0] == DER_TAG_SEQUENCE) {
     /* Already DER format */
     der_buf  = file_data;
     der_size = file_size;
@@ -1703,10 +1703,10 @@ crypto_rsa_sign_internal (
   priv_key = rsa_load_private_key_from_file (privkey_file, &key_size_bits, &priv_key_ctx_sz);
   if (priv_key == NULL) {
     printf ("ERROR: Failed to load RSA private key\n");
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
-  crypto_status  result_code = crypto_general_fail;
+  crypto_status  result_code = crypto_operation_fail;
 
   /* Get hash method */
   hash_method = get_ipp_hash_method (hash_alg);
@@ -1842,7 +1842,7 @@ pkcs_get_hashalg (
   const unsigned char  *data
   )
 {
-  uint8_t  der_oid = 0x06;
+  uint8_t  der_oid = DER_TAG_OID;
   size_t   oid_size;
 
   if (data == NULL) {
@@ -2185,7 +2185,7 @@ crypto_verify_ec_signature_internal (
     case TB_HALG_SHA1_LG:
       digest_size = SHA1_LENGTH;
       /* For SHA-1, use key size to determine curve */
-      if ((pubkey_x->size != 32) && (pubkey_x->size != 48)) {
+      if ((pubkey_x->size != ECC_KEY_LEN_MIN_BYTES) && (pubkey_x->size != ECC_KEY_LEN_MAX_BYTES)) {
         printf ("ERROR: Unsupported EC key size: %zu bytes\n", pubkey_x->size);
         return false;
       }
@@ -2194,7 +2194,7 @@ crypto_verify_ec_signature_internal (
     case TB_HALG_SHA256:
       digest_size = SHA256_LENGTH;
       /* P-256 curve (matches OpenSSL backend) */
-      if (pubkey_x->size != 32) {
+      if (pubkey_x->size != ECC_KEY_LEN_MIN_BYTES) {
         printf ("ERROR: SHA-256 requires 32-byte EC key (P-256)\n");
         return false;
       }
@@ -2202,7 +2202,7 @@ crypto_verify_ec_signature_internal (
       break;
     case TB_HALG_SHA384:
       digest_size = SHA384_LENGTH;
-      if (pubkey_x->size != 48) {
+      if (pubkey_x->size != ECC_KEY_LEN_MAX_BYTES) {
         printf ("ERROR: SHA-384 requires 48-byte EC key (P-384)\n");
         return false;
       }
@@ -2210,7 +2210,7 @@ crypto_verify_ec_signature_internal (
       break;
     case TB_HALG_SHA512:
       digest_size = SHA512_LENGTH;
-      if (pubkey_x->size != 48) {
+      if (pubkey_x->size != ECC_KEY_LEN_MAX_BYTES) {
         printf ("ERROR: SHA-512 requires 48-byte EC key (P-384)\n");
         return false;
       }
@@ -2219,7 +2219,7 @@ crypto_verify_ec_signature_internal (
     case TB_HALG_SM3:
       /* SM2 algorithm uses SM3 hash and SM2 curve */
       digest_size = 32;  /* SM3 produces 256-bit hash */
-      if (pubkey_x->size != 32) {
+      if (pubkey_x->size != ECC_KEY_LEN_MIN_BYTES) {
         printf ("ERROR: SM2 requires 32-byte EC key\n");
         return false;
       }
@@ -2239,9 +2239,9 @@ crypto_verify_ec_signature_internal (
   /* Select GFp method based on curve */
   if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
     gfp_method = ippsGFpMethod_p256sm2 ();
-  } else if (pubkey_x->size == 48) {
+  } else if (pubkey_x->size == ECC_KEY_LEN_MAX_BYTES) {
     gfp_method = ippsGFpMethod_p384r1 ();
-  } else if (pubkey_x->size == 32) {
+  } else if (pubkey_x->size == ECC_KEY_LEN_MIN_BYTES) {
     gfp_method = ippsGFpMethod_p256r1 ();
   } else {
     printf ("ERROR: Unsupported EC key size: %zu bytes\n", pubkey_x->size);
@@ -2287,7 +2287,7 @@ crypto_verify_ec_signature_internal (
     /* Initialize EC context with standard curve */
     if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
       status = ippsGFpECInitStdSM2 (gfp, ec);
-    } else if (pubkey_x->size == 32) {
+    } else if (pubkey_x->size == ECC_KEY_LEN_MIN_BYTES) {
       status = ippsGFpECInitStd256r1 (gfp, ec);
     } else {
       status = ippsGFpECInitStd384r1 (gfp, ec);
@@ -2497,7 +2497,7 @@ crypto_ec_sign_data_internal (
     case TB_HALG_SHA1:
     case TB_HALG_SHA1_LG:
       digest_size = SHA1_LENGTH;
-      if ((priv_key_size != 32) && (priv_key_size != 48)) {
+      if ((priv_key_size != ECC_KEY_LEN_MIN_BYTES) && (priv_key_size != ECC_KEY_LEN_MAX_BYTES)) {
         printf ("ERROR: Unsupported EC key size: %d bytes\n", priv_key_size);
         return false;
       }
@@ -2505,7 +2505,7 @@ crypto_ec_sign_data_internal (
       break;
     case TB_HALG_SHA256:
       digest_size = SHA256_LENGTH;
-      if (priv_key_size != 32) {
+      if (priv_key_size != ECC_KEY_LEN_MIN_BYTES) {
         printf ("ERROR: SHA-256 requires 32-byte EC key (P-256)\n");
         return false;
       }
@@ -2513,7 +2513,7 @@ crypto_ec_sign_data_internal (
       break;
     case TB_HALG_SHA384:
       digest_size = SHA384_LENGTH;
-      if (priv_key_size != 48) {
+      if (priv_key_size != ECC_KEY_LEN_MAX_BYTES) {
         printf ("ERROR: SHA-384 requires 48-byte EC key (P-384)\n");
         return false;
       }
@@ -2521,7 +2521,7 @@ crypto_ec_sign_data_internal (
       break;
     case TB_HALG_SHA512:
       digest_size = SHA512_LENGTH;
-      if (priv_key_size != 48) {
+      if (priv_key_size != ECC_KEY_LEN_MAX_BYTES) {
         printf ("ERROR: SHA-512 requires 48-byte EC key (P-384)\n");
         return false;
       }
@@ -2530,7 +2530,7 @@ crypto_ec_sign_data_internal (
     case TB_HALG_SM3:
       /* SM2 algorithm */
       digest_size = 32;  /* SM3 produces 256-bit hash */
-      if (priv_key_size != 32) {
+      if (priv_key_size != ECC_KEY_LEN_MIN_BYTES) {
         printf ("ERROR: SM2 requires 32-byte EC key\n");
         return false;
       }
@@ -2550,9 +2550,9 @@ crypto_ec_sign_data_internal (
   /* Select GFp method based on curve */
   if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
     gfp_method = ippsGFpMethod_p256sm2 ();
-  } else if (priv_key_size == 48) {
+  } else if (priv_key_size == ECC_KEY_LEN_MAX_BYTES) {
     gfp_method = ippsGFpMethod_p384r1 ();
-  } else if (priv_key_size == 32) {
+  } else if (priv_key_size == ECC_KEY_LEN_MIN_BYTES) {
     gfp_method = ippsGFpMethod_p256r1 ();
   } else {
     printf ("ERROR: Unsupported EC key size: %d bytes\n", priv_key_size);
@@ -2598,7 +2598,7 @@ crypto_ec_sign_data_internal (
     /* Initialize EC context with standard curve */
     if ((hashalg == TB_HALG_SM3) && (sigalg == TPM_ALG_SM2)) {
       status = ippsGFpECInitStdSM2 (gfp, ec);
-    } else if (priv_key_size == 32) {
+    } else if (priv_key_size == ECC_KEY_LEN_MIN_BYTES) {
       status = ippsGFpECInitStd256r1 (gfp, ec);
     } else {
       status = ippsGFpECInitStd384r1 (gfp, ec);
@@ -3187,7 +3187,7 @@ crypto_lms_sign_data_internal (
   }
 
   IppStatus               ipp_status    = ippStsNoErr;
-  crypto_status           result        = crypto_general_fail;
+  crypto_status           result        = crypto_operation_fail;
   uint8_t                 *file_data    = NULL;
   size_t                  file_size     = 0;
   IppsLMSPrivateKeyState  *priv_key     = NULL;
@@ -3221,7 +3221,7 @@ crypto_lms_sign_data_internal (
     printf ("ERROR: Invalid LMS private key file size: %zu (expected %d)\n",
             file_size, LMS_PRV_EXPECTED_SIZE);
     free (file_data);
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   /* Validate compressed parameter sets match LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4 */
@@ -3229,14 +3229,14 @@ crypto_lms_sign_data_internal (
     printf ("ERROR: Unsupported LMS type in private key: 0x%02x (expected 0x%02x for LMS_SHA256_M24_H20)\n",
             file_data[LMS_PRV_PARAMS_OFFSET], LMS_PRV_COMPRESSED_LM);
     free (file_data);
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   if (file_data[LMS_PRV_PARAMS_OFFSET + 1] != LMS_PRV_COMPRESSED_LMOTS) {
     printf ("ERROR: Unsupported LMOTS type in private key: 0x%02x (expected 0x%02x for LMOTS_SHA256_N24_W4)\n",
             file_data[LMS_PRV_PARAMS_OFFSET + 1], LMS_PRV_COMPRESSED_LMOTS);
     free (file_data);
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   /* Extract sequence counter (leaf index) - big-endian uint64 in first 8 bytes */
@@ -3252,7 +3252,7 @@ crypto_lms_sign_data_internal (
     printf ("ERROR: LMS private key is exhausted (q=%lu, max=%lu)\n",
             (unsigned long)seq_counter, (unsigned long)((uint64_t)1 << LMS_SIGN_H));
     free (file_data);
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   /* Pointers into file data for seed and I */
@@ -3431,7 +3431,7 @@ crypto_lms_sign_data_internal (
     FILE  *fp = fopen (privkey_file, "r+b");
     if (NULL == fp) {
       printf ("ERROR: Cannot open private key for counter update: %s\n", privkey_file);
-      result = crypto_crypto_operation_fail;
+      result = crypto_operation_fail;
       goto cleanup;
     }
 
@@ -3446,7 +3446,7 @@ crypto_lms_sign_data_internal (
       if (fwrite (counter_bytes, LMS_PRV_COUNTER_SIZE, 1, fp) != 1) {
         printf ("ERROR: Failed to update LMS private key counter — risk of key reuse\n");
         fclose (fp);
-        result = crypto_crypto_operation_fail;
+        result = crypto_operation_fail;
         goto cleanup;
       }
 
@@ -3455,7 +3455,7 @@ crypto_lms_sign_data_internal (
       if (fflush (fp) != 0 || fsync (fileno (fp)) != 0) {
         printf ("ERROR: Failed to flush LMS private key counter to disk — risk of key reuse\n");
         fclose (fp);
-        result = crypto_crypto_operation_fail;
+        result = crypto_operation_fail;
         goto cleanup;
       }
 
@@ -3539,7 +3539,7 @@ parse_mldsa_public_key_spki (
   size_t  alg_seq_end;
 
   /* Outer SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != 0x30) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
     return -1;
   }
 
@@ -3550,7 +3550,7 @@ parse_mldsa_public_key_spki (
   }
 
   /* AlgorithmIdentifier SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != 0x30) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
     return -1;
   }
 
@@ -3575,7 +3575,7 @@ parse_mldsa_public_key_spki (
   offset = alg_seq_end;
 
   /* BIT STRING containing the raw public key */
-  if (offset >= der_size || der_buf[offset] != 0x03) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_BIT_STRING) {
     return -1;
   }
 
@@ -3628,7 +3628,7 @@ parse_mldsa_private_key_pkcs8 (
   size_t  octet_len, inner_end, seed_len, expanded_len;
 
   /* Outer SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != 0x30) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
     return -1;
   }
 
@@ -3657,7 +3657,7 @@ parse_mldsa_private_key_pkcs8 (
   offset++;
 
   /* AlgorithmIdentifier SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != 0x30) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
     return -1;
   }
 
@@ -3682,7 +3682,7 @@ parse_mldsa_private_key_pkcs8 (
   offset = alg_seq_end;
 
   /* Outer OCTET STRING wrapping the private key data */
-  if (offset >= der_size || der_buf[offset] != 0x04) {
+  if (offset >= der_size || der_buf[offset] != DER_TAG_OCTET_STRING) {
     return -1;
   }
 
@@ -3699,7 +3699,7 @@ parse_mldsa_private_key_pkcs8 (
   }
 
   /* Inner SEQUENCE: { OCTET STRING (seed), OCTET STRING (expanded key) } */
-  if (offset >= inner_end || der_buf[offset] != 0x30) {
+  if (offset >= inner_end || der_buf[offset] != DER_TAG_SEQUENCE) {
     return -1;
   }
 
@@ -3710,7 +3710,7 @@ parse_mldsa_private_key_pkcs8 (
   }
 
   /* First OCTET STRING: seed (skip it) */
-  if (offset >= inner_end || der_buf[offset] != 0x04) {
+  if (offset >= inner_end || der_buf[offset] != DER_TAG_OCTET_STRING) {
     return -1;
   }
 
@@ -3723,7 +3723,7 @@ parse_mldsa_private_key_pkcs8 (
   offset += seed_len;
 
   /* Second OCTET STRING: expanded private key (what IPPC needs) */
-  if (offset >= inner_end || der_buf[offset] != 0x04) {
+  if (offset >= inner_end || der_buf[offset] != DER_TAG_OCTET_STRING) {
     return -1;
   }
 
@@ -3794,7 +3794,7 @@ crypto_read_mldsa_pubkey_internal (
       free (der_buf);
       return false;
     }
-  } else if (file_data[0] == 0x30) {
+  } else if (file_data[0] == DER_TAG_SEQUENCE) {
     /* Already DER */
     der_buf  = file_data;
     der_size = (uint16_t)file_size;
@@ -3858,7 +3858,7 @@ read_mldsa_privkey_from_pem (
       free (der_buf);
       return false;
     }
-  } else if (file_data[0] == 0x30) {
+  } else if (file_data[0] == DER_TAG_SEQUENCE) {
     der_buf  = file_data;
     der_size = (uint16_t)file_size;
   } else if (file_size == MLDSA87_PRIVKEY_SIZE) {
@@ -3898,7 +3898,7 @@ crypto_mldsa_sign_data_internal (
   )
 {
   IppStatus         ipp_status    = ippStsNoErr;
-  crypto_status     result        = crypto_general_fail;
+  crypto_status     result        = crypto_operation_fail;
   IppsMLDSAState    *state        = NULL;
   Ipp8u             *sign_buf     = NULL;
   Ipp8u             *prv_key      = NULL;
@@ -3911,7 +3911,7 @@ crypto_mldsa_sign_data_internal (
   ipp_status = ippsMLDSA_GetInfo (&info, ML_DSA_87);
   if (ipp_status != ippStsNoErr) {
     printf ("ERROR: ippsMLDSA_GetInfo failed: %d\n", ipp_status);
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   /* Check output buffer size */
@@ -3940,7 +3940,7 @@ crypto_mldsa_sign_data_internal (
   if (ipp_status != ippStsNoErr) {
     printf ("ERROR: ippsMLDSA_GetSize failed: %d\n", ipp_status);
     free (prv_key);
-    return crypto_general_fail;
+    return crypto_operation_fail;
   }
 
   state = (IppsMLDSAState *)malloc (state_size);

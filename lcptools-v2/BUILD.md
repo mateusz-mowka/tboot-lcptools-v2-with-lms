@@ -25,6 +25,7 @@ make -C ../safestringlib
 | **Intel IPP Crypto** | IPPC cryptographic backend (built from `ippc/` sub-directory) |
 
 The IPPC library is built automatically when `USE_IPPC=1` is passed to `make`.
+IPP Crypto ≥ 1.4.0 is required for ML-DSA-87 and LMS support.
 
 ### Required for unit tests (Google Test)
 
@@ -82,6 +83,7 @@ make USE_IPPC=1
 
 When `USE_IPPC=1` is set, the IPPC library under `ippc/` is built
 automatically. LMS/HSS signature support is provided natively by IPPC.
+ML-DSA-87 support is available in both the OpenSSL (≥ 3.5) and IPPC backends.
 
 ### Clean build
 
@@ -184,8 +186,15 @@ lcp2_crtpollist --sign --sigalg lms --hashalg sha256 \
     --pub lms.pub --priv lms.prv --force --out list.lst
 ```
 
+> **Warning:** LMS is a stateful signature scheme. Each private key must
+> only be used to sign a limited number of messages. Never copy or reuse
+> an LMS private key file — doing so can compromise signature security.
+> The `--force` flag suppresses the interactive safety prompt.
+
 Key files for `--pub` and `--priv` accept PEM, DER, or raw binary
-formats — the crypto layer auto-detects the encoding.
+formats — the crypto layer auto-detects the encoding. For RSA and
+ECDSA, key type (RSA vs ECC) and curve size (P-256 vs P-384) are
+inferred from the key file itself; no separate `--keytype` flag is needed.
 
 #### Verify a signed list
 
@@ -209,10 +218,8 @@ lcp2_crtpol --create --type list --polver 3.0 \
 ```
 
 Supported `--sign` values: `rsa-2048-sha1`, `rsa-2048-sha256`,
-`rsa-3072-sha256`, `rsa-3072-sha384`, `ecdsa-p256`, `ecdsa-p384`, `sm2`.
-
-> **Note:** ML-DSA and LMS are not yet supported as `--sign` arguments
-> for policy creation — they are used for list-level signing only.
+`rsa-3072-sha256`, `rsa-3072-sha384`, `ecdsa-p256`, `ecdsa-p384`, `sm2`,
+`lms`, `mldsa`.
 
 ### `lcp2_mlehash` — compute MLE hash
 

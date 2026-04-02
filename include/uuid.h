@@ -51,12 +51,9 @@ typedef struct __packed {
 typedef struct __packed {
     uuid_t       uuid;
     uint8_t      data[];
-} lcp_custom_element_t2;
-
-typedef struct __packed {
-    uuid_t       uuid;
-    uint8_t      data[];
 } lcp_custom_element_t;
+
+typedef lcp_custom_element_t lcp_custom_element_t2;
 
 
 static inline bool are_uuids_equal(const uuid_t *uuid1, const uuid_t *uuid2)

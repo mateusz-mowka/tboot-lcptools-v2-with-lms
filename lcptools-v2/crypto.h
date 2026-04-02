@@ -22,6 +22,15 @@
 #define MAX_ECC_KEY_SIZE         0x30
 #define MIN_ECC_KEY_SIZE         0x20
 
+/* ASN.1 DER tag constants */
+#define DER_TAG_SEQUENCE         0x30
+#define DER_TAG_BIT_STRING       0x03
+#define DER_TAG_OCTET_STRING     0x04
+#define DER_TAG_OID              0x06
+
+/* EC uncompressed point indicator (not a DER tag, but same byte value as OCTET STRING) */
+#define EC_POINT_UNCOMPRESSED    0x04
+
 #ifndef __packed
 #define __packed   __attribute__ ((packed))
 #endif
@@ -55,7 +64,7 @@ typedef struct __packed {
 
 typedef enum {
   crypto_ok,
-  crypto_general_fail,
+  crypto_operation_fail,
   crypto_unknown_hashalg,
   crypto_unknown_signalg,
   crypto_nullptr_error,
@@ -64,7 +73,6 @@ typedef enum {
   crypto_file_io_error,
   crypto_invalid_key,
   crypto_buffer_too_small,
-  crypto_crypto_operation_fail,
   crypto_not_supported
 } crypto_status;
 

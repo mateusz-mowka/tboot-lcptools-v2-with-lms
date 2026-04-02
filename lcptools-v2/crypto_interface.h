@@ -1,5 +1,3 @@
-#pragma once
-
 #ifndef LCPT_CRYPTOINTERFACE_H
 #define LCPT_CRYPTOINTERFACE_H
 

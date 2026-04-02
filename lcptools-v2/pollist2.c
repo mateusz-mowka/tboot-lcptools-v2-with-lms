@@ -935,7 +935,7 @@ bool ec_sign_list2_data(lcp_policy_list_t2 *pollist, const char *privkey)
     switch (pollist->sig_alg)
     {
     case TPM_ALG_ECDSA:
-        hashalg = (sig->ecc_signature.pubkey_size == 32) ? TPM_ALG_SHA256 : TPM_ALG_SHA384;
+        hashalg = (sig->ecc_signature.pubkey_size == MIN_ECC_KEY_SIZE) ? TPM_ALG_SHA256 : TPM_ALG_SHA384;
         break;
     case TPM_ALG_SM2:
         hashalg = TPM_ALG_SM3_256;
@@ -1013,7 +1013,7 @@ bool rsa_sign_list2_data(lcp_policy_list_t2 *pollist, const char *privkey_file,
     bool status;
     size_t key_size;
     size_t list_data_len;
-    crypto_status c_status = crypto_general_fail;
+    crypto_status c_status = crypto_operation_fail;
 
     LOG("rsa_sign_list_data\n");
     if ( pollist == NULL || privkey_file == NULL ) {
@@ -1169,8 +1169,8 @@ lcp_policy_list_t2 *policy_list2_rsa_sign_init(lcp_policy_list_t2 *pollist,
         return NULL;
     }
 
-    if ( (sig->rsa_signature.pubkey_size != 256 /* 2048 bits */)
-        && (sig->rsa_signature.pubkey_size != 384 /* 3072 bits */) ) {
+    if ( (sig->rsa_signature.pubkey_size != MIN_RSA_KEY_SIZE /* 2048 bits */)
+        && (sig->rsa_signature.pubkey_size != MAX_RSA_KEY_SIZE /* 3072 bits */) ) {
         ERROR("Error: public key size is not 2048/3072 bits\n");
         free(sig);
         free(pollist);
