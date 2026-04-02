@@ -584,8 +584,10 @@ extract_rsa_public_key_to_buffer (
     return -1;
   }
 
-  /* Copy modulus to output buffer (keep in big-endian to match OpenSSL) */
+  /* Copy modulus to output buffer, then flip BE to LE
+     (match EC key reader and LCP policy list format) */
   memcpy (key_buf, modulus, modulus_len);
+  buffer_reverse_byte_order (key_buf, modulus_len);
   *key_size = modulus_len;
 
   return 0;
@@ -1177,7 +1179,8 @@ handle_binary_rsa_key (
   }
 
   memcpy (key_buf, p_file_data_buf, file_data_size);
-  /* Note: RSA keys are kept in big-endian format (no byte reversal) */
+  /* Flip to LE (match EC key reader and LCP policy list format) */
+  buffer_reverse_byte_order (key_buf, file_data_size);
   *key_size = file_data_size;
   return crypto_ok;
 }

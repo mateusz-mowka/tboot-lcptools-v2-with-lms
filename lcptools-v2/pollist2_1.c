@@ -1947,12 +1947,9 @@ Out: Pointer to signature structure.
         ERROR("Error: failed to create empty lcp signature 2.1\n");
         goto ERROR;
     }
-    /* openssl key is big-endian and policy requires little-endian, so reverse
-       bytes and append to sig*/
-
-    for ( unsigned int i = 0; i < keysize; i++ ) {
-        sig->KeyAndSignature.RsaKeyAndSignature.Key.Modulus[i] = key[keysize -i -1];
-    }
+    /* crypto_read_rsa_pubkey returns modulus in LE (LCP format) — copy directly */
+    memcpy_s(sig->KeyAndSignature.RsaKeyAndSignature.Key.Modulus,
+             keysize, key, keysize);
 
     sig->KeyAndSignature.RsaKeyAndSignature.KeyAlg = TPM_ALG_RSA;
     sig->KeyAndSignature.RsaKeyAndSignature.Version = SIGNATURE_VERSION;

@@ -498,6 +498,13 @@ TEST_F(CryptoNullParamTest, LmsSign_NullPrivkey) {
 /*  RSA functional tests                                               */
 /* ================================================================== */
 
+/*
+ * RSA test fixture.
+ *
+ * crypto_read_rsa_pubkey returns modulus in LE (LCP policy list convention).
+ * crypto_verify_rsa_signature expects the modulus in BE.
+ * The fixture byte-reverses after reading so modulus_ is BE.
+ */
 class RsaTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -515,7 +522,7 @@ protected:
               " -pubout -out " + std::string(pub_file_->c_str()) + " 2>/dev/null";
         ASSERT_EQ(system(cmd.c_str()), 0) << "openssl rsa -pubout failed";
 
-        /* Read public key modulus */
+        /* Read public key modulus (returns LE) */
         unsigned char *key = NULL;
         size_t keysize = 0;
         crypto_status st = crypto_read_rsa_pubkey(pub_file_->c_str(), &key, &keysize);
@@ -523,6 +530,9 @@ protected:
         ASSERT_NE(key, nullptr);
         modulus_.assign(key, key + keysize);
         free(key);
+
+        /* Convert LE → BE for verify (which uses BN_bin2bn / ippsSetOctString_BN) */
+        std::reverse(modulus_.begin(), modulus_.end());
     }
 
     void TearDown() override {
@@ -639,6 +649,9 @@ TEST_F(RsaTest, Verify_WrongKey) {
     unsigned char *key2 = NULL;
     size_t ks2 = 0;
     ASSERT_EQ(crypto_read_rsa_pubkey(pub2.c_str(), &key2, &ks2), crypto_ok);
+
+    /* Convert LE → BE for verify */
+    std::reverse(key2, key2 + ks2);
 
     crypto_sized_buffer wrong_pubkey = {ks2, key2};
     crypto_sized_buffer signature = {sig_buf.size(), sig_buf.data()};

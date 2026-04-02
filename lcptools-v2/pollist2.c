@@ -834,9 +834,8 @@ lcp_signature_t2 *read_rsa_pubkey_file(const char *file)
 
     uint8_t *pubkey_ptr = (uint8_t*)sig + offsetof(lcp_rsa_signature_t, pubkey_value);
 
-    for (unsigned int i = 0; i < keysize; i++) {
-        pubkey_ptr[i] = key[keysize - i - 1];
-    }
+    /* crypto_read_rsa_pubkey returns modulus in LE (LCP format) — copy directly */
+    memcpy_s(pubkey_ptr, keysize, key, keysize);
 
     if ( verbose ) {
         LOG("read_rsa_pubkey_file: signature:\n");

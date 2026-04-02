@@ -146,6 +146,9 @@ crypto_read_rsa_pubkey_internal (
     goto OPENSSL_ERROR;
   }
 
+  // Flip BE to LE (match EC key reader and LCP policy list format)
+  buffer_reverse_byte_order (*key, *keysize);
+
   // SUCCESS:
   EVP_PKEY_free(pubkey);
   BN_free(modulus);  /* owned copy from EVP_PKEY_get_bn_param */
