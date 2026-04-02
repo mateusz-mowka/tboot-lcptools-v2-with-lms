@@ -1407,10 +1407,6 @@ crypto_lms_sign_data_internal (
  * DigestSign/DigestVerify one-shot API is used with md=NULL.
  */
 
-#define MLDSA87_PUBKEY_SIZE     2592
-#define MLDSA87_PRIVKEY_SIZE    4896
-#define MLDSA87_SIGNATURE_SIZE  4627
-
 /*
  * Read an ML-DSA-87 public key from a PEM or DER file and extract the
  * raw 2592-byte public key into the caller-supplied buffer.

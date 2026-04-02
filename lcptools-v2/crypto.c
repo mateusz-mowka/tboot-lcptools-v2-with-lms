@@ -53,8 +53,23 @@ crypto_read_ecdsa_pubkey (
   size_t      *key_size_bytes
   )
 {
-  if ((NULL == file) || (NULL == qx) || (NULL == qy) || (NULL == key_size_bytes)) {
-    fprintf (stderr, "crypto_read_ecdsa_pubkey called with NULL parameter\n");
+  if (NULL == file) {
+    fprintf (stderr, "crypto_read_ecdsa_pubkey called with file == NULL\n");
+    return crypto_nullptr_error;
+  }
+
+  if (NULL == qx) {
+    fprintf (stderr, "crypto_read_ecdsa_pubkey called with qx == NULL\n");
+    return crypto_nullptr_error;
+  }
+
+  if (NULL == qy) {
+    fprintf (stderr, "crypto_read_ecdsa_pubkey called with qy == NULL\n");
+    return crypto_nullptr_error;
+  }
+
+  if (NULL == key_size_bytes) {
+    fprintf (stderr, "crypto_read_ecdsa_pubkey called with key_size_bytes == NULL\n");
     return crypto_nullptr_error;
   }
 
@@ -70,8 +85,18 @@ crypto_rsa_sign (
   const char           *privkey_file
   )
 {
-  if ((NULL == sig_block) || (NULL == digest) || (NULL == privkey_file)) {
-    fprintf (stderr, "crypto_rsa_sign called with NULL parameter\n");
+  if (NULL == sig_block) {
+    fprintf (stderr, "crypto_rsa_sign called with sig_block == NULL\n");
+    return crypto_nullptr_error;
+  }
+
+  if (NULL == digest) {
+    fprintf (stderr, "crypto_rsa_sign called with digest == NULL\n");
+    return crypto_nullptr_error;
+  }
+
+  if (NULL == privkey_file) {
+    fprintf (stderr, "crypto_rsa_sign called with privkey_file == NULL\n");
     return crypto_nullptr_error;
   }
 
@@ -88,8 +113,18 @@ crypto_verify_rsa_signature (
   uint16_t             list_ver
   )
 {
-  if ((NULL == data) || (NULL == pubkey) || (NULL == signature)) {
-    fprintf (stderr, "crypto_verify_rsa_signature called with NULL parameter\n");
+  if (NULL == data) {
+    fprintf (stderr, "crypto_verify_rsa_signature called with data == NULL\n");
+    return false;
+  }
+
+  if (NULL == pubkey) {
+    fprintf (stderr, "crypto_verify_rsa_signature called with pubkey == NULL\n");
+    return false;
+  }
+
+  if (NULL == signature) {
+    fprintf (stderr, "crypto_verify_rsa_signature called with signature == NULL\n");
     return false;
   }
 
@@ -107,9 +142,28 @@ crypto_verify_ec_signature (
   uint16_t             hashalg
   )
 {
-  if ((NULL == data) || (NULL == pubkey_x) || (NULL == pubkey_y) ||
-      (NULL == sig_r) || (NULL == sig_s)) {
-    fprintf (stderr, "crypto_verify_ec_signature called with NULL parameter\n");
+  if (NULL == data) {
+    fprintf (stderr, "crypto_verify_ec_signature called with data == NULL\n");
+    return false;
+  }
+
+  if (NULL == pubkey_x) {
+    fprintf (stderr, "crypto_verify_ec_signature called with pubkey_x == NULL\n");
+    return false;
+  }
+
+  if (NULL == pubkey_y) {
+    fprintf (stderr, "crypto_verify_ec_signature called with pubkey_y == NULL\n");
+    return false;
+  }
+
+  if (NULL == sig_r) {
+    fprintf (stderr, "crypto_verify_ec_signature called with sig_r == NULL\n");
+    return false;
+  }
+
+  if (NULL == sig_s) {
+    fprintf (stderr, "crypto_verify_ec_signature called with sig_s == NULL\n");
     return false;
   }
 
@@ -126,8 +180,23 @@ crypto_ec_sign_data (
   const char           *privkey_file
   )
 {
-  if ((NULL == data) || (NULL == r) || (NULL == s) || (NULL == privkey_file)) {
-    fprintf (stderr, "crypto_ec_sign_data called with NULL parameter\n");
+  if (NULL == data) {
+    fprintf (stderr, "crypto_ec_sign_data called with data == NULL\n");
+    return false;
+  }
+
+  if (NULL == r) {
+    fprintf (stderr, "crypto_ec_sign_data called with r == NULL\n");
+    return false;
+  }
+
+  if (NULL == s) {
+    fprintf (stderr, "crypto_ec_sign_data called with s == NULL\n");
+    return false;
+  }
+
+  if (NULL == privkey_file) {
+    fprintf (stderr, "crypto_ec_sign_data called with privkey_file == NULL\n");
     return false;
   }
 
@@ -144,8 +213,18 @@ crypto_lms_verify_signature (
   size_t               pubkey_len
   )
 {
-  if ((NULL == msg) || (NULL == signature) || (NULL == public_key)) {
-    fprintf (stderr, "crypto_lms_verify_signature called with NULL parameter\n");
+  if (NULL == msg) {
+    fprintf (stderr, "crypto_lms_verify_signature called with msg == NULL\n");
+    return false;
+  }
+
+  if (NULL == signature) {
+    fprintf (stderr, "crypto_lms_verify_signature called with signature == NULL\n");
+    return false;
+  }
+
+  if (NULL == public_key) {
+    fprintf (stderr, "crypto_lms_verify_signature called with public_key == NULL\n");
     return false;
   }
 
@@ -163,8 +242,23 @@ crypto_lms_sign_data (
   size_t               aux_len
   )
 {
-  if ((NULL == msg) || (NULL == signature) || (NULL == sig_len) || (NULL == privkey_file)) {
-    fprintf (stderr, "crypto_lms_sign_data called with NULL parameter\n");
+  if (NULL == msg) {
+    fprintf (stderr, "crypto_lms_sign_data called with msg == NULL\n");
+    return crypto_nullptr_error;
+  }
+
+  if (NULL == signature) {
+    fprintf (stderr, "crypto_lms_sign_data called with signature == NULL\n");
+    return crypto_nullptr_error;
+  }
+
+  if (NULL == sig_len) {
+    fprintf (stderr, "crypto_lms_sign_data called with sig_len == NULL\n");
+    return crypto_nullptr_error;
+  }
+
+  if (NULL == privkey_file) {
+    fprintf (stderr, "crypto_lms_sign_data called with privkey_file == NULL\n");
     return crypto_nullptr_error;
   }
 
@@ -181,8 +275,18 @@ crypto_mldsa_verify_signature (
   size_t               pubkey_len
   )
 {
-  if ((NULL == msg) || (NULL == signature) || (NULL == public_key)) {
-    fprintf (stderr, "crypto_mldsa_verify_signature called with NULL parameter\n");
+  if (NULL == msg) {
+    fprintf (stderr, "crypto_mldsa_verify_signature called with msg == NULL\n");
+    return false;
+  }
+
+  if (NULL == signature) {
+    fprintf (stderr, "crypto_mldsa_verify_signature called with signature == NULL\n");
+    return false;
+  }
+
+  if (NULL == public_key) {
+    fprintf (stderr, "crypto_mldsa_verify_signature called with public_key == NULL\n");
     return false;
   }
 
@@ -198,8 +302,23 @@ crypto_mldsa_sign_data (
   const char           *privkey_file
   )
 {
-  if ((NULL == msg) || (NULL == signature) || (NULL == sig_len) || (NULL == privkey_file)) {
-    fprintf (stderr, "crypto_mldsa_sign_data called with NULL parameter\n");
+  if (NULL == msg) {
+    fprintf (stderr, "crypto_mldsa_sign_data called with msg == NULL\n");
+    return crypto_nullptr_error;
+  }
+
+  if (NULL == signature) {
+    fprintf (stderr, "crypto_mldsa_sign_data called with signature == NULL\n");
+    return crypto_nullptr_error;
+  }
+
+  if (NULL == sig_len) {
+    fprintf (stderr, "crypto_mldsa_sign_data called with sig_len == NULL\n");
+    return crypto_nullptr_error;
+  }
+
+  if (NULL == privkey_file) {
+    fprintf (stderr, "crypto_mldsa_sign_data called with privkey_file == NULL\n");
     return crypto_nullptr_error;
   }
 
@@ -213,8 +332,13 @@ crypto_read_mldsa_pubkey (
   size_t         pubkey_size
   )
 {
-  if ((NULL == file) || (NULL == pubkey)) {
-    fprintf (stderr, "crypto_read_mldsa_pubkey called with NULL parameter\n");
+  if (NULL == file) {
+    fprintf (stderr, "crypto_read_mldsa_pubkey called with file == NULL\n");
+    return false;
+  }
+
+  if (NULL == pubkey) {
+    fprintf (stderr, "crypto_read_mldsa_pubkey called with pubkey == NULL\n");
     return false;
   }
 

@@ -59,10 +59,10 @@ crypto_hash_buffer_internal (
   uint16_t             hash_alg
   )
 {
-  IppStatus             status = ippStsNoOperation;
-  int                   ctx_size;
-  IppsHashState_rmf     *p_ctx;
-  const IppsHashMethod  *method;
+  IppStatus             status  = ippStsNoOperation;
+  int                   ctx_size = 0;
+  IppsHashState_rmf     *p_ctx   = NULL;
+  const IppsHashMethod  *method  = NULL;
 
   /* Validate input parameters */
   if ((buf == NULL) || (hash == NULL)) {
@@ -3514,10 +3514,6 @@ cleanup:
  * Keys are stored as PEM or DER files (PKCS#8 / SubjectPublicKeyInfo),
  * generated via: openssl genpkey -algorithm ML-DSA-87
  */
-
-#define MLDSA87_PUBKEY_SIZE     2592
-#define MLDSA87_PRIVKEY_SIZE    4896
-#define MLDSA87_SIGNATURE_SIZE  4627
 
 /* ML-DSA-87 OID: 2.16.840.1.101.3.4.3.19 */
 static const uint8_t  mldsa87_oid[] = {
