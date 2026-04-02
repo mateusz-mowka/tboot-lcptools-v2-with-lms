@@ -81,11 +81,7 @@ bool hash_buffer(const unsigned char* buf, size_t size, tb_hash_t *hash,
     EVP_MD_CTX *ctx = EVP_MD_CTX_create();
     const EVP_MD *md;
 
-    if ( hash_alg == TB_HALG_SHA1 || hash_alg == TB_HALG_SHA1_LG ) {
-        md = EVP_sha1();
-        
-    }
-    else if (hash_alg == TB_HALG_SHA256) {
+    if (hash_alg == TB_HALG_SHA256) {
         md = EVP_sha256();
     }
     else if (hash_alg == TB_HALG_SHA384) {
@@ -102,40 +98,9 @@ bool hash_buffer(const unsigned char* buf, size_t size, tb_hash_t *hash,
     
     EVP_DigestInit(ctx, md);
     EVP_DigestUpdate(ctx, buf, size);
-    EVP_DigestFinal(ctx, hash->sha1, NULL);
+    EVP_DigestFinal(ctx, (unsigned char *)hash, NULL);
     EVP_MD_CTX_destroy(ctx);
     return true;
-}
-
-/*
- * extend_hash
- *
- * perform "extend" of two hashes (i.e. hash1 = SHA(hash1 || hash2)
- *
- */
-bool extend_hash(tb_hash_t *hash1, const tb_hash_t *hash2, uint16_t hash_alg)
-{
-    uint8_t buf[2*sizeof(tb_hash_t)];
-
-    if ( hash1 == NULL || hash2 == NULL )
-        return false;
-
-    if ( hash_alg == TB_HALG_SHA1 ) {
-        EVP_MD_CTX *ctx = EVP_MD_CTX_create();
-        const EVP_MD *md;
-
-        memcpy_s(buf, sizeof(buf), &(hash1->sha1), sizeof(hash1->sha1));
-        memcpy_s(buf + sizeof(hash1->sha1), sizeof(buf) - sizeof(hash1->sha1),
-                 &(hash2->sha1), sizeof(hash1->sha1));
-        md = EVP_sha1();
-        EVP_DigestInit(ctx, md);
-        EVP_DigestUpdate(ctx, buf, 2*sizeof(hash1->sha1));
-        EVP_DigestFinal(ctx, hash1->sha1, NULL);
-        EVP_MD_CTX_destroy(ctx);
-        return true;
-    }
-    else
-        return false;
 }
 
 void print_hash(const tb_hash_t *hash, uint16_t hash_alg)
@@ -143,15 +108,7 @@ void print_hash(const tb_hash_t *hash, uint16_t hash_alg)
     if ( hash == NULL )
         return;
 
-    if ( hash_alg == TB_HALG_SHA1 ) {
-        for ( unsigned int i = 0; i < SHA1_LENGTH; i++ ) {
-            printf("%02x", hash->sha1[i]);
-            if ( i < SHA1_LENGTH-1 )
-                printf(" ");
-        }
-        printf("\n");
-    }
-    else if ( hash_alg == TB_HALG_SHA256 ) {
+    if ( hash_alg == TB_HALG_SHA256 ) {
         for ( unsigned int i = 0; i < SHA256_LENGTH; i++ ) {
             printf("%02x", hash->sha256[i]);
             if ( i < SHA256_LENGTH-1 )
@@ -208,20 +165,6 @@ bool import_hash(const char *string, tb_hash_t *hash, uint16_t alg)
 
     return true;
 }
-
-void copy_hash(tb_hash_t *dest_hash, const tb_hash_t *src_hash,
-               uint16_t hash_alg)
-{
-    if ( dest_hash == NULL || src_hash == NULL )
-        return;
-
-    if ( hash_alg == TB_HALG_SHA1 )
-        memcpy_s(dest_hash, SHA1_LENGTH, src_hash, SHA1_LENGTH);
-    else
-        return;
-}
-
-
 
 /*
  * Local variables:

@@ -60,7 +60,7 @@
 #include "pollist2.h"
 #include "pollist2_1.h"
 #include "polelt.h"
-#include "pollist1.h"
+
 
 //F-ction prototypes:
 bool verify_tpm20_ec_sig(const lcp_policy_list_t2 *pollist); //Does both ecdsa and sm2
@@ -94,37 +94,7 @@ lcp_list_t *read_policy_list_file(const char *file, bool fail_ok, bool *no_sigbl
     }
     uint16_t  version;
     memcpy_s((void*)&version,sizeof(version),(const void *)pollist,sizeof(uint16_t));
-    if ( MAJOR_VER(version) == 1 ){
-        LOG("read_policy_list_file: version=0x0100\n");
-        bool no_sigblock;
-        if ( !verify_tpm12_policy_list(&(pollist->tpm12_policy_list), len, &no_sigblock, true) ) {
-            free(pollist);
-            return NULL;
-        }
-
-        if ( !*no_sigblock_ok && no_sigblock ) {
-            ERROR("Error: policy list does not have sig_block\n");
-            free(pollist);
-            return NULL;
-        }
-
-        /* if there is no sig_block then create one w/ all 0s so that
-           get_policy_list_size() will work correctly; it will be stripped
-           when writing it back */
-        lcp_signature_t *sig = get_tpm12_signature(&(pollist->tpm12_policy_list));
-        if ( sig != NULL && no_sigblock ) {
-            LOG("input file has no sig_block\n");
-            size_t keysize = sig->pubkey_size;
-            pollist = realloc(pollist, len + keysize);
-            if ( pollist == NULL )
-                return NULL;
-            memset_s((void *)pollist + len, keysize, 0);
-        }
-        *no_sigblock_ok = no_sigblock;
-        LOG("read policy list file succeed!\n");
-        return pollist;
-    }
-    else if ( MAJOR_VER(version) == 2 ) {
+    if ( MAJOR_VER(version) == 2 ) {
         LOG("read_policy_list_file: version=0x0200\n");
         bool no_sigblock;
         if ( !verify_tpm20_policy_list(&(pollist->tpm20_policy_list),

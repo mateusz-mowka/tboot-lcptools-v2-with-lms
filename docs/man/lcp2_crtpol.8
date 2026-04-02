@@ -59,7 +59,7 @@ Use brief format for output.
 Use verbose format for output.
 .TP
 .BI --alg\  alg
-Specify algorithm for the LCP. Supported values are sha1, sha256 or sm3.
+Specify algorithm for the LCP. Supported values are sha256 or sm3.
 .TP
 .BI --type\  <any|list>
 Specify type of the policy. If --type is list, specify a comma-separated list 
@@ -84,23 +84,23 @@ Specify output file for the policy.
 Specify output file for the policy data.
 .TP
 .BI --mask\  mask
-Specify the policy hash algorithm mask. Supported values are sha1, sha256, sha384, sha512 or sm3. 
-This option can be used multiple times to specify several allowed algorithms. Policy 
+Specify the policy hash algorithm mask. Supported values are sha256, sha384, sha512 or sm3.
+This option can be used multiple times to specify several allowed algorithms. Policy
 versions 2.0-2.4 only support SHA1.
 .TP
 .BI --auxalg\  alg
-Specify the AUX hash algorithm. Supported values are sha1, sha256, sha384, sha512 or sm3. 
-You can also specify a raw value in hex (the value must start with "0x"). This option 
+Specify the AUX hash algorithm. Supported values are  sha256, sha384, sha512 or sm3.
+You can also specify a raw value in hex (the value must start with "0x"). This option
 is only valid for policy versions 3.0 or 3.1.
 .TP
 .BI --sign\ alg
-Specify the allowed LCP signature algorithm mask. Supported values are: 
-rsa-2048-sha1, rsa-2048-sha256, rsa-3072-sha256, rsa-3072-sha384, ecdsa-p256, 
-ecdsa-p384 sm3. This option can be used multiple times to specify several allowed 
+Specify the allowed LCP signature algorithm mask. Supported values are:
+rsa-2048-sha256, rsa-3072-sha256, rsa-3072-sha384, ecdsa-p256,
+ecdsa-p384 sm3. This option can be used multiple times to specify several allowed
 algorithms.
 .TP
 .BI --polver\  version
-Specify LCP policy version. Supported values are 2.0-2.4 (for TPM 1.2) and 3.0-3.2 
+Specify LCP policy version. Supported values are 3.0-3.2
 (for TPM 2.0). If not specified, this option defaults to 3.0.
 .SH EXAMPLES
 .EX

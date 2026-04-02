@@ -54,8 +54,8 @@
 static uint8_t sinit_min_version;
 static unsigned int nr_hashes;
 static tb_hash_t hashes[MAX_HASHES];
-static char alg_name[32] = "sha1";
-static uint16_t alg_type = TPM_ALG_SHA1;
+static char alg_name[32] = "sha256";
+static uint16_t alg_type = TPM_ALG_SHA256;
 
 static bool parse_mle_line(const char *line)
 {
@@ -148,7 +148,7 @@ static polelt_plugin_t plugin = {
     "      mle2\n"
     "        Creates current LCP_ELEMENT_MLE2. Supports algorithm agility.\n"
     "        [--minver <ver>]            minimum version of SINIT\n"
-    "        [--alg <sha1|sha256|sha384|sha512>]    hash alg of element\n"
+    "        [--alg <sha256|sha384|sha512>]    hash alg of element\n"
     "        <FILE1> [FILE2] ...         one or more files containing MLE\n"
     "                                    hash(es); each file can contain\n"
     "                                    multiple hashes\n",

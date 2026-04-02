@@ -345,12 +345,7 @@ static bool unwrap_lcp_policy(void)
         //Read list version
         tb_memcpy((void*)&list_ver, (const void *)pollist, sizeof(uint16_t));
         for ( int i = 0; i < poldata->num_lists; i++ ) {
-            if (MAJOR_VER(list_ver) == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION)) {
-                elt = pollist->tpm12_policy_list.policy_elements;
-                elts_size = 0;
-                all_elt_size = pollist->tpm12_policy_list.policy_elements_size;
-            }
-            else if (MAJOR_VER(list_ver) ==
+            if (MAJOR_VER(list_ver) ==
                         MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION)) {
                 elt = pollist->tpm20_policy_list.policy_elements;
                 elts_size = 0;
@@ -391,11 +386,7 @@ static bool unwrap_lcp_policy(void)
                 elt = (void *)elt + elt->size;
             }
             //If necessary go to next list.
-            if ( MAJOR_VER(list_ver) == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION)) {
-                pollist = (void *)pollist +
-                       get_tpm12_policy_list_size((lcp_policy_list_t *)pollist);
-            }
-            else if ( MAJOR_VER(list_ver) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION)) {
+            if ( MAJOR_VER(list_ver) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION)) {
                 pollist = (void *)pollist + 
                       get_tpm20_policy_list_size((lcp_policy_list_t2 *)pollist);
             }

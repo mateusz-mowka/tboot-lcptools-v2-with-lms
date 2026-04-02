@@ -53,8 +53,8 @@
 
 static unsigned int nr_hashes;
 static tb_hash_t hashes[MAX_HASHES];
-static char alg_name[32] = "sha1";
-static uint16_t alg_type = TPM_ALG_SHA1;
+static char alg_name[32] = "sha256";
+static uint16_t alg_type = TPM_ALG_SHA256;
 
 static bool parse_stm_line(const char *line)
 {
@@ -137,7 +137,7 @@ static polelt_plugin_t plugin = {
     "stm",
     opts,
     "      stm\n"
-    "        [--alg <sha1|sha256|sha384|sha512>]    hash alg of element\n"
+    "        [--alg <sha256|sha384|sha512>]    hash alg of element\n"
     "        <FILE1> [FILE2] ...         one or more files containing STM\n"
     "                                    hash(es); each file can contain\n"
     "                                    multiple hashes\n",

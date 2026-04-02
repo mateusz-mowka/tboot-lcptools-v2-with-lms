@@ -63,7 +63,7 @@ static char help[MAX_HELP_TEXT] =
     "Create an Intel(R) TXT policy mlehash.\n"
     "--create\n"
     "       --cmdline <cmdline> cmdline\n"
-    "       --alg <sha1|sha256|sha384|sha512> hashalg   "
+    "       --alg <sha256|sha384|sha512> hashalg   "
     "--help                 print out help message\n"
     "--verbose              display progress indications.\n"
     "--version              show tool version.\n";

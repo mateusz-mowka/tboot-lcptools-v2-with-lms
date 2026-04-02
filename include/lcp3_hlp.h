@@ -43,31 +43,6 @@ static inline lcp_signature_t *get_tpm12_signature(const lcp_policy_list_t *poll
                                pollist->policy_elements_size);
 }
 
-static inline size_t get_tpm12_signature_size(const lcp_signature_t *sig)
-{
-    if ( sig == NULL )
-        return 0;
-
-    return offsetof(lcp_signature_t, pubkey_value) + 2*sig->pubkey_size;
-}
-
-static inline size_t get_tpm12_policy_list_size(const lcp_policy_list_t *pollist)
-{
-    size_t size = 0;
-
-    if ( pollist == NULL )
-        return 0;
-
-    size = offsetof(lcp_policy_list_t, policy_elements) +
-           pollist->policy_elements_size;
-
-    /* add sig size */
-    if ( pollist->sig_alg == LCP_POLSALG_RSA_PKCS_15 )
-        size += get_tpm12_signature_size(get_tpm12_signature(pollist));
-
-    return size;
-}
-
 static inline lcp_signature_t2 *get_tpm20_signature(const lcp_policy_list_t2 *pollist)
 {
     if ( pollist == NULL || pollist->sig_alg == TPM_ALG_NULL )

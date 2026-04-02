@@ -59,7 +59,6 @@
 #include "lcputils.h"
 #include "pollist2.h"
 #include "pollist2_1.h"
-#include "pollist1.h"
 
 #define TOOL_VER_MAJOR 0x1
 #define TOOL_VER_MINOR 0x1
@@ -68,8 +67,7 @@ static const char help[] =
     "Usage: lcp2_crtpol <COMMAND> [OPTION]\n"
     "Create an Intel(R) TXT policy (and policy data file)\n\n"
     "--create\n"
-    "        --alg <sha1|sha256|sha384|sm3>    hash algorithm for the policy\n"
-    "                                   if polver < 3 - alg is always sha1\n"
+    "        --alg <sha256|sha384|sm3>  hash algorithm for the policy\n"
     "        --type <any|list>          type\n"
     "        [--minver <ver>]           SINITMinVersion\n"
     "        [--max_sinit_min]          MaxSINITMinVersion\n"
@@ -79,17 +77,16 @@ static const char help[] =
     "        --pol <FILE>               policy file\n"
     "        [--data <FILE>]            policy data file\n"
     "        [FILE]...                  policy list files\n"
-    "        [--mask] <sha1|sha256|sha384|sm3>\n"
+    "        [--mask] <sha256|sha384|sm3>\n"
     "                                   Allowed policy hash algorithm(s)\n"
     "                                   Can be used more than once\n"
     "        [--auxalg]                 AUX allowed hash algorithm(s)\n"
     "                                   Not applicable for current LCP_POLICY v. 3.2\n"
-    "        --sign                     <rsa-2048-sha1|rsa-2048-sha256|rsa-3072-sha256|\n"
+    "        --sign                     <rsa-2048-sha256|rsa-3072-sha256|\n"
     "                                   rsa-3072-sha384|ecdsa-p256|ecdsa-p384|sm2>\n"
     "                                   LCP allowed signing algorithm(s)\n"
     "                                   Can be used more than once\n"
     "        [--polver]                 LCP version:\n"
-    "                                     TPM1.2: 2.0, 2.1, 2.2, 2.3, 2.4 \n"
     "                                     TPM2.0: 3.0, 3.1, 3.2>\n"
     "                                   If not set policy ver will be 3.0\n"
     "--show\n"
@@ -158,52 +155,10 @@ uint8_t        max_sinit_min_version = 0xFF;
 uint8_t        max_biosac_min_version = 0;
 
 //Prototypes:
-static int create_legacy(void);
 static lcp_policy_data_t2 *create_poldata(void);
 static int create(void);
 static int show(void);
 
-int create_legacy(void)
-/*Attempt to create legacy policy for TPM 1.2*/
-{
-    lcp_policy_data_t2 *poldata = NULL;
-    lcp_policy_t *pol = NULL;
-
-    size_t policy_size = offsetof(lcp_policy_t, policy_hash) + SHA1_DIGEST_SIZE; //54 bytes
-    LOG("[create_legacy]\n");
-    pol = malloc(policy_size);
-    if (pol == NULL) {
-        ERROR("Error: failed to allocate policy.\n");
-    }
-    memset_s(pol, policy_size, 0x00);
-    pol->version = pol_ver;
-    pol->hash_alg = LCP_POLHALG_SHA1; //Legacy value for TPM 1.2
-    pol->policy_type = pol_type;
-    pol->sinit_min_version = sinit_min_ver;
-    for ( unsigned int i = 0; i < nr_rev_ctrs; i++ )
-        pol->data_revocation_counters[i] = rev_ctrs[i];
-    pol->policy_control = policy_ctrl;
-    pol->max_sinit_min_version = max_sinit_min_version;
-    if (pol->policy_type == LCP_POLTYPE_LIST) {
-        poldata = create_poldata();
-        if (poldata == NULL) {
-            ERROR("Error: failed to create policy data.\n");
-            free(pol);
-            return 1;
-        }
-        calc_policy_data_hash(poldata, (lcp_hash_t2 *) &pol->policy_hash, pol->hash_alg);
-    }
-
-    bool ok;
-    ok = write_file(policy_file, pol, policy_size, 0);
-    if ( ok && pol->policy_type == LCP_POLTYPE_LIST )
-        ok = write_file(poldata_file, poldata, get_policy_data_size(poldata), 0);
-
-    free(pol);
-    if (poldata != NULL)
-        free(poldata);
-    return ok ? 0 : 1;
-}
 
 lcp_policy_data_t2 *create_poldata(void)
 {
@@ -244,17 +199,7 @@ lcp_policy_data_t2 *create_poldata(void)
             free(poldata);
             return NULL;
         }
-        if ( MAJOR_VER(version) == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION) ) {
-                pollist = read_policy_list_file(files[i], false, &no_sigblock_ok);
-                if ( pollist == NULL ) {
-                    free(poldata);
-                    return NULL;
-                }
-                poldata = add_tpm12_policy_list(poldata, (lcp_policy_list_t *)pollist);
-                free(pollist);
-                pollist = NULL;
-        }
-        else if( MAJOR_VER(version) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION) ) {
+        if( MAJOR_VER(version) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION) ) {
                 pollist = read_policy_list_file(files[i], false, &no_sigblock_ok);
                 if ( pollist == NULL ) {
                     free(poldata);
@@ -369,19 +314,7 @@ int create(void)
                     free(poldata);
                     return 1;
                 }
-                if ( MAJOR_VER(version) == 1 ) {
-                    pollist = read_policy_list_file(files[i], false, &no_sigblock_ok);
-                    if ( pollist == NULL ) {
-                        free(pol);
-                        free(poldata);
-                        return 1;
-                    }
-                    poldata = add_tpm12_policy_list(poldata,
-                                (lcp_policy_list_t *)pollist);
-                    free(pollist);
-                    pollist = NULL;
-                }
-                else if( MAJOR_VER(version) == 2 ) {
+                if( MAJOR_VER(version) == 2 ) {
                     pollist = read_policy_list_file(files[i], false, &no_sigblock_ok);
                     if ( pollist == NULL ) {
                         free(pol);
@@ -452,7 +385,6 @@ int show(void)
     void *data;
     const char *pol_file = "", *poldata_file = "";
     lcp_policy_t2 *pol = NULL;
-    lcp_policy_t *pol_legacy = NULL;
     lcp_policy_data_t2 *poldata = NULL;
     int err = 1;
 
@@ -468,11 +400,6 @@ int show(void)
         pol_len = len;
         pol_file = files[0];
     }
-    else if (verify_legacy_policy(data, len)) {
-        pol_legacy = data;
-        pol_len = len;
-        pol_file = files[0];
-    }
     else {
         poldata = (lcp_policy_data_t2 *)data;
         poldata_len = len;
@@ -483,7 +410,7 @@ int show(void)
         data = read_file(files[1], &len, false);
         if ( data == NULL )
             goto done;
-        if ( pol == NULL && pol_legacy == NULL ) {
+        if ( pol == NULL ) {
             pol = data;
             pol_len = len;
             pol_file = files[1];
@@ -500,11 +427,6 @@ int show(void)
         if ( verify_policy(pol, pol_len, false) )
             display_policy("    ", pol, brief);
     }
-    else {
-        DISPLAY("policy file: %s\n", pol_file);
-        if ( verify_legacy_policy(pol_legacy, pol_len) )
-            display_legacy_policy("    ", pol_legacy);
-    }
 
     if ( poldata != NULL ) {
         DISPLAY("\npolicy data file: %s\n", poldata_file);
@@ -512,8 +434,7 @@ int show(void)
             goto done;
         }
         display_policy_data("    ", poldata, brief);
-        if ( (pol && (pol->policy_type == LCP_POLTYPE_LIST)) ||
-             (pol_legacy && (pol_legacy->policy_type == LCP_POLTYPE_LIST)) ) {
+        if ( pol && (pol->policy_type == LCP_POLTYPE_LIST) ) {
             lcp_hash_t2 hash;
             int diff;
             if (pol != NULL) {
@@ -526,16 +447,6 @@ int show(void)
                     goto done;
                     }
                 }
-            else {
-                calc_policy_data_hash(poldata, &hash, pol_legacy->hash_alg);
-                if ( 0 == memcmp_s(&hash, sizeof(hash), &pol_legacy->policy_hash,
-                                SHA1_DIGEST_SIZE, &diff) && diff == 0 )
-                    DISPLAY("\npolicy data hash matches policy hash\n");
-                else {
-                    ERROR("\nError: policy data hash does not match policy hash\n");
-                    goto done;
-                }
-            }
         }
         else
             goto done;
@@ -546,15 +457,11 @@ done:
     if (pol) {
         free(pol);
     }
-        
-    if (pol_legacy) {
-        free(pol_legacy);
-    }
-        
+
     if (poldata) {
         free(poldata);
     }
-        
+
     return err;
 }
 
@@ -726,7 +633,7 @@ int main (int argc, char *argv[])
             return 1;
         }
         LOG("pol_ver & 0xFF00 is 0x%x\n", lcp_major_version);
-        if ( lcp_major_version == LCP_VER_2_0 ){
+        if ( lcp_major_version == LCP_VER_2_0 ) {
             if ( lcp_sign_alg_mask != SIGN_ALG_MASK_NULL) {
                 LOG("Info: Signature algorithm mask not defined for LCPv2, specified mask is ignored.\n");
             }
@@ -760,7 +667,8 @@ int main (int argc, char *argv[])
             return create();
         }
         else if (lcp_major_version == LCP_VER_2_0) {
-            return create_legacy();
+            ERROR("Error: LCP policy version 2.x (TPM 1.2/SHA-1) is no longer supported\n");
+            return 1;
         }
         else {
             ERROR("Error: policy must be version 3.x or 2.x\n");

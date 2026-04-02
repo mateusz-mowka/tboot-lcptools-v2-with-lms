@@ -214,12 +214,6 @@ bool parse_line_hashes(const char *line, tb_hash_t *hash, uint16_t alg)
     while ( *line != '\0' && *line != '\n' ) {
         char *next;
         switch (alg) {
-        case LCP_POLHALG_SHA1: //Legacy value for TPM 1.2
-            hash->sha1[i++] = (uint8_t)strtoul(line, &next, 16);
-            break;
-        case TPM_ALG_SHA1:
-            hash->sha1[i++] = (uint8_t)strtoul(line, &next, 16);
-            break;
         case TPM_ALG_SHA256:
             hash->sha256[i++] = (uint8_t)strtoul(line, &next, 16);
             break;
@@ -284,8 +278,6 @@ const char *hash_alg_to_str(uint16_t alg)
 {
     static char buf[32];
     switch(alg){
-    case TPM_ALG_SHA1:
-        return "TPM_ALG_SHA1";
     case TPM_ALG_SHA256:
         return "TPM_ALG_SHA256";
     case TPM_ALG_SHA384:
@@ -296,8 +288,6 @@ const char *hash_alg_to_str(uint16_t alg)
         return "TPM_ALG_SM3_256";
     case TPM_ALG_SM2:
         return "TPM_ALG_SM2";
-    case LCP_POLHALG_SHA1: //Legacy value for TPM 1.2
-        return "LCP_POLHALG_SHA1";
     default:
         snprintf_s_i(buf, sizeof(buf), "unknown (%u)", alg);
         return buf;
@@ -347,9 +337,7 @@ const char *sig_alg_to_str(uint16_t alg)
 
 uint16_t str_to_hash_alg(const char *str)
 {
-    if (strcmp(str,"sha1") == 0)
-        return TPM_ALG_SHA1;
-    else if (strcmp(str,"sha256") == 0)
+    if (strcmp(str,"sha256") == 0)
         return TPM_ALG_SHA256;
     else if (strcmp(str,"sha384") == 0)
         return TPM_ALG_SHA384;
@@ -363,9 +351,7 @@ uint16_t str_to_hash_alg(const char *str)
 
 uint16_t str_to_lcp_hash_mask(const char *str)
 {
-    if (strcmp(str,"sha1") == 0)
-        return TPM_ALG_MASK_SHA1;
-    else if (strcmp(str,"sha256") == 0)
+    if (strcmp(str,"sha256") == 0)
         return TPM_ALG_MASK_SHA256;
     else if (strcmp(str,"sha384") == 0)
         return TPM_ALG_MASK_SHA384;
@@ -401,15 +387,8 @@ uint16_t str_to_sig_alg(const char *str) {
 uint32_t str_to_sig_alg_mask(const char *str, const uint16_t version, size_t size)
 {
     uint16_t lcp_major_ver = version & 0xFF00;
-    if( lcp_major_ver == LCP_VER_2_0 ) {
-        //signature algorithm mask is undefined in LCPv2
-        return SIGN_ALG_MASK_NULL;
-    }
-    else if( lcp_major_ver == LCP_VER_3_0 ) {
-        if (strncmp(str, "rsa-2048-sha1", size) == 0) {
-            return SIGN_ALG_MASK_RSASSA_2048_SHA1;
-        }
-        else if (strncmp(str, "rsa-2048-sha256", size) == 0) {
+    if( lcp_major_ver == LCP_VER_3_0 ) {
+        if (strncmp(str, "rsa-2048-sha256", size) == 0) {
             return SIGN_ALG_MASK_RSASSA_2048_SHA256;
         }
         else if (strncmp(str, "rsa-3072-sha256", size) == 0) {
@@ -443,17 +422,7 @@ uint32_t str_to_sig_alg_mask(const char *str, const uint16_t version, size_t siz
 }
 uint16_t str_to_pol_ver(const char *str)
 {
-    if( strcmp(str,"2.0") == 0)
-       return LCP_VER_2_0;
-    else if ( strcmp(str,"2.1") == 0)
-        return LCP_VER_2_1;
-    else if ( strcmp(str,"2.2") == 0)
-        return LCP_VER_2_2;
-    else if ( strcmp(str,"2.3") == 0)
-        return LCP_VER_2_3;
-    else if ( strcmp(str,"2.4") == 0)
-        return LCP_VER_2_4;
-    else if ( strcmp(str,"3.0") == 0)
+    if ( strcmp(str,"3.0") == 0)
         return LCP_VER_3_0;
     else if ( strcmp(str,"3.1") == 0)
         return LCP_VER_3_1;
@@ -467,8 +436,6 @@ uint16_t convert_hash_alg_to_mask(uint16_t hash_alg)
 {
     LOG("convert_hash_alg_to_mask hash_alg = 0x%x\n", hash_alg);
     switch(hash_alg){
-    case TPM_ALG_SHA1:
-        return TPM_ALG_MASK_SHA1;
     case TPM_ALG_SHA256:
         return TPM_ALG_MASK_SHA256;
     case TPM_ALG_SHA384:
@@ -486,8 +453,6 @@ uint16_t convert_hash_alg_to_mask(uint16_t hash_alg)
 size_t get_lcp_hash_size(uint16_t hash_alg)
 {
     switch(hash_alg){
-    case TPM_ALG_SHA1:
-        return SHA1_DIGEST_SIZE;
     case TPM_ALG_SHA256:
         return SHA256_DIGEST_SIZE;
     case TPM_ALG_SHA384:
@@ -496,8 +461,6 @@ size_t get_lcp_hash_size(uint16_t hash_alg)
         return SHA512_DIGEST_SIZE;
     case TPM_ALG_SM3_256:
         return SM3_256_DIGEST_SIZE;
-    case LCP_POLHALG_SHA1: //Legacy value for TPM 1.2
-        return SHA1_DIGEST_SIZE;
     default:
         return 0;
     }
@@ -705,9 +668,7 @@ Out: true/false on verification success or failure
         goto OPENSSL_ERROR;
     }
 
-    if ( hashAlg == TPM_ALG_SHA1 ) {
-        status = EVP_PKEY_CTX_set_signature_md(evp_context, EVP_sha1());
-    } else if ( hashAlg == TPM_ALG_SHA256 ) {
+    if ( hashAlg == TPM_ALG_SHA256 ) {
         status = EVP_PKEY_CTX_set_signature_md(evp_context, EVP_sha256());
     } else if ( hashAlg == TPM_ALG_SHA384 ) {
         status = EVP_PKEY_CTX_set_signature_md(evp_context, EVP_sha384());
@@ -1316,12 +1277,6 @@ uint16_t sig_alg, uint16_t hash_alg, EVP_PKEY_CTX *private_key_context)
         }
     }
     switch (hash_alg) {
-        case LCP_POLHALG_SHA1: //Legacy value for TPM 1.2
-            evp_hash_alg = EVP_sha1();
-            break;
-        case TPM_ALG_SHA1:
-            evp_hash_alg = EVP_sha1();
-            break;
         case TPM_ALG_SHA256:
             evp_hash_alg = EVP_sha256();
             break;
@@ -1407,7 +1362,7 @@ http://mpqs.free.fr/h11300-pkcs-1v2-2-rsa-cryptography-standard-wp_EMC_Corporati
     //Read oid size:
     oid_size = *data;
     if (oid_size == 0x05)
-        return TPM_ALG_SHA1; //Only Sha1 has this size
+        return TPM_ALG_NULL;
     //Move to the last byte to see what alg is used
     data += oid_size;
     switch (*data)

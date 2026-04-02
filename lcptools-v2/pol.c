@@ -56,38 +56,6 @@ size_t get_policy_size(const lcp_policy_t2 *pol)
            get_lcp_hash_size(pol->hash_alg);
 }
 
-bool verify_legacy_policy(const lcp_policy_t *pol, size_t size)
-{
-    LOG("[verify_legacy_policy]");
-    size_t expected_size = offsetof(lcp_policy_t, policy_hash) + SHA1_DIGEST_SIZE;
-    if (size != expected_size) {
-        ERROR("Error: incorrect policy size. Expected %d.\n", expected_size);
-        return false;
-    }
-
-    if (pol->version > LCP_VER_2_4 || pol->version < LCP_VER_2_0) {
-        ERROR("Error: policy version incorrect.\n");
-        return false;
-    }
-
-    if (pol->hash_alg != LCP_POLHALG_SHA1) { //Legacy value for TPM 1.2
-        ERROR("Error: policy hash alg incorrect.\n");
-        return false;
-    }
-
-    if (pol->policy_type != LCP_POLTYPE_ANY && pol->policy_type != LCP_POLTYPE_LIST) {
-        ERROR("Error: policy type incorrect.\n");
-        return false;
-    }
-
-    if ( pol->reserved1 != 0 || pol->reserved2 != 0 || 
-         pol->reserved3 != 0 || pol->reserved4 != 0 ) {
-             ERROR("Error: one of reserved fields not 0.\n");
-             return false;
-    }
-    LOG("verify policy succeed!\n");
-    return true;
-}
 
 bool verify_policy(const lcp_policy_t2 *pol, size_t size, bool silent)
 {
@@ -123,28 +91,6 @@ bool verify_policy(const lcp_policy_t2 *pol, size_t size, bool silent)
     }
     LOG("verify policy succeed!\n");
     return true;
-}
-
-void display_legacy_policy(const char *prefix, const lcp_policy_t *pol)
-{
-    if (pol == NULL) {
-        return;
-    }
-    DISPLAY("%s version: 0x%x\n", prefix, pol->version);
-    DISPLAY("%s hash_alg: 0x%x (%s)\n", prefix, pol->hash_alg, hash_alg_to_str(pol->hash_alg));
-    DISPLAY("%s policy_type: %s\n", prefix, policy_type_to_str(pol->policy_type));
-    DISPLAY("%s sinit_min_version: 0x%x\n", prefix, pol->sinit_min_version);
-    DISPLAY("%s data_revocation_counters: ", prefix);
-    for ( unsigned int i = 0; i <  LCP_MAX_LISTS; i++ )
-        DISPLAY("%u, ", pol->data_revocation_counters[i]);
-    DISPLAY("\n");
-    DISPLAY("%s policy_control: 0x%x\n", prefix, pol->policy_control);
-    DISPLAY("%s max_sinit_min_ver: 0x%x\n", prefix, pol->max_sinit_min_version);
-    if (pol->version < LCP_VER_2_4) {
-        DISPLAY("%s max_biosac_min_ver: 0x%x\n", prefix, pol->reserved2);
-    }
-    DISPLAY("%s \n ", prefix);
-    print_hex(prefix, &pol->policy_hash, SHA1_DIGEST_SIZE);
 }
 
 void display_policy(const char *prefix, const lcp_policy_t2 *pol, bool brief)
