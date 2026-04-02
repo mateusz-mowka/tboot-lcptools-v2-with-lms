@@ -1432,14 +1432,14 @@ Out:
         DISPLAY ("%s KeySize: 0x%x (%d bytes)\n", prefix,
                         sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize,
                         sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize);
+        DISPLAY ("%s Rho (%d bytes):\n", prefix, MLDSA87_RHO_SIZE);
         print_hex(new_prefix, (const void *)
-           sig->KeyAndSignature.MldsaKeyAndSignature.Key.PubKey,
-           sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize > 64 ? 64 :
-           sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize);
-        if (sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize > 64) {
-            DISPLAY("%s ... (truncated, total %d bytes)\n", prefix,
-                    sig->KeyAndSignature.MldsaKeyAndSignature.Key.KeySize);
-        }
+           sig->KeyAndSignature.MldsaKeyAndSignature.Key.Rho, MLDSA87_RHO_SIZE);
+        DISPLAY ("%s T1 (%d bytes):\n", prefix, MLDSA87_T1_SIZE);
+        print_hex(new_prefix, (const void *)
+           sig->KeyAndSignature.MldsaKeyAndSignature.Key.T1,
+           MLDSA87_T1_SIZE > 64 ? 64 : MLDSA87_T1_SIZE);
+        DISPLAY("%s ... (truncated, total %d bytes)\n", prefix, MLDSA87_T1_SIZE);
         DISPLAY("End of MLDSA_PUBLIC_KEY\n");
         DISPLAY (
             "%s SigScheme: 0x%x (%s)\n",
@@ -1453,14 +1453,19 @@ Out:
         DISPLAY ("%s KeySize: 0x%x (%d bytes)\n", prefix,
                             sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize,
                             sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize);
+        DISPLAY ("%s CommitHash (%d bytes):\n", prefix, MLDSA87_COMMIT_HASH_SIZE);
         print_hex(new_prefix, (const void *)
-           sig->KeyAndSignature.MldsaKeyAndSignature.Signature.Signature,
-           sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize > 64 ? 64 :
-           sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize);
-        if (sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize > 64) {
-            DISPLAY("%s ... (truncated, total %d bytes)\n", prefix,
-                    sig->KeyAndSignature.MldsaKeyAndSignature.Signature.KeySize);
-        }
+           sig->KeyAndSignature.MldsaKeyAndSignature.Signature.CommitHash,
+           MLDSA87_COMMIT_HASH_SIZE);
+        DISPLAY ("%s RespVector (%d bytes):\n", prefix, MLDSA87_RESP_VECTOR_SIZE);
+        print_hex(new_prefix, (const void *)
+           sig->KeyAndSignature.MldsaKeyAndSignature.Signature.RespVector,
+           MLDSA87_RESP_VECTOR_SIZE > 64 ? 64 : MLDSA87_RESP_VECTOR_SIZE);
+        DISPLAY("%s ... (truncated, total %d bytes)\n", prefix, MLDSA87_RESP_VECTOR_SIZE);
+        DISPLAY ("%s HintVector (%d bytes):\n", prefix, MLDSA87_HINT_VECTOR_SIZE);
+        print_hex(new_prefix, (const void *)
+           sig->KeyAndSignature.MldsaKeyAndSignature.Signature.HintVector,
+           MLDSA87_HINT_VECTOR_SIZE);
         DISPLAY("End of MLDSA_SIGNATURE\n");
         break;
     default:

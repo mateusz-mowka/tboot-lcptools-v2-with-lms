@@ -456,16 +456,38 @@ typedef struct __packed {
 #define MLDSA87_PRIVKEY_SIZE  4896
 #define MLDSA87_SIGNATURE_SIZE 4627
 
+/* ML-DSA-87 public key sub-field sizes (FIPS 204 Table 1) */
+#define MLDSA87_RHO_SIZE           32   /* Seed used to generate matrix A */
+#define MLDSA87_T1_SIZE          2560   /* High-order bits of polynomial vector t */
+
+/* ML-DSA-87 signature sub-field sizes (FIPS 204 Algorithm 3) */
+#define MLDSA87_COMMIT_HASH_SIZE   64   /* Commitment hash (c_tilde) */
+#define MLDSA87_RESP_VECTOR_SIZE 4480   /* Response vector of l polynomials (z) */
+#define MLDSA87_HINT_VECTOR_SIZE   83   /* Hint vector (h) */
+
 typedef struct __packed {
     uint8_t  Version;
     uint16_t KeySize; /* In bytes: MLDSA87_PUBKEY_SIZE = 2592 */
-    uint8_t  PubKey[MLDSA87_PUBKEY_SIZE];
+    union __packed {
+        uint8_t  PubKey[MLDSA87_PUBKEY_SIZE]; /* Opaque access */
+        struct __packed {
+            uint8_t  Rho[MLDSA87_RHO_SIZE];   /* 32-byte seed for matrix A */
+            uint8_t  T1[MLDSA87_T1_SIZE];      /* High-order bits of vector t */
+        };
+    };
 } mldsa_public_key;
 
 typedef struct __packed {
     uint8_t  Version;
     uint16_t KeySize; /* In bytes: MLDSA87_SIGNATURE_SIZE = 4627 */
-    uint8_t  Signature[MLDSA87_SIGNATURE_SIZE];
+    union __packed {
+        uint8_t  Signature[MLDSA87_SIGNATURE_SIZE]; /* Opaque access */
+        struct __packed {
+            uint8_t  CommitHash[MLDSA87_COMMIT_HASH_SIZE];   /* Commitment hash (c_tilde) */
+            uint8_t  RespVector[MLDSA87_RESP_VECTOR_SIZE];   /* Response vector (z) */
+            uint8_t  HintVector[MLDSA87_HINT_VECTOR_SIZE];   /* Hint vector (h) */
+        };
+    };
 } mldsa_signature;
 
 typedef struct __packed {
