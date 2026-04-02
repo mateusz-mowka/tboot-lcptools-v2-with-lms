@@ -149,17 +149,15 @@ def run_tool(backend: str, tool: str, *args: str,
 #  Key filename helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Map key_format → file extension for ML-DSA keys
-_MLDSA_PUB_EXT = {"pem": ".pem", "der": ".der", "raw": ".bin"}
-_MLDSA_PRIV_EXT = {"pem": ".pem", "der": ".der", "raw": ".bin"}
+# Map key_format → file extension for public and private keys
+_PUB_EXT = {"pem": ".pem", "der": ".der", "raw": ".bin"}
+_PRIV_EXT = {"pem": ".pem", "der": ".der", "raw": ".bin"}
 
 
 def key_pub_file(name: str, key_type: str, key_format: str = "pem") -> Path:
     """Return the public key file path for a given key name and type."""
-    if key_type in ("rsa", "ec"):
-        return KEY_DIR / f"{name}_pub.pem"
-    if key_type == "mldsa":
-        ext = _MLDSA_PUB_EXT.get(key_format, ".pem")
+    if key_type in ("rsa", "ec", "mldsa"):
+        ext = _PUB_EXT.get(key_format, ".pem")
         return KEY_DIR / f"{name}_pub{ext}"
     if key_type == "lms":
         return KEY_DIR / f"{name}.pub"
@@ -168,10 +166,8 @@ def key_pub_file(name: str, key_type: str, key_format: str = "pem") -> Path:
 
 def key_priv_file(name: str, key_type: str, key_format: str = "pem") -> Path:
     """Return the private key file path for a given key name and type."""
-    if key_type in ("rsa", "ec"):
-        return KEY_DIR / f"{name}_priv.pem"
-    if key_type == "mldsa":
-        ext = _MLDSA_PRIV_EXT.get(key_format, ".pem")
+    if key_type in ("rsa", "ec", "mldsa"):
+        ext = _PRIV_EXT.get(key_format, ".pem")
         return KEY_DIR / f"{name}_priv{ext}"
     if key_type == "lms":
         return KEY_DIR / f"{name}.prv"
@@ -305,6 +301,52 @@ def _extract_raw_mldsa_key(der_path: str, raw_path: str, raw_size: int):
     Path(raw_path).write_bytes(data[-raw_size:])
 
 
+def _extract_raw_rsa_pubkey(pem_priv: str, raw_pub_path: str):
+    """Extract raw RSA modulus (big-endian) from a PEM private key file."""
+    result = subprocess.run(
+        ["openssl", "rsa", "-in", pem_priv, "-pubout", "-modulus", "-noout"],
+        capture_output=True, text=True, check=True,
+    )
+    hex_str = result.stdout.strip().split("=")[1]
+    modulus_bytes = bytes.fromhex(hex_str)
+    Path(raw_pub_path).write_bytes(modulus_bytes)
+
+
+def _extract_raw_ec_pubkey(pem_priv: str, raw_pub_path: str, curve: str):
+    """Extract raw EC public key as qx_LE || qy_LE from PEM private key.
+
+    The crypto backend expects binary EC public keys as two concatenated
+    coordinates in little-endian byte order.
+    """
+    coord_sizes = {"prime256v1": 32, "secp384r1": 48}
+    coord_size = coord_sizes.get(curve)
+    if coord_size is None:
+        raise ValueError(f"Unsupported curve for raw key extraction: {curve}")
+
+    # Get DER-encoded SubjectPublicKeyInfo
+    der_data = subprocess.run(
+        ["openssl", "ec", "-in", pem_priv, "-pubout", "-outform", "DER"],
+        capture_output=True, check=True,
+    ).stdout
+
+    # Find uncompressed point marker (0x04) followed by 2 * coord_size bytes
+    point_size = 2 * coord_size
+    idx = len(der_data) - point_size - 1
+    if idx < 0 or der_data[idx] != 0x04:
+        raise ValueError(
+            f"Cannot find uncompressed EC point in DER data "
+            f"(size={len(der_data)}, expected 0x04 at offset {idx})")
+
+    qx_be = der_data[idx + 1 : idx + 1 + coord_size]
+    qy_be = der_data[idx + 1 + coord_size : idx + 1 + point_size]
+
+    # Convert to little-endian
+    qx_le = bytes(reversed(qx_be))
+    qy_le = bytes(reversed(qy_be))
+
+    Path(raw_pub_path).write_bytes(qx_le + qy_le)
+
+
 def generate_keys(config: dict, *, verbose: bool):
     """Generate (or copy) all keys defined in the config."""
     log_hdr("Generating signing keys")
@@ -314,36 +356,62 @@ def generate_keys(config: dict, *, verbose: bool):
 
         if key_type == "rsa":
             bits = str(key_cfg["bits"])
-            priv = str(key_priv_file(key_name, key_type))
-            pub = str(key_pub_file(key_name, key_type))
+            key_format = key_cfg.get("key_format", "pem")
+            priv = str(key_priv_file(key_name, key_type, key_format))
+            pub = str(key_pub_file(key_name, key_type, key_format))
+
+            # Always generate PEM first
+            pem_priv = str(KEY_DIR / f"{key_name}_priv_tmp.pem")
             subprocess.run(
-                ["openssl", "genrsa", "-traditional", "-out", priv, bits],
+                ["openssl", "genrsa", "-traditional", "-out", pem_priv, bits],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 check=True,
             )
-            subprocess.run(
-                ["openssl", "rsa", "-in", priv, "-pubout", "-out", pub],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                check=True,
-            )
-            log(f"Generated RSA-{bits} key pair")
+
+            if key_format == "pem":
+                Path(pem_priv).rename(priv)
+                subprocess.run(
+                    ["openssl", "rsa", "-in", priv, "-pubout", "-out", pub],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    check=True,
+                )
+            elif key_format == "raw":
+                # Private key stays PEM (signing APIs require it)
+                Path(pem_priv).rename(priv)
+                # Extract raw modulus (big-endian) as binary public key
+                _extract_raw_rsa_pubkey(priv, pub)
+
+            log(f"Generated RSA-{bits} key pair (format={key_format})")
 
         elif key_type == "ec":
             curve = key_cfg["curve"]
-            priv = str(key_priv_file(key_name, key_type))
-            pub = str(key_pub_file(key_name, key_type))
+            key_format = key_cfg.get("key_format", "pem")
+            priv = str(key_priv_file(key_name, key_type, key_format))
+            pub = str(key_pub_file(key_name, key_type, key_format))
+
+            # Always generate PEM first
+            pem_priv = str(KEY_DIR / f"{key_name}_priv_tmp.pem")
             subprocess.run(
                 ["openssl", "ecparam", "-name", curve,
-                 "-genkey", "-noout", "-out", priv],
+                 "-genkey", "-noout", "-out", pem_priv],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 check=True,
             )
-            subprocess.run(
-                ["openssl", "ec", "-in", priv, "-pubout", "-out", pub],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                check=True,
-            )
-            log(f"Generated EC ({curve}) key pair")
+
+            if key_format == "pem":
+                Path(pem_priv).rename(priv)
+                subprocess.run(
+                    ["openssl", "ec", "-in", priv, "-pubout", "-out", pub],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    check=True,
+                )
+            elif key_format == "raw":
+                # Private key stays PEM (signing APIs require it)
+                Path(pem_priv).rename(priv)
+                # Extract raw qx_LE || qy_LE as binary public key
+                _extract_raw_ec_pubkey(priv, pub, curve)
+
+            log(f"Generated EC ({curve}) key pair (format={key_format})")
 
         elif key_type == "mldsa":
             key_format = key_cfg.get("key_format", "pem")

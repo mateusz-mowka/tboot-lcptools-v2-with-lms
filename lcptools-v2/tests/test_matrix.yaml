@@ -55,6 +55,26 @@ keys:
     type: ec
     curve: secp384r1
 
+  rsa2048_raw:
+    type: rsa
+    bits: 2048
+    key_format: raw
+
+  rsa3072_raw:
+    type: rsa
+    bits: 3072
+    key_format: raw
+
+  ec256_raw:
+    type: ec
+    curve: prime256v1
+    key_format: raw
+
+  ec384_raw:
+    type: ec
+    curve: secp384r1
+    key_format: raw
+
   mldsa:
     type: mldsa
     openssl: /usr/local/bin/openssl
@@ -130,6 +150,26 @@ signatures:
     hashalg: sha256
     key: mldsa_der
     list_versions: ["0x300"]
+
+  - sigalg: rsa
+    hashalg: sha256
+    key: rsa2048_raw
+    list_versions: ["0x200", "0x201"]
+
+  - sigalg: rsapss
+    hashalg: sha256
+    key: rsa3072_raw
+    list_versions: ["0x300"]
+
+  - sigalg: ecdsa
+    hashalg: sha256
+    key: ec256_raw
+    list_versions: ["0x200", "0x201", "0x300"]
+
+  - sigalg: ecdsa
+    hashalg: sha384
+    key: ec384_raw
+    list_versions: ["0x200", "0x201", "0x300"]
 
   - sigalg: lms
     hashalg: sha256

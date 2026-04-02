@@ -76,6 +76,88 @@ crypto_hash_buffer_internal (
   return crypto_ok;
 }
 
+/*
+ * Try to load an RSA public key from a file via OpenSSL decoders.
+ * Returns an EVP_PKEY on success, NULL on failure.
+ * Passing input_type = NULL lets OpenSSL try all formats (PEM, DER).
+ */
+static EVP_PKEY *
+try_load_rsa_pubkey (
+  const char  *file,
+  const char  *input_type
+  )
+{
+  EVP_PKEY  *pubkey = NULL;
+  FILE      *fp     = fopen (file, "rb");
+
+  if (fp == NULL) {
+    return NULL;
+  }
+
+  OSSL_DECODER_CTX  *dctx;
+  dctx = OSSL_DECODER_CTX_new_for_pkey (&pubkey, input_type, NULL, "RSA",
+                                         OSSL_KEYMGMT_SELECT_PUBLIC_KEY,
+                                         NULL, NULL);
+  if (dctx == NULL) {
+    fclose (fp);
+    return NULL;
+  }
+
+  if (!OSSL_DECODER_from_fp (dctx, fp)) {
+    pubkey = NULL;
+  }
+
+  OSSL_DECODER_CTX_free (dctx);
+  fclose (fp);
+  return pubkey;
+}
+
+/*
+ * Extract modulus from EVP_PKEY, allocate *key, store in LE order.
+ */
+static crypto_status
+extract_rsa_modulus (
+  EVP_PKEY       *pubkey,
+  unsigned char  **key,
+  size_t         *keysize
+  )
+{
+  BIGNUM  *modulus = NULL;
+
+  *keysize = (size_t)EVP_PKEY_get_size (pubkey);
+  if ((*keysize != MIN_RSA_KEY_SIZE) && (*keysize != MAX_RSA_KEY_SIZE)) {
+    printf ("Error: public key size %zu is not supported\n", *keysize);
+    return crypto_invalid_key;
+  }
+
+  EVP_PKEY_get_bn_param (pubkey, "n", &modulus);
+  if (modulus == NULL) {
+    printf ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
+    return crypto_operation_fail;
+  }
+
+  *key = malloc (*keysize);
+  if (*key == NULL) {
+    printf ("Error: failed to allocate memory for public key.\n");
+    BN_free (modulus);
+    return crypto_memory_alloc_fail;
+  }
+
+  size_t  result = BN_bn2bin (modulus, *key);
+  BN_free (modulus);
+
+  if ((result == 0) || (result != *keysize)) {
+    printf ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
+    free (*key);
+    *key = NULL;
+    return crypto_operation_fail;
+  }
+
+  /* Flip BE to LE (match EC key reader and LCP policy list format) */
+  buffer_reverse_byte_order (*key, *keysize);
+  return crypto_ok;
+}
+
 crypto_status
 crypto_read_rsa_pubkey_internal (
   const char     *file,
@@ -83,147 +165,102 @@ crypto_read_rsa_pubkey_internal (
   size_t         *keysize
   )
 {
-  FILE    *fp      = NULL;
-  BIGNUM  *modulus = NULL;
-
-  EVP_PKEY  *pubkey = NULL;
+  EVP_PKEY       *pubkey = NULL;
+  crypto_status  status;
 
   *key = NULL;
 
-  printf ("read_rsa_pubkey_file_2_1\n");
-  fp = fopen (file, "rb");
-  if ( fp == NULL ) {
-    printf (
-            "Error: failed to open .pem file %s: %s\n",
-            file,
-            strerror (errno)
-            );
-    goto ERROR;
-  }
+  LOG ("read_rsa_pubkey_file\n");
 
-  OSSL_DECODER_CTX  *dctx;
-  dctx = OSSL_DECODER_CTX_new_for_pkey (&pubkey, "PEM", NULL, "RSA", OSSL_KEYMGMT_SELECT_PUBLIC_KEY, NULL, NULL);
-  if ( dctx == NULL ) {
-    goto OPENSSL_ERROR;
-  }
-
-  if ( !OSSL_DECODER_from_fp (dctx, fp)) {
-    OSSL_DECODER_CTX_free (dctx);
-    goto OPENSSL_ERROR;
-  }
-
-  OSSL_DECODER_CTX_free (dctx);
-  if ( pubkey == NULL ) {
-    goto OPENSSL_ERROR;
-  }
-
-  // Close the file, won't need it anymore
-  fclose (fp);
-  fp = NULL;
-
-  *keysize = (size_t)EVP_PKEY_get_size (pubkey);
-  if ((*keysize != MIN_RSA_KEY_SIZE) && (*keysize != MAX_RSA_KEY_SIZE)) {
-    printf ("Error: public key size %ld is not supported\n", *keysize);
-    goto ERROR;
-  }
-
-  EVP_PKEY_get_bn_param (pubkey, "n", &modulus);
-  if (modulus == NULL) {
-    goto OPENSSL_ERROR;
-  }
-
-  // Allocate for the key
-  *key = malloc (*keysize);
-  if (*key == NULL) {
-    printf ("Error: failed to allocate memory for public key.\n");
-    goto ERROR;
-  }
-
-  // Save mod into key array
-  size_t  result = 0;
-  result = BN_bn2bin (modulus, *key);
-  if ((result <= 0) || (result != *keysize)) {
-    goto OPENSSL_ERROR;
-  }
-
-  // Flip BE to LE (match EC key reader and LCP policy list format)
-  buffer_reverse_byte_order (*key, *keysize);
-
-  // SUCCESS:
-  EVP_PKEY_free(pubkey);
-  BN_free(modulus);  /* owned copy from EVP_PKEY_get_bn_param */
-  return crypto_ok;
-OPENSSL_ERROR:
-  printf ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-  goto ERROR;
-ERROR:
-  if (fp != NULL) {
-    fclose (fp);
-  }
-
-  if (*key != NULL) {
-    free (*key);
-  }
-
-  if (modulus != NULL) {
-    BN_free(modulus);  /* owned copy from EVP_PKEY_get_bn_param */
-  }
-
+  /* Try PEM and DER via OpenSSL auto-detection (input_type = NULL) */
+  pubkey = try_load_rsa_pubkey (file, NULL);
   if (pubkey != NULL) {
-  EVP_PKEY_free(pubkey);
+    status = extract_rsa_modulus (pubkey, key, keysize);
+    EVP_PKEY_free (pubkey);
+    return status;
   }
 
-  return crypto_operation_fail;
+  /* Fallback: raw binary modulus (256 or 384 bytes, big-endian) */
+  {
+    size_t          file_len  = 0;
+    unsigned char   *file_buf = (unsigned char *)read_file (file, &file_len, false);
+
+    if (file_buf == NULL) {
+      printf ("Error: failed to open key file %s: %s\n", file, strerror (errno));
+      return crypto_file_io_error;
+    }
+
+    if ((file_len != MIN_RSA_KEY_SIZE) && (file_len != MAX_RSA_KEY_SIZE)) {
+      printf ("Error: %s is not a valid RSA public key (PEM, DER, or %d/%d-byte binary)\n",
+              file, MIN_RSA_KEY_SIZE, MAX_RSA_KEY_SIZE);
+      free (file_buf);
+      return crypto_invalid_key;
+    }
+
+    *key = file_buf;
+    *keysize = file_len;
+
+    /* Raw binary modulus is big-endian — convert to LE */
+    buffer_reverse_byte_order (*key, *keysize);
+    return crypto_ok;
+  }
 }
 
-crypto_status
-crypto_read_ecdsa_pubkey_internal (
+/*
+ * Try to load an EC public key from a file via OpenSSL decoders.
+ * Returns an EVP_PKEY on success, NULL on failure.
+ * Passing input_type = NULL lets OpenSSL try all formats (PEM, DER).
+ */
+static EVP_PKEY *
+try_load_ec_pubkey (
   const char  *file,
-  uint8_t     **qx,
-  uint8_t     **qy,
-  size_t      *key_size_bytes
+  const char  *input_type
   )
 {
-  FILE    *fp = NULL;
-  BIGNUM  *x  = NULL;
-  BIGNUM  *y  = NULL;
-
   EVP_PKEY  *pubkey = NULL;
+  FILE      *fp     = fopen (file, "rb");
 
-  *qx = NULL;
-  *qy = NULL;
-
-  LOG ("read ecdsa pubkey file for list signature.\n");
-  fp = fopen (file, "rb");
-  if ( fp == NULL) {
-    ERROR ("ERROR: cannot open file.\n");
-    goto ERROR;
+  if (fp == NULL) {
+    return NULL;
   }
 
   OSSL_DECODER_CTX  *dctx;
-  dctx = OSSL_DECODER_CTX_new_for_pkey (&pubkey, "PEM", NULL, "EC", OSSL_KEYMGMT_SELECT_PUBLIC_KEY, NULL, NULL);
-  if ( dctx == NULL ) {
-    goto OPENSSL_ERROR;
+  dctx = OSSL_DECODER_CTX_new_for_pkey (&pubkey, input_type, NULL, "EC",
+                                         OSSL_KEYMGMT_SELECT_PUBLIC_KEY,
+                                         NULL, NULL);
+  if (dctx == NULL) {
+    fclose (fp);
+    return NULL;
   }
 
-  if ( !OSSL_DECODER_from_fp (dctx, fp)) {
-    OSSL_DECODER_CTX_free (dctx);
-    goto OPENSSL_ERROR;
+  if (!OSSL_DECODER_from_fp (dctx, fp)) {
+    pubkey = NULL;
   }
 
   OSSL_DECODER_CTX_free (dctx);
-
-  if ( pubkey == NULL ) {
-    goto OPENSSL_ERROR;
-  }
-
   fclose (fp);
-  fp = NULL;
+  return pubkey;
+}
+
+/*
+ * Extract qx/qy from EVP_PKEY, allocate *qx and *qy, store in LE order.
+ */
+static crypto_status
+extract_ec_coordinates (
+  EVP_PKEY  *pubkey,
+  uint8_t   **qx,
+  uint8_t   **qy,
+  size_t    *key_size_bytes
+  )
+{
+  BIGNUM  *x = NULL;
+  BIGNUM  *y = NULL;
 
   EVP_PKEY_get_bn_param (pubkey, "qx", &x);
   EVP_PKEY_get_bn_param (pubkey, "qy", &y);
   if ((x == NULL) || (y == NULL)) {
-    goto OPENSSL_ERROR;
+    ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
+    goto fail;
   }
 
   /* Use the larger coordinate size to determine field width.  BN_num_bytes
@@ -243,62 +280,42 @@ crypto_read_ecdsa_pubkey_internal (
            MIN_ECC_KEY_SIZE,
            MAX_ECC_KEY_SIZE
            );
-    goto ERROR;
+    goto fail;
   }
 
-  // BE arrays for data from openssl
-  *qx = malloc (sizeof (lcp_ecc_signature_t) + (2*(*key_size_bytes)));
+  *qx = malloc (*key_size_bytes);
   if (*qx == NULL) {
     ERROR ("Failed to allocate memory for public key.\n");
-    goto ERROR;
+    goto fail;
   }
 
-  *qy = malloc (sizeof (lcp_ecc_signature_t) + (2*(*key_size_bytes)));
+  *qy = malloc (*key_size_bytes);
   if (*qy == NULL) {
     ERROR ("Failed to allocate memory for public key.\n");
-    goto ERROR;
+    free (*qx);
+    *qx = NULL;
+    goto fail;
   }
 
   /* BN_bn2binpad writes exactly key_size_bytes, zero-padding coordinates
      that have fewer significant bytes than the field width. */
-  if (!BN_bn2binpad (x, *qx, (int)(*key_size_bytes))) {
-    goto OPENSSL_ERROR;
+  if (!BN_bn2binpad (x, *qx, (int)(*key_size_bytes)) ||
+      !BN_bn2binpad (y, *qy, (int)(*key_size_bytes))) {
+    ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
+    free (*qx); *qx = NULL;
+    free (*qy); *qy = NULL;
+    goto fail;
   }
 
-  if (!BN_bn2binpad (y, *qy, (int)(*key_size_bytes))) {
-    goto OPENSSL_ERROR;
-  }
+  /* Flip BE to LE */
+  buffer_reverse_byte_order (*qx, *key_size_bytes);
+  buffer_reverse_byte_order (*qy, *key_size_bytes);
 
-  // Flip BE to LE
-  buffer_reverse_byte_order ((uint8_t *)*qx, (*key_size_bytes));
-  buffer_reverse_byte_order ((uint8_t *)*qy, (*key_size_bytes));
-
-  EVP_PKEY_free (pubkey);
   BN_free (x);
   BN_free (y);
   return crypto_ok;
 
-  // Errors:
-OPENSSL_ERROR:
-  ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-ERROR:
-  // Free all allocated mem
-  if (fp != NULL) {
-    fclose (fp);
-  }
-
-  if (*qx != NULL) {
-    free (*qx);
-  }
-
-  if (*qy != NULL) {
-    free (*qy);
-  }
-
-  if (pubkey != NULL) {
-    EVP_PKEY_free (pubkey);
-  }
-
+fail:
   if (x != NULL) {
     BN_free (x);
   }
@@ -308,6 +325,69 @@ ERROR:
   }
 
   return crypto_operation_fail;
+}
+
+crypto_status
+crypto_read_ecdsa_pubkey_internal (
+  const char  *file,
+  uint8_t     **qx,
+  uint8_t     **qy,
+  size_t      *key_size_bytes
+  )
+{
+  EVP_PKEY       *pubkey = NULL;
+  crypto_status  status;
+
+  *qx = NULL;
+  *qy = NULL;
+
+  LOG ("read ecdsa pubkey file for list signature.\n");
+
+  /* Try PEM and DER via OpenSSL auto-detection (input_type = NULL) */
+  pubkey = try_load_ec_pubkey (file, NULL);
+  if (pubkey != NULL) {
+    status = extract_ec_coordinates (pubkey, qx, qy, key_size_bytes);
+    EVP_PKEY_free (pubkey);
+    return status;
+  }
+
+  /* Fallback: raw binary qx || qy (64 bytes for P-256, 96 bytes for P-384, LE) */
+  {
+    size_t          file_len  = 0;
+    unsigned char   *file_buf = (unsigned char *)read_file (file, &file_len, false);
+
+    if (file_buf == NULL) {
+      ERROR ("ERROR: cannot open file %s.\n", file);
+      return crypto_file_io_error;
+    }
+
+    if ((file_len != 2 * MIN_ECC_KEY_SIZE) && (file_len != 2 * MAX_ECC_KEY_SIZE)) {
+      ERROR ("Error: %s is not a valid EC public key (PEM, DER, or %d/%d-byte binary)\n",
+             file, (int)(2 * MIN_ECC_KEY_SIZE), (int)(2 * MAX_ECC_KEY_SIZE));
+      free (file_buf);
+      return crypto_invalid_key;
+    }
+
+    size_t  coord_size = file_len / 2;
+
+    *qx = malloc (coord_size);
+    *qy = malloc (coord_size);
+    if ((*qx == NULL) || (*qy == NULL)) {
+      ERROR ("Failed to allocate memory for public key.\n");
+      free (*qx); *qx = NULL;
+      free (*qy); *qy = NULL;
+      free (file_buf);
+      return crypto_memory_alloc_fail;
+    }
+
+    /* Binary ECC public keys are stored as qx_LE || qy_LE — no reversal needed */
+    memcpy (*qx, file_buf, coord_size);
+    memcpy (*qy, file_buf + coord_size, coord_size);
+    *key_size_bytes = coord_size;
+
+    free (file_buf);
+    return crypto_ok;
+  }
 }
 
 static EVP_PKEY_CTX *
