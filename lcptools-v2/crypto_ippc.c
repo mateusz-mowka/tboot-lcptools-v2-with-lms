@@ -16,6 +16,7 @@
 #include "safe_lib.h"
 #include "lcputils.h"
 #include "crypto_ippc_defines.h"
+#include "crypto_ippc_lms.h"
 
 static const IppsHashMethod *
 get_ipp_hash_method (
@@ -2138,6 +2139,69 @@ cleanup:
   return result;
 }
 
+/*
+ * Resolve EC hash algorithm to digest size and validate the key size
+ * against the expected curve for that algorithm.
+ *
+ * Returns true on success (digest_size is set).
+ */
+static bool
+ec_get_digest_size (
+  uint16_t  hashalg,
+  size_t    key_size,
+  size_t    *digest_size
+  )
+{
+  switch (hashalg) {
+    case TB_HALG_SHA1:
+    case TB_HALG_SHA1_LG:
+      *digest_size = SHA1_LENGTH;
+      if ((key_size != ECC_KEY_LEN_MIN_BYTES) && (key_size != ECC_KEY_LEN_MAX_BYTES)) {
+        printf ("ERROR: Unsupported EC key size: %zu bytes\n", key_size);
+        return false;
+      }
+
+      break;
+    case TB_HALG_SHA256:
+      *digest_size = SHA256_LENGTH;
+      if (key_size != ECC_KEY_LEN_MIN_BYTES) {
+        printf ("ERROR: SHA-256 requires 32-byte EC key (P-256)\n");
+        return false;
+      }
+
+      break;
+    case TB_HALG_SHA384:
+      *digest_size = SHA384_LENGTH;
+      if (key_size != ECC_KEY_LEN_MAX_BYTES) {
+        printf ("ERROR: SHA-384 requires 48-byte EC key (P-384)\n");
+        return false;
+      }
+
+      break;
+    case TB_HALG_SHA512:
+      *digest_size = SHA512_LENGTH;
+      if (key_size != ECC_KEY_LEN_MAX_BYTES) {
+        printf ("ERROR: SHA-512 requires 48-byte EC key (P-384)\n");
+        return false;
+      }
+
+      break;
+    case TB_HALG_SM3:
+      *digest_size = 32;  /* SM3 produces 256-bit hash */
+      if (key_size != ECC_KEY_LEN_MIN_BYTES) {
+        printf ("ERROR: SM2 requires 32-byte EC key\n");
+        return false;
+      }
+
+      break;
+    default:
+      printf ("ERROR: Unsupported hash algorithm: 0x%04X\n", hashalg);
+      return false;
+  }
+
+  return true;
+}
+
 bool
 crypto_verify_ec_signature_internal (
   crypto_sized_buffer  *data,
@@ -2176,45 +2240,9 @@ crypto_verify_ec_signature_internal (
     return false;
   }
 
-  /* Determine digest size and curve based on hash algorithm (match OpenSSL behavior) */
-  switch (hashalg) {
-    case TB_HALG_SHA256:
-      digest_size = SHA256_LENGTH;
-      /* P-256 curve (matches OpenSSL backend) */
-      if (pubkey_x->size != ECC_KEY_LEN_MIN_BYTES) {
-        printf ("ERROR: SHA-256 requires 32-byte EC key (P-256)\n");
-        return false;
-      }
-
-      break;
-    case TB_HALG_SHA384:
-      digest_size = SHA384_LENGTH;
-      if (pubkey_x->size != ECC_KEY_LEN_MAX_BYTES) {
-        printf ("ERROR: SHA-384 requires 48-byte EC key (P-384)\n");
-        return false;
-      }
-
-      break;
-    case TB_HALG_SHA512:
-      digest_size = SHA512_LENGTH;
-      if (pubkey_x->size != ECC_KEY_LEN_MAX_BYTES) {
-        printf ("ERROR: SHA-512 requires 48-byte EC key (P-384)\n");
-        return false;
-      }
-
-      break;
-    case TB_HALG_SM3:
-      /* SM2 algorithm uses SM3 hash and SM2 curve */
-      digest_size = 32;  /* SM3 produces 256-bit hash */
-      if (pubkey_x->size != ECC_KEY_LEN_MIN_BYTES) {
-        printf ("ERROR: SM2 requires 32-byte EC key\n");
-        return false;
-      }
-
-      break;
-    default:
-      printf ("ERROR: Unsupported hash algorithm: 0x%04X\n", hashalg);
-      return false;
+  /* Determine digest size and validate key size for this hash algorithm */
+  if (!ec_get_digest_size (hashalg, pubkey_x->size, &digest_size)) {
+    return false;
   }
 
   /* Hash the data */
@@ -2479,44 +2507,9 @@ crypto_ec_sign_data_internal (
     return false;
   }
 
-  /* Determine digest size based on hash algorithm and validate key size */
-  switch (hashalg) {
-    case TB_HALG_SHA256:
-      digest_size = SHA256_LENGTH;
-      if (priv_key_size != ECC_KEY_LEN_MIN_BYTES) {
-        printf ("ERROR: SHA-256 requires 32-byte EC key (P-256)\n");
-        return false;
-      }
-
-      break;
-    case TB_HALG_SHA384:
-      digest_size = SHA384_LENGTH;
-      if (priv_key_size != ECC_KEY_LEN_MAX_BYTES) {
-        printf ("ERROR: SHA-384 requires 48-byte EC key (P-384)\n");
-        return false;
-      }
-
-      break;
-    case TB_HALG_SHA512:
-      digest_size = SHA512_LENGTH;
-      if (priv_key_size != ECC_KEY_LEN_MAX_BYTES) {
-        printf ("ERROR: SHA-512 requires 48-byte EC key (P-384)\n");
-        return false;
-      }
-
-      break;
-    case TB_HALG_SM3:
-      /* SM2 algorithm */
-      digest_size = 32;  /* SM3 produces 256-bit hash */
-      if (priv_key_size != ECC_KEY_LEN_MIN_BYTES) {
-        printf ("ERROR: SM2 requires 32-byte EC key\n");
-        return false;
-      }
-
-      break;
-    default:
-      printf ("ERROR: Unsupported hash algorithm: 0x%04X\n", hashalg);
-      return false;
+  /* Determine digest size and validate key size for this hash algorithm */
+  if (!ec_get_digest_size (hashalg, (size_t)priv_key_size, &digest_size)) {
+    return false;
   }
 
   /* Hash the data */
@@ -2855,11 +2848,24 @@ crypto_lms_verify_signature_internal (
   size_t               pubkey_len
   )
 {
+  const unsigned char    *actual_pubkey = NULL;
+  const unsigned char    *actual_sig    = NULL;
+  size_t                 actual_sig_len = 0;
+  IppStatus              status         = ippStsNoErr;
+  IppsLMSAlgoType        algo_type      = { 0 };
+  IppsLMSPublicKeyState  *pubkey_state  = NULL;
+  IppsLMSSignatureState  *sig_state     = NULL;
+  Ipp8u                  *buffer        = NULL;
+  Ipp32s                 pubkey_size    = 0;
+  Ipp32s                 sig_size       = 0;
+  Ipp32s                 buffer_size    = 0;
+  int                    is_valid       = 0;
+  bool                   result         = false;
+
   if ((NULL == msg) || (NULL == signature) || (NULL == public_key)) {
     printf ("ERROR: crypto_lms_verify_signature_internal called with NULL parameter\n");
     return false;
   }
-
 
   if (pubkey_len < sizeof(uint32_t) + sizeof(lms_xdr_key_data)) {
     printf ("ERROR: Public key buffer too short: %zu\n", pubkey_len);
@@ -2872,20 +2878,9 @@ crypto_lms_verify_signature_internal (
   }
 
   /* Strip LEVELS / NSPK prefixes */
-  const unsigned char  *actual_pubkey = public_key + sizeof(uint32_t);
-  const unsigned char  *actual_sig    = signature + sizeof(uint32_t);
-  size_t               actual_sig_len = sig_len - sizeof(uint32_t);
-
-  IppStatus              status        = ippStsNoErr;
-  IppsLMSAlgoType        algo_type     = { 0 };
-  IppsLMSPublicKeyState  *pubkey_state = NULL;
-  IppsLMSSignatureState  *sig_state    = NULL;
-  Ipp8u                  *buffer       = NULL;
-  Ipp32s                 pubkey_size   = 0;
-  Ipp32s                 sig_size      = 0;
-  Ipp32s                 buffer_size   = 0;
-  int                    is_valid      = 0;
-  bool                   result        = false;
+  actual_pubkey = public_key + sizeof(uint32_t);
+  actual_sig    = signature + sizeof(uint32_t);
+  actual_sig_len = sig_len - sizeof(uint32_t);
 
   /* Validate LMS/LMOTS types in signature and get IPPC algo type */
   status = validate_lms_sig_algo_type (actual_sig, actual_sig_len, &algo_type);
@@ -3015,58 +3010,6 @@ cleanup:
 }
 
 /*
- * Mirror of IPPC internal _cpLMOTSSignatureState.
- * Must match the layout in sources/include/stateful_sig/lms_internal/lmots.h.
- *
- * WARNING: These mirror structs are tied to IPPC 1.4.0 internal layout.
- * Any IPPC library update must re-validate them.  The algorithm fields are
- * checked at runtime after keygen/sign as a sanity guard.
- */
-
-typedef struct {
-  IppsLMOTSAlgo  _lmotsOIDAlgo;
-  Ipp8u          *pC;
-  Ipp8u          *pY;
-} lms_ots_sig_mirror;
-
-/*
- * Mirror of IPPC internal _cpLMSSignatureState.
- * Must match the layout in sources/include/stateful_sig/lms_internal/lms.h.
- */
-typedef struct {
-  Ipp32u              _idCtx;
-  Ipp32u              _q;
-  lms_ots_sig_mirror  _lmotsSig;
-  IppsLMSAlgo         _lmsOIDAlgo;
-  Ipp8u               *_pAuthPath;
-} lms_sig_state_mirror;
-
-/*
- * Mirror of IPPC internal _cpLMSPrivateKeyState.
- * Must match the layout in sources/include/stateful_sig/lms_internal/lms.h.
- */
-typedef struct {
-  Ipp32u         _idCtx;
-  IppsLMSAlgo    lmsOIDAlgo;
-  IppsLMOTSAlgo  lmotsOIDAlgo;
-  Ipp32u         q;
-  Ipp32s         extraBufSize;
-  Ipp8u          *pSecretSeed;
-  Ipp8u          *pI;
-  Ipp8u          *pExtraBuf;
-} lms_privkey_mirror;
-
-/*
- * Context for providing a deterministic seed/I to ippsLMSKeyGen
- * instead of random generation.
- */
-typedef struct {
-  const uint8_t  *seed;
-  const uint8_t  *identifier;
-  int            call_count;
-} lms_keygen_rng_ctx;
-
-/*
  * Custom RNG callback for ippsLMSKeyGen that feeds known seed and I values.
  * First call produces the secret seed, second call produces the I identifier.
  */
@@ -3093,54 +3036,6 @@ lms_keygen_rng_callback (
   ctx->call_count++;
   return ippStsNoErr;
 }
-
-/*
- * Supported LMS algorithm: LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4
- *
- * Parameters:
- *   n = 24  (LMOTS hash output size, SHA256/192)
- *   p = 51  (number of Winternitz hash chains)
- *   h = 20  (Merkle tree height)
- *   m = 24  (LMS tree node hash size, SHA256/192)
- */
-#define LMS_SIGN_N   LMOTS_SIGNATURE_N_SIZE    /* 24 */
-#define LMS_SIGN_P   LMOTS_SIGNATURE_P_SIZE    /* 51 */
-#define LMS_SIGN_H   LMS_SIGNATURE_H_HEIGHT    /* 20 */
-#define LMS_SIGN_M   LMS_SIGNATURE_M_SIZE      /* 24 */
-
-/*
- * LMS private key file format for LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4:
- *
- * Offset  0: 8 bytes  - sequence counter (leaf index q, big-endian uint64)
- * Offset  8: 16 bytes - compressed parameter sets (2 bytes per HSS level, 0xFF padding)
- * Offset 24: 24 bytes - master secret seed (n = 24 for SHA256/192)
- * Offset 48: 16 bytes - I value (Merkle tree identifier)
- * Total:  64 bytes
- *
- * Expected compressed params: LM type = 0x09 (LMS_SHA256_M24_H20 - 4),
- *                             LMOTS type = 0x07 (LMOTS_SHA256_N24_W4)
- */
-#define LMS_PRV_COUNTER_OFFSET     0
-#define LMS_PRV_COUNTER_SIZE       8
-#define LMS_PRV_PARAMS_OFFSET      8
-#define LMS_PRV_SEED_OFFSET        24
-#define LMS_PRV_I_SIZE             16
-#define LMS_PRV_EXPECTED_SIZE      (LMS_PRV_SEED_OFFSET + LMS_SIGN_N + LMS_PRV_I_SIZE) /* 64 */
-#define LMS_PRV_COMPRESSED_LM      0x09  /* LMS_SHA256_M24_H20 enum(13) - 4 */
-#define LMS_PRV_COMPRESSED_LMOTS   0x07  /* LMOTS_SHA256_N24_W4 enum(7) */
-
-/*
- * Total serialized LMS signature size (including HSS NSPK prefix):
- * NSPK (4) + Q (4) + LMOTS_type (4) + C (24) + Y (24*51=1224) + LMS_type (4) + Path (20*24=480)
- * = 1744 bytes
- */
-#define LMS_SIGN_TOTAL_SIZE  (sizeof (uint32_t)                          /* NSPK */  \
-                              + sizeof (uint32_t)                        /* Q */     \
-                              + sizeof (uint32_t)                        /* LMOTS type */ \
-                              + LMS_SIGN_N                               /* C */     \
-                              + (size_t)LMS_SIGN_N * LMS_SIGN_P          /* Y */     \
-                              + sizeof (uint32_t)                        /* LMS type */ \
-                              + (size_t)LMS_SIGN_H * LMS_SIGN_M)        /* Path */
 
 /*
  * LMS signature generation using IPPC library.

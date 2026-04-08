@@ -19,9 +19,6 @@
 #include "crypto_interface.h"
 #include "safe_lib.h"
 #include "lcputils.h"
-#define LOG      printf
-#define ERROR    printf
-#define DISPLAY  printf
 #define print_hex(prefix, data, n)  dump_hex(prefix, data, n, 16)
 
 #define MAJOR_VER(v)  ((v) >> 8)
@@ -760,14 +757,20 @@ crypto_verify_rsa_signature_internal (
 
   if (MAJOR_VER (list_ver) != MAJOR_VER (LCP_TPM20_POLICY_LIST2_1_VERSION_300)) {
 
+    /*
+     * Recover DigestInfo from signature using the public key (no padding).
+     * EVP_PKEY_verify_recover (s^e mod n, public key) is used instead of
+     * EVP_PKEY_decrypt (c^d mod n, private key) because we only have the
+     * public key here.
+     */
     evp_context = EVP_PKEY_CTX_new (evp_key, NULL);
     if ( evp_context == NULL ) {
-      ERROR ("Error: failed to instatiate CTX.\n");
+      ERROR ("Error: failed to instantiate CTX.\n");
       goto OPENSSL_ERROR;
     }
 
-    if ( EVP_PKEY_encrypt_init (evp_context) <= 0 ) {
-      ERROR ("Error: failed to initialize signature decryption.\n");
+    if ( EVP_PKEY_verify_recover_init (evp_context) <= 0 ) {
+      ERROR ("Error: failed to initialize signature recovery.\n");
       goto OPENSSL_ERROR;
     }
 
@@ -776,20 +779,20 @@ crypto_verify_rsa_signature_internal (
       goto OPENSSL_ERROR;
     }
 
-    if ( EVP_PKEY_encrypt (evp_context, NULL, &dcpt_sig_len, signature->data, pubkey->size) <= 0 ) {
-      ERROR ("Error: failed to retrieve decrypted signature length.\n");
+    if ( EVP_PKEY_verify_recover (evp_context, NULL, &dcpt_sig_len, signature->data, pubkey->size) <= 0 ) {
+      ERROR ("Error: failed to retrieve recovered signature length.\n");
       goto OPENSSL_ERROR;
     }
 
     decrypted_sig = OPENSSL_malloc (dcpt_sig_len);
     if ( decrypted_sig == NULL ) {
-      ERROR ("Error: failed to allocate memory for decrypted signature.\n");
+      ERROR ("Error: failed to allocate memory for recovered signature.\n");
       status = 0;
       goto EXIT;
     }
 
-    if ( EVP_PKEY_encrypt (evp_context, decrypted_sig, &dcpt_sig_len, signature->data, pubkey->size) <= 0 ) {
-      ERROR ("Error: failed to decrypt signature.\n");
+    if ( EVP_PKEY_verify_recover (evp_context, decrypted_sig, &dcpt_sig_len, signature->data, pubkey->size) <= 0 ) {
+      ERROR ("Error: failed to recover signature.\n");
       goto OPENSSL_ERROR;
     }
 

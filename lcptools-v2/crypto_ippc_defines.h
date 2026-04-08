@@ -46,16 +46,4 @@ base64_decode (
   uint32_t       dst_max_len
   );
 
-extern int
-str8cmp (
-  const char  *s1,
-  const char  *s2
-  );
-
-extern void
-buffer_reverse_byte_order (
-  uint8_t  *buffer,
-  size_t   length
-  );
-
 #endif // LCPT_CRYPTO_IPPC_DEFINES_H
