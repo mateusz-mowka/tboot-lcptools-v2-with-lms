@@ -2153,15 +2153,6 @@ ec_get_digest_size (
   )
 {
   switch (hashalg) {
-    case TB_HALG_SHA1:
-    case TB_HALG_SHA1_LG:
-      *digest_size = SHA1_LENGTH;
-      if ((key_size != ECC_KEY_LEN_MIN_BYTES) && (key_size != ECC_KEY_LEN_MAX_BYTES)) {
-        printf ("ERROR: Unsupported EC key size: %zu bytes\n", key_size);
-        return false;
-      }
-
-      break;
     case TB_HALG_SHA256:
       *digest_size = SHA256_LENGTH;
       if (key_size != ECC_KEY_LEN_MIN_BYTES) {

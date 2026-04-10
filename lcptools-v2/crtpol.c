@@ -664,7 +664,7 @@ int main (int argc, char *argv[])
             return create();
         }
         else if (lcp_major_version == LCP_VER_2_0) {
-            ERROR("Error: LCP policy version 2.x (TPM 1.2/SHA-1) is no longer supported\n");
+            ERROR("Error: LCP policy version 2.x (TPM 1.2) is no longer supported\n");
             return 1;
         }
         else {

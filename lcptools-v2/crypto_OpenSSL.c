@@ -607,7 +607,6 @@ From:
 http://mpqs.free.fr/h11300-pkcs-1v2-2-rsa-cryptography-standard-wp_EMC_Corporation_Public-Key_Cryptography_Standards_(PKCS).pdf#page=40
    EM=00∥01∥FF∥…∥FF∥00∥T - PKCS1.5 padding starts with 00 01 || 0xFF for padding ||
    00 || T - this is the DER encoded hash identifier and hash message
-   T - SHA-1:       30 21 30 09 06 05 2B 0E 03 02 1A 05 00 04 14 ∥ H
    T - SHA-256:     30 31 30 0D 06 09 60 86 48 01 65 03 04 02 01 05 00 04 20 ∥ H
    T - SHA-384:     30 41 30 0D 06 09 60 86 48 01 65 03 04 02 02 05 00 04 30 ∥ H
    T - SHA-512:     30 51 30 0D 06 09 60 86 48 01 65 03 04 02 03 05 00 04 40 ∥ H

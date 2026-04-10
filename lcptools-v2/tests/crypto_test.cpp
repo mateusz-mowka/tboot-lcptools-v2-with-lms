@@ -2,7 +2,7 @@
  * Google Test unit tests for the crypto module.
  *
  * Tests cover:
- *   - Hashing (SHA-1, SHA-256, SHA-384, SHA-512)
+ *   - Hashing (SHA-256, SHA-384, SHA-512)
  *   - ML-DSA-87 signing and verification (PEM key files)
  *   - NULL-parameter guard checks on the dispatch layer (crypto.c)
  *
@@ -36,11 +36,7 @@ extern "C" {
 #include "crypto.h"
 }
 
-/* Digest lengths*/
-#define CRYPTO_SHA1_LENGTH    20
-
 /* Constants from lcp3.h that we need for tests */
-#define TPM_ALG_SHA1    0x0004
 #define TPM_ALG_SHA256  0x000B
 #define TPM_ALG_SHA384  0x000C
 #define TPM_ALG_SHA512  0x000D
@@ -137,18 +133,6 @@ static bool generate_mldsa_pem_keys(const char *pub_path, const char *priv_path)
 /* ================================================================== */
 
 class CryptoHashTest : public ::testing::Test {};
-
-/*
- * SHA-1("abc") = a9993e36 4706816a ba3e2571 7850c26c 9cd0d89d
- * (RFC 3174 test vector)
- */
-TEST_F(CryptoHashTest, SHA1_UnknownHashAlg) {
-    const unsigned char msg[] = "abc";
-    unsigned char digest[CRYPTO_SHA1_LENGTH] = {};
-
-    crypto_status st = crypto_hash_buffer(msg, 3, digest, TPM_ALG_SHA1);
-    ASSERT_EQ(st, crypto_unknown_hashalg);
-}
 
 /*
  * SHA-256("abc") = ba7816bf 8f01cfea 414140de 5dae2223
