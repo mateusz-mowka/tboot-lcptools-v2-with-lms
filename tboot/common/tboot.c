@@ -427,19 +427,16 @@ void begin_launch(void *addr, uint32_t magic)
     if (supports_txt() == TB_ERR_NONE) {
         printk(TBOOT_DETA"IA32_FEATURE_CONTROL_MSR: %08llx\n",
                rdmsr(MSR_IA32_FEATURE_CONTROL));
-        printk(TBOOT_INFO"CPU is SMX-capable and VMX-capable.\n");
+        printk(TBOOT_INFO"CPU is SMX-capable\n");
 
-        if ((read_cr4() & CR4_SMXE) == CR4_SMXE) {
-            printk(TBOOT_INFO"SMX is enabled\n");
-        }
-        else {
-            printk(TBOOT_INFO"SMX is not enabled\n");
+        if (!use_mwait()) {
+            if (supports_vmx() == TB_ERR_NONE) {
+                printk(TBOOT_INFO"CPU is VMX-capable\n");
+            }
         }
 
+        printk(TBOOT_INFO"SMX is enabled\n");
         printk(TBOOT_INFO"TXT chipset and all needed capabilities present\n");
-    }
-    else {
-        printk(TBOOT_INFO"TXT not supported\n");
     }
 
     if (is_launched()) {
