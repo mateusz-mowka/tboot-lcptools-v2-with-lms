@@ -88,9 +88,15 @@ try_load_rsa_pubkey (
   }
 
   OSSL_DECODER_CTX  *dctx;
-  dctx = OSSL_DECODER_CTX_new_for_pkey (&pubkey, input_type, NULL, "RSA",
-                                         OSSL_KEYMGMT_SELECT_PUBLIC_KEY,
-                                         NULL, NULL);
+  dctx = OSSL_DECODER_CTX_new_for_pkey (
+                                        &pubkey,
+                                        input_type,
+                                        NULL,
+                                        "RSA",
+                                        OSSL_KEYMGMT_SELECT_PUBLIC_KEY,
+                                        NULL,
+                                        NULL
+                                        );
   if (dctx == NULL) {
     fclose (fp);
     return NULL;
@@ -175,8 +181,8 @@ crypto_read_rsa_pubkey_internal (
 
   /* Fallback: raw binary modulus (256 or 384 bytes, big-endian) */
   {
-    size_t          file_len  = 0;
-    unsigned char   *file_buf = (unsigned char *)read_file (file, &file_len, false);
+    size_t         file_len  = 0;
+    unsigned char  *file_buf = (unsigned char *)read_file (file, &file_len, false);
 
     if (file_buf == NULL) {
       printf ("Error: failed to open key file %s: %s\n", file, strerror (errno));
@@ -184,13 +190,17 @@ crypto_read_rsa_pubkey_internal (
     }
 
     if ((file_len != MIN_RSA_KEY_SIZE) && (file_len != MAX_RSA_KEY_SIZE)) {
-      printf ("Error: %s is not a valid RSA public key (PEM, DER, or %d/%d-byte binary)\n",
-              file, MIN_RSA_KEY_SIZE, MAX_RSA_KEY_SIZE);
+      printf (
+              "Error: %s is not a valid RSA public key (PEM, DER, or %d/%d-byte binary)\n",
+              file,
+              MIN_RSA_KEY_SIZE,
+              MAX_RSA_KEY_SIZE
+              );
       free (file_buf);
       return crypto_invalid_key;
     }
 
-    *key = file_buf;
+    *key     = file_buf;
     *keysize = file_len;
 
     /* Raw binary modulus is big-endian — convert to LE */
@@ -218,9 +228,15 @@ try_load_ec_pubkey (
   }
 
   OSSL_DECODER_CTX  *dctx;
-  dctx = OSSL_DECODER_CTX_new_for_pkey (&pubkey, input_type, NULL, "EC",
-                                         OSSL_KEYMGMT_SELECT_PUBLIC_KEY,
-                                         NULL, NULL);
+  dctx = OSSL_DECODER_CTX_new_for_pkey (
+                                        &pubkey,
+                                        input_type,
+                                        NULL,
+                                        "EC",
+                                        OSSL_KEYMGMT_SELECT_PUBLIC_KEY,
+                                        NULL,
+                                        NULL
+                                        );
   if (dctx == NULL) {
     fclose (fp);
     return NULL;
@@ -261,8 +277,8 @@ extract_ec_coordinates (
      will report one fewer than the field size.  Taking the max ensures we
      use the correct field width (32 for P-256, 48 for P-384). */
   {
-    int x_bytes = BN_num_bytes (x);
-    int y_bytes = BN_num_bytes (y);
+    int  x_bytes = BN_num_bytes (x);
+    int  y_bytes = BN_num_bytes (y);
     *key_size_bytes = (x_bytes > y_bytes) ? (size_t)x_bytes : (size_t)y_bytes;
   }
 
@@ -293,10 +309,13 @@ extract_ec_coordinates (
   /* BN_bn2binpad writes exactly key_size_bytes, zero-padding coordinates
      that have fewer significant bytes than the field width. */
   if (!BN_bn2binpad (x, *qx, (int)(*key_size_bytes)) ||
-      !BN_bn2binpad (y, *qy, (int)(*key_size_bytes))) {
+      !BN_bn2binpad (y, *qy, (int)(*key_size_bytes)))
+  {
     ERROR ("OpenSSL error: %s\n", ERR_error_string (ERR_get_error (), NULL));
-    free (*qx); *qx = NULL;
-    free (*qy); *qy = NULL;
+    free (*qx);
+    *qx = NULL;
+    free (*qy);
+    *qy = NULL;
     goto fail;
   }
 
@@ -346,8 +365,8 @@ crypto_read_ecdsa_pubkey_internal (
 
   /* Fallback: raw binary qx || qy (64 bytes for P-256, 96 bytes for P-384, LE) */
   {
-    size_t          file_len  = 0;
-    unsigned char   *file_buf = (unsigned char *)read_file (file, &file_len, false);
+    size_t         file_len  = 0;
+    unsigned char  *file_buf = (unsigned char *)read_file (file, &file_len, false);
 
     if (file_buf == NULL) {
       ERROR ("ERROR: cannot open file %s.\n", file);
@@ -355,8 +374,12 @@ crypto_read_ecdsa_pubkey_internal (
     }
 
     if ((file_len != 2 * MIN_ECC_KEY_SIZE) && (file_len != 2 * MAX_ECC_KEY_SIZE)) {
-      ERROR ("Error: %s is not a valid EC public key (PEM, DER, or %d/%d-byte binary)\n",
-             file, (int)(2 * MIN_ECC_KEY_SIZE), (int)(2 * MAX_ECC_KEY_SIZE));
+      ERROR (
+             "Error: %s is not a valid EC public key (PEM, DER, or %d/%d-byte binary)\n",
+             file,
+             (int)(2 * MIN_ECC_KEY_SIZE),
+             (int)(2 * MAX_ECC_KEY_SIZE)
+             );
       free (file_buf);
       return crypto_invalid_key;
     }
@@ -367,8 +390,10 @@ crypto_read_ecdsa_pubkey_internal (
     *qy = malloc (coord_size);
     if ((*qx == NULL) || (*qy == NULL)) {
       ERROR ("Failed to allocate memory for public key.\n");
-      free (*qx); *qx = NULL;
-      free (*qy); *qy = NULL;
+      free (*qx);
+      *qx = NULL;
+      free (*qy);
+      *qy = NULL;
       free (file_buf);
       return crypto_memory_alloc_fail;
     }
@@ -478,8 +503,13 @@ rsa_ssa_pss_sign (
     return false;
   }
 
-  if (!hash_buffer (data_to_sign->data, data_to_sign->size,
-                    (tb_hash_t *)hash_buf, hash_alg)) {
+  if (!hash_buffer (
+                    data_to_sign->data,
+                    data_to_sign->size,
+                    (tb_hash_t *)hash_buf,
+                    hash_alg
+                    ))
+  {
     printf ("ERROR: failed to hash data for RSA signing\n");
     return false;
   }
@@ -580,8 +610,9 @@ crypto_rsa_sign_internal (
   const char           *privkey_file
   )
 {
-  EVP_PKEY_CTX  *context = NULL;   // Context for openssl functions
-  bool sign_status = false;
+  EVP_PKEY_CTX  *context    = NULL; // Context for openssl functions
+  bool          sign_status = false;
+
   // Create context using key
   context = rsa_get_sig_ctx (privkey_file, sig_block->size);
   if ( context == NULL) {
@@ -632,18 +663,19 @@ http://mpqs.free.fr/h11300-pkcs-1v2-2-rsa-cryptography-standard-wp_EMC_Corporati
   data += 2;   // Skip 00 01
 
   // Skip 0xFFs padding and 00 after it
-  size_t max_skip = 256;
-  size_t skip_count = 0;
+  size_t  max_skip   = 256;
+  size_t  skip_count = 0;
 
   while (*data == 0xFF && skip_count < max_skip) {
     data++;
     skip_count++;
   }
-  
+
   // After 0xFFs, expect a 0x00 delimiter
   if (*data != 0x00) {
     return TPM_ALG_NULL;
   }
+
   data++; // Move past 0x00
 
   // Then move to der_oid
@@ -692,7 +724,7 @@ crypto_verify_rsa_signature_internal (
   unsigned char  exp_arr[]      = { 0x01, 0x00, 0x01 };
   unsigned char  *decrypted_sig = NULL;
 
-  size_t           dcpt_sig_len;
+  size_t          dcpt_sig_len;
   OSSL_PARAM_BLD  *params_build = NULL;
   OSSL_PARAM      *params       = NULL;
 
@@ -755,7 +787,6 @@ crypto_verify_rsa_signature_internal (
   evp_context = NULL;
 
   if (MAJOR_VER (list_ver) != MAJOR_VER (LCP_TPM20_POLICY_LIST2_1_VERSION_300)) {
-
     /*
      * Recover DigestInfo from signature using the public key (no padding).
      * EVP_PKEY_verify_recover (s^e mod n, public key) is used instead of
@@ -950,11 +981,12 @@ der_encode_sig_comps (
     goto EXIT;
   }
 
-  helper_ptr      = OPENSSL_malloc (encoded_size);
+  helper_ptr = OPENSSL_malloc (encoded_size);
   if (helper_ptr == NULL) {
     ERROR ("Error: failed to allocate memory for encoded signature.\n");
     goto EXIT;
   }
+
   der_encoded_sig = helper_ptr;
   *length         = encoded_size;
   // i2d_ECDSA_SIG changes value of the pointer passed, that's why we first assigned
@@ -1007,15 +1039,15 @@ crypto_verify_ec_signature_internal (
   EVP_MD_CTX           *mctx   = NULL;
   EVP_PKEY_CTX         *pctx   = NULL;
 
-  const EC_GROUP   *ec_group     = NULL;
-  EC_POINT         *ec_point     = NULL;
-  unsigned char    *point_buffer = NULL;
-  size_t           pt_buf_len;
-  BN_CTX           *bctx         = NULL;
-  const char       *curveName    = NULL;
-  EVP_PKEY_CTX     *fromdata_ctx   = NULL;
-  OSSL_PARAM_BLD   *ec_params_build = NULL;
-  OSSL_PARAM       *ec_params       = NULL;
+  const EC_GROUP  *ec_group     = NULL;
+  EC_POINT        *ec_point     = NULL;
+  unsigned char   *point_buffer = NULL;
+  size_t          pt_buf_len;
+  BN_CTX          *bctx            = NULL;
+  const char      *curveName       = NULL;
+  EVP_PKEY_CTX    *fromdata_ctx    = NULL;
+  OSSL_PARAM_BLD  *ec_params_build = NULL;
+  OSSL_PARAM      *ec_params       = NULL;
 
   LOG ("[verify_ec_signature]\n");
   if ((data == NULL) || (pubkey_x == NULL) || (pubkey_y == NULL) || (sig_r == NULL) || (sig_s == NULL)) {
@@ -1024,16 +1056,16 @@ crypto_verify_ec_signature_internal (
   }
 
   if ( hashalg == TPM_ALG_SM3_256 ) {
-    curveId = NID_sm2;
-    mdtype  = EVP_sm3 ();
+    curveId   = NID_sm2;
+    mdtype    = EVP_sm3 ();
     curveName = SN_sm2;
   } else if ( hashalg == TPM_ALG_SHA256 ) {
-    curveId = NID_X9_62_prime256v1;
-    mdtype  = EVP_sha256 ();
+    curveId   = NID_X9_62_prime256v1;
+    mdtype    = EVP_sha256 ();
     curveName = SN_X9_62_prime256v1;
   } else if ( hashalg == TPM_ALG_SHA384 ) {
-    curveId = NID_secp384r1;
-    mdtype  = EVP_sha384 ();
+    curveId   = NID_secp384r1;
+    mdtype    = EVP_sha384 ();
     curveName = SN_secp384r1;
   } else {
     ERROR ("Error: unsupported hashalg.\n");
@@ -1079,11 +1111,12 @@ crypto_verify_ec_signature_internal (
     goto OPENSSL_ERROR;
   }
 
-  pt_buf_len   = EC_POINT_point2oct (ec_group, ec_point, POINT_CONVERSION_COMPRESSED, NULL, 0, bctx);
+  pt_buf_len = EC_POINT_point2oct (ec_group, ec_point, POINT_CONVERSION_COMPRESSED, NULL, 0, bctx);
   if ( pt_buf_len == 0 ) {
     ERROR ("Error: failed to calculate point buffer length.\n");
     goto OPENSSL_ERROR;
   }
+
   point_buffer = OPENSSL_malloc (pt_buf_len);
   if ( point_buffer == NULL ) {
     ERROR ("Error: failed to allocate point buffer.\n");
@@ -1266,14 +1299,14 @@ crypto_ec_sign_data_internal (
 {
   int                  result;
   size_t               sig_length;
-  EVP_PKEY             *evp_key         = NULL;
-  EVP_MD_CTX           *mctx            = NULL;
-  EVP_PKEY_CTX         *pctx            = NULL;
-  FILE                 *fp              = NULL;
-  ECDSA_SIG            *ecdsa_sig       = NULL;
-  const BIGNUM         *sig_r           = NULL; // Is freed when ECDSA_SIG is freed
-  const BIGNUM         *sig_s           = NULL; // Is freed when ECDSA_SIG is freed
-  const unsigned char  *signature_block = NULL;
+  EVP_PKEY             *evp_key              = NULL;
+  EVP_MD_CTX           *mctx                 = NULL;
+  EVP_PKEY_CTX         *pctx                 = NULL;
+  FILE                 *fp                   = NULL;
+  ECDSA_SIG            *ecdsa_sig            = NULL;
+  const BIGNUM         *sig_r                = NULL; // Is freed when ECDSA_SIG is freed
+  const BIGNUM         *sig_s                = NULL; // Is freed when ECDSA_SIG is freed
+  const unsigned char  *signature_block      = NULL;
   const unsigned char  *signature_block_orig = NULL; /* to track OPENSSL_malloc'd ptr */
 
   LOG ("[ec_sign_data]\n");
@@ -1391,7 +1424,8 @@ crypto_ec_sign_data_internal (
      field width.  BN_bn2bin would silently write fewer bytes when a
      component has a leading zero, corrupting the output. */
   if (!BN_bn2binpad (sig_r, r->data, (int)r->size) ||
-      !BN_bn2binpad (sig_s, s->data, (int)s->size)) {
+      !BN_bn2binpad (sig_s, s->data, (int)s->size))
+  {
     ERROR ("Error: failed to serialize signature components.\n");
     goto OPENSSL_ERROR;
   }
@@ -1433,7 +1467,6 @@ EXIT:
  * LMS is not supported via the OpenSSL backend.
  * LMS/HSS requires the IPPC backend (USE_IPPC=1).
  */
-
 bool
 crypto_lms_verify_signature_internal (
   const unsigned char  *msg       __attribute__ ((unused)),
@@ -1490,16 +1523,19 @@ crypto_read_mldsa_pubkey_internal (
   size_t         pubkey_size
   )
 {
-  EVP_PKEY       *pkey   = NULL;
-  FILE           *fp     = NULL;
-  bool           result  = false;
-  size_t         raw_len = pubkey_size;
+  EVP_PKEY  *pkey   = NULL;
+  FILE      *fp     = NULL;
+  bool      result  = false;
+  size_t    raw_len = pubkey_size;
 
   LOG ("[read_mldsa_pubkey]\n");
 
   if (pubkey_size < MLDSA87_PUBKEY_SIZE) {
-    ERROR ("ERROR: ML-DSA pubkey buffer too small: need %d, have %zu\n",
-           MLDSA87_PUBKEY_SIZE, pubkey_size);
+    ERROR (
+           "ERROR: ML-DSA pubkey buffer too small: need %d, have %zu\n",
+           MLDSA87_PUBKEY_SIZE,
+           pubkey_size
+           );
     return false;
   }
 
@@ -1524,7 +1560,7 @@ crypto_read_mldsa_pubkey_internal (
     fp = fopen (file, "rb");
     if (fp != NULL) {
       fseek (fp, 0, SEEK_END);
-      long fsize = ftell (fp);
+      long  fsize = ftell (fp);
       if (fsize == MLDSA87_PUBKEY_SIZE) {
         fseek (fp, 0, SEEK_SET);
         if (fread (pubkey, 1, MLDSA87_PUBKEY_SIZE, fp) == MLDSA87_PUBKEY_SIZE) {
@@ -1532,8 +1568,10 @@ crypto_read_mldsa_pubkey_internal (
           return true;
         }
       }
+
       fclose (fp);
     }
+
     ERROR ("ERROR: Failed to read ML-DSA-87 public key (not PEM, DER, or raw): %s\n", file);
     goto OPENSSL_ERROR;
   }
@@ -1577,17 +1615,20 @@ crypto_mldsa_sign_data_internal (
   const char           *privkey_file
   )
 {
-  EVP_PKEY       *pkey      = NULL;
-  EVP_MD_CTX     *mctx      = NULL;
-  FILE           *fp        = NULL;
-  crypto_status  result     = crypto_operation_fail;
+  EVP_PKEY       *pkey  = NULL;
+  EVP_MD_CTX     *mctx  = NULL;
+  FILE           *fp    = NULL;
+  crypto_status  result = crypto_operation_fail;
 
   LOG ("[mldsa_sign_data]\n");
 
   /* Check output buffer size */
   if (*sig_len < MLDSA87_SIGNATURE_SIZE) {
-    ERROR ("ERROR: ML-DSA signature buffer too small: need %d, have %zu\n",
-           MLDSA87_SIGNATURE_SIZE, *sig_len);
+    ERROR (
+           "ERROR: ML-DSA signature buffer too small: need %d, have %zu\n",
+           MLDSA87_SIGNATURE_SIZE,
+           *sig_len
+           );
     return crypto_buffer_too_small;
   }
 
@@ -1614,15 +1655,20 @@ crypto_mldsa_sign_data_internal (
     fp = fopen (privkey_file, "rb");
     if (fp != NULL) {
       fseek (fp, 0, SEEK_END);
-      long fsize = ftell (fp);
+      long  fsize = ftell (fp);
       if (fsize == MLDSA87_PRIVKEY_SIZE) {
-        unsigned char raw_priv[MLDSA87_PRIVKEY_SIZE];
+        unsigned char  raw_priv[MLDSA87_PRIVKEY_SIZE];
         fseek (fp, 0, SEEK_SET);
         if (fread (raw_priv, 1, MLDSA87_PRIVKEY_SIZE, fp) == MLDSA87_PRIVKEY_SIZE) {
           fclose (fp);
-          fp = NULL;
-          pkey = EVP_PKEY_new_raw_private_key_ex (NULL, "ML-DSA-87", NULL,
-                                                   raw_priv, MLDSA87_PRIVKEY_SIZE);
+          fp   = NULL;
+          pkey = EVP_PKEY_new_raw_private_key_ex (
+                                                  NULL,
+                                                  "ML-DSA-87",
+                                                  NULL,
+                                                  raw_priv,
+                                                  MLDSA87_PRIVKEY_SIZE
+                                                  );
         } else {
           fclose (fp);
           fp = NULL;
@@ -1632,9 +1678,12 @@ crypto_mldsa_sign_data_internal (
         fp = NULL;
       }
     }
+
     if (pkey == NULL) {
-      ERROR ("ERROR: Failed to read ML-DSA-87 private key (not PEM, DER, or raw): %s\n",
-             privkey_file);
+      ERROR (
+             "ERROR: Failed to read ML-DSA-87 private key (not PEM, DER, or raw): %s\n",
+             privkey_file
+             );
       goto OPENSSL_ERROR;
     }
   }
@@ -1657,7 +1706,7 @@ crypto_mldsa_sign_data_internal (
     goto OPENSSL_ERROR;
   }
 
-  size_t out_len = *sig_len;
+  size_t  out_len = *sig_len;
   if (EVP_DigestSign (mctx, signature, &out_len, msg, msg_len) <= 0) {
     ERROR ("ERROR: EVP_DigestSign failed for ML-DSA-87\n");
     goto OPENSSL_ERROR;
@@ -1696,9 +1745,9 @@ crypto_mldsa_verify_signature_internal (
   size_t               pubkey_len
   )
 {
-  EVP_PKEY    *pkey   = NULL;
-  EVP_MD_CTX  *mctx   = NULL;
-  bool        result  = false;
+  EVP_PKEY    *pkey  = NULL;
+  EVP_MD_CTX  *mctx  = NULL;
+  bool        result = false;
   int         verify_result;
 
   LOG ("[mldsa_verify_signature]\n");

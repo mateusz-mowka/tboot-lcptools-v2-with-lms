@@ -53,7 +53,7 @@ crypto_hash_buffer_internal (
   uint16_t             hash_alg
   )
 {
-  IppStatus             status  = ippStsNoOperation;
+  IppStatus             status   = ippStsNoOperation;
   int                   ctx_size = 0;
   IppsHashState_rmf     *p_ctx   = NULL;
   const IppsHashMethod  *method  = NULL;
@@ -284,12 +284,12 @@ der_parse_integer (
 
 /* Helper structure to hold parsed RSA key components */
 typedef struct {
-  crypto_sized_buffer n;
-  crypto_sized_buffer p;
-  crypto_sized_buffer q;
-  crypto_sized_buffer dp;
-  crypto_sized_buffer dq;
-  crypto_sized_buffer qinv;
+  crypto_sized_buffer    n;
+  crypto_sized_buffer    p;
+  crypto_sized_buffer    q;
+  crypto_sized_buffer    dp;
+  crypto_sized_buffer    dq;
+  crypto_sized_buffer    qinv;
 } rsa_private_key_params;
 
 /* Parse RSA private key from DER format (PKCS#1) */
@@ -325,12 +325,13 @@ parse_rsa_private_key_der (
   }
 
   /* Parse modulus (n) - save it to get key size */
-  uint8_t *n_ptr = NULL;
-  size_t n_len = 0;
+  uint8_t  *n_ptr = NULL;
+  size_t   n_len  = 0;
   if (der_parse_integer (der_buf, &offset, der_size, &n_ptr, &n_len) != 0) {
     printf ("ERROR: Failed to parse modulus\n");
     return -1;
   }
+
   params->n.data = n_ptr;
   params->n.size = n_len;
 
@@ -347,52 +348,57 @@ parse_rsa_private_key_der (
   }
 
   /* Parse prime1 (p) */
-  uint8_t *p_ptr = NULL;
-  size_t p_len = 0;
+  uint8_t  *p_ptr = NULL;
+  size_t   p_len  = 0;
   if (der_parse_integer (der_buf, &offset, der_size, &p_ptr, &p_len) != 0) {
     printf ("ERROR: Failed to parse prime1 (p)\n");
     return -1;
   }
+
   params->p.data = p_ptr;
   params->p.size = p_len;
 
   /* Parse prime2 (q) */
-  uint8_t *q_ptr = NULL;
-  size_t q_len = 0;
+  uint8_t  *q_ptr = NULL;
+  size_t   q_len  = 0;
   if (der_parse_integer (der_buf, &offset, der_size, &q_ptr, &q_len) != 0) {
     printf ("ERROR: Failed to parse prime2 (q)\n");
     return -1;
   }
+
   params->q.data = q_ptr;
   params->q.size = q_len;
 
   /* Parse exponent1 (dP) */
-  uint8_t *dp_ptr = NULL;
-  size_t dp_len = 0;
+  uint8_t  *dp_ptr = NULL;
+  size_t   dp_len  = 0;
   if (der_parse_integer (der_buf, &offset, der_size, &dp_ptr, &dp_len) != 0) {
     printf ("ERROR: Failed to parse exponent1 (dP)\n");
     return -1;
   }
+
   params->dp.data = dp_ptr;
   params->dp.size = dp_len;
 
   /* Parse exponent2 (dQ) */
-  uint8_t *dq_ptr = NULL;
-  size_t dq_len = 0;
+  uint8_t  *dq_ptr = NULL;
+  size_t   dq_len  = 0;
   if (der_parse_integer (der_buf, &offset, der_size, &dq_ptr, &dq_len) != 0) {
     printf ("ERROR: Failed to parse exponent2 (dQ)\n");
     return -1;
   }
+
   params->dq.data = dq_ptr;
   params->dq.size = dq_len;
 
   /* Parse coefficient (qInv) */
-  uint8_t *qinv_ptr = NULL;
-  size_t qinv_len = 0;
+  uint8_t  *qinv_ptr = NULL;
+  size_t   qinv_len  = 0;
   if (der_parse_integer (der_buf, &offset, der_size, &qinv_ptr, &qinv_len) != 0) {
     printf ("ERROR: Failed to parse coefficient (qInv)\n");
     return -1;
   }
+
   params->qinv.data = qinv_ptr;
   params->qinv.size = qinv_len;
 
@@ -501,7 +507,7 @@ parse_rsa_public_key_spki (
   offset = alg_seq_end;
 
   /* Parse BIT STRING containing the public key */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_BIT_STRING) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_BIT_STRING)) {
     printf ("ERROR: Expected BIT STRING tag (0x03)\n");
     return -1;
   }
@@ -549,8 +555,8 @@ extract_rsa_public_key_to_buffer (
   uint16_t       *key_size
   )
 {
-  uint8_t  *modulus     = NULL;
-  size_t   modulus_len  = 0;
+  uint8_t  *modulus    = NULL;
+  size_t   modulus_len = 0;
   int      result;
 
   if (pem_type == PEMTYPE_RSA_PUBLIC) {
@@ -608,7 +614,7 @@ parse_ec_public_key_spki (
   };
 
   /* Parse outer SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_SEQUENCE)) {
     return -1;
   }
 
@@ -619,7 +625,7 @@ parse_ec_public_key_spki (
   }
 
   /* Parse algorithm identifier SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_SEQUENCE)) {
     return -1;
   }
 
@@ -644,7 +650,7 @@ parse_ec_public_key_spki (
   offset = alg_seq_end;
 
   /* Parse BIT STRING containing the public key point */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_BIT_STRING) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_BIT_STRING)) {
     printf ("ERROR: Expected BIT STRING tag for EC public key\n");
     return -1;
   }
@@ -656,7 +662,7 @@ parse_ec_public_key_spki (
   }
 
   /* Skip unused bits byte (must be 0) */
-  if (offset >= der_size || der_buf[offset] != 0x00) {
+  if ((offset >= der_size) || (der_buf[offset] != 0x00)) {
     return -1;
   }
 
@@ -664,7 +670,7 @@ parse_ec_public_key_spki (
   bitstring_len--;
 
   /* Check for uncompressed point marker (0x04) */
-  if (offset >= der_size || der_buf[offset] != EC_POINT_UNCOMPRESSED) {
+  if ((offset >= der_size) || (der_buf[offset] != EC_POINT_UNCOMPRESSED)) {
     printf ("ERROR: Only uncompressed EC points are supported\n");
     return -1;
   }
@@ -721,7 +727,7 @@ parse_ec_private_key_sec1 (
   size_t  seq_len, int_len, octet_len;
 
   /* Parse outer SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_SEQUENCE)) {
     return -1;
   }
 
@@ -732,7 +738,7 @@ parse_ec_private_key_sec1 (
   }
 
   /* Parse version INTEGER (must be 1) */
-  if (offset >= der_size || der_buf[offset] != 0x02) {
+  if ((offset >= der_size) || (der_buf[offset] != 0x02)) {
     return -1;
   }
 
@@ -750,7 +756,7 @@ parse_ec_private_key_sec1 (
   offset++;
 
   /* Parse private key OCTET STRING */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_OCTET_STRING) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_OCTET_STRING)) {
     printf ("ERROR: Expected OCTET STRING for EC private key\n");
     return -1;
   }
@@ -823,6 +829,7 @@ get_key_from_der (
     return crypto_ok;
   } else if ((pem_type == PEMTYPE_RSA_PRIVATE) || (pem_type == PEMTYPE__PRIVATE)) {
     /* RSA private key */
+
     /* Parse the DER structure - this extracts the CRT parameters but doesn't copy to key_buf
      * The actual key loading is done in rsa_load_private_key_from_file which stores
      * the DER buffer pointer for later use */
@@ -878,7 +885,7 @@ get_der_from_pem (
   }
 
   *(pem_data_buf+i) = 0;
-  if (i > 0 && *(pem_data_buf+i-1) == 0x0D) {
+  if ((i > 0) && (*(pem_data_buf+i-1) == 0x0D)) {
     *(pem_data_buf + i - 1) = 0;
   }
 
@@ -974,10 +981,10 @@ get_der_from_pem (
 
 static crypto_status
 handle_pem_type_validation (
-  uint8_t      pem_type,
-  bool         is_private,
-  const char   *filename,
-  uint16_t     *alg_id
+  uint8_t     pem_type,
+  bool        is_private,
+  const char  *filename,
+  uint16_t    *alg_id
   )
 {
   /* Set algorithm ID based on PEM type */
@@ -1016,6 +1023,7 @@ handle_pem_type_validation (
         printf ("ERROR: Wrong key type (%s)\n", filename);
         return crypto_operation_fail;
       }
+
       break;
     case PEMTYPE_EC_PRIVATE:
     case PEMTYPE_RSA_PRIVATE:
@@ -1025,6 +1033,7 @@ handle_pem_type_validation (
         printf ("ERROR: Wrong key type (%s)\n", filename);
         return crypto_operation_fail;
       }
+
       break;
     case PEMTYPE_UNKNOWN:
     case PEMTYPE_INVALID:
@@ -1039,12 +1048,12 @@ handle_pem_type_validation (
 
 static crypto_status
 handle_der_format_key (
-  uint8_t      *p_der_buf,
-  uint16_t     der_size,
-  uint8_t      pem_type,
-  uint8_t      *key_buf,
-  uint16_t     *key_size,
-  uint16_t     *alg_id
+  uint8_t   *p_der_buf,
+  uint16_t  der_size,
+  uint8_t   pem_type,
+  uint8_t   *key_buf,
+  uint16_t  *key_size,
+  uint16_t  *alg_id
   )
 {
   uint16_t       orig_key_buf_size = *key_size;
@@ -1056,8 +1065,10 @@ handle_der_format_key (
       if (alg_id != NULL) {
         *alg_id = KEY_ALG_TYPE_ECC;
       }
+
       return crypto_ok;
     }
+
     /* Not an EC key - fall through to RSA parsing */
   }
 
@@ -1067,8 +1078,10 @@ handle_der_format_key (
       if (alg_id != NULL) {
         *alg_id = KEY_ALG_TYPE_ECC;
       }
+
       return crypto_ok;
     }
+
     return crypto_operation_fail;
   }
 
@@ -1079,8 +1092,10 @@ handle_der_format_key (
       if (alg_id != NULL) {
         *alg_id = KEY_ALG_TYPE_ECC;
       }
+
       return crypto_ok;
     }
+
     return crypto_operation_fail;
   }
 
@@ -1105,6 +1120,7 @@ handle_der_format_key (
         return crypto_operation_fail;
       }
     }
+
     /* For RSA private keys, the DER parsing just validates and returns size */
     /* The actual key data will be used later during signing operations */
   }
@@ -1132,6 +1148,7 @@ handle_binary_ecc_private_key (
   }
 
   memcpy (key_buf, p_file_data_buf, file_data_size);
+
   /* Binary ECC private keys are stored in LE (TPM convention).
    * crypto_read_key returns ECC keys in LE — no reversal needed. */
   *key_size = file_data_size;
@@ -1158,6 +1175,7 @@ handle_binary_ecc_public_key (
   }
 
   memcpy (key_buf, p_file_data_buf, file_data_size);
+
   /* Binary ECC public keys are stored as qx_LE || qy_LE (TPM convention).
    * crypto_read_key returns ECC keys in LE — no reversal needed. */
   *key_size = file_data_size/2;
@@ -1193,7 +1211,7 @@ handle_binary_lms_public_key (
   uint16_t  *alg_id
   )
 {
-  size_t actual_size = file_data_size;
+  size_t  actual_size = file_data_size;
 
   if (alg_id != NULL) {
     *alg_id = KEY_ALG_TYPE_LMS;
@@ -1220,7 +1238,7 @@ handle_binary_lms_private_key (
   uint16_t  *alg_id
   )
 {
-  size_t actual_size = file_data_size;
+  size_t  actual_size = file_data_size;
 
   if (alg_id != NULL) {
     *alg_id = KEY_ALG_TYPE_LMS;
@@ -1253,26 +1271,28 @@ handle_binary_format_key (
   if (is_private && ((file_data_size == ECC_KEY_LEN_MIN_BYTES) || (file_data_size == ECC_KEY_LEN_MAX_BYTES))) {
     return handle_binary_ecc_private_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
   }
-  
+
   /* Binary ECC public key */
   if (!is_private && ((file_data_size == (2*ECC_KEY_LEN_MIN_BYTES)) || (file_data_size == (2*ECC_KEY_LEN_MAX_BYTES)))) {
     return handle_binary_ecc_public_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
   }
-  
+
   /* Binary RSA key */
   if ((file_data_size == RSA_KEY_MIN_BYTES) || (file_data_size == RSA_KEY_MAX_BYTES)) {
     return handle_binary_rsa_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
   }
-  
+
   /* Binary LMS public key */
   if ((file_data_size == (LMS_PUBLIC_KEY_MAX_BYTES + 4)) ||
-      (file_data_size == LMS_PUBLIC_KEY_MAX_BYTES)) {
+      (file_data_size == LMS_PUBLIC_KEY_MAX_BYTES))
+  {
     return handle_binary_lms_public_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
   }
-  
+
   /* Binary LMS private key */
   if ((file_data_size == LMS_PRIVATE_KEY_MAX_BYTES) ||
-      (file_data_size == LMS_PRIVATE_KEY_MAX_BYTES + 4)) {
+      (file_data_size == LMS_PRIVATE_KEY_MAX_BYTES + 4))
+  {
     return handle_binary_lms_private_key (p_file_data_buf, file_data_size, key_buf, key_size, alg_id);
   }
 
@@ -1322,6 +1342,7 @@ crypto_read_key (
       if (p_der_buf != p_file_data_buf) {
         free ((void *)p_der_buf);
       }
+
       free ((void *)p_file_data_buf);
       return status;
     }
@@ -1334,12 +1355,13 @@ crypto_read_key (
   /* Try to handle as DER format */
   if ((der_size != 0) && (*p_der_buf == DER_TAG_SEQUENCE)) {
     status = handle_der_format_key (p_der_buf, der_size, pem_type, key_buf, key_size, alg_id);
-    
+
     if (status == crypto_ok) {
       free ((void *)p_file_data_buf);
       if ((p_der_buf != p_file_data_buf) && (p_der_buf != NULL)) {
         free ((void *)p_der_buf);
       }
+
       return crypto_ok;
     }
   }
@@ -1351,7 +1373,7 @@ crypto_read_key (
 
   /* Try to handle as binary format */
   status = handle_binary_format_key (p_file_data_buf, file_data_size, is_private, key_buf, key_size, alg_id);
-  
+
   if (status == crypto_ok) {
     free ((void *)p_file_data_buf);
     return crypto_ok;
@@ -1462,8 +1484,6 @@ crypto_read_ecdsa_pubkey_internal (
 
   return crypto_ok;
 }
-
-
 
 /* Helper function to create BigNum from byte array */
 static IppStatus
@@ -1581,18 +1601,22 @@ rsa_load_private_key_from_file (
     printf ("ERROR: Failed to create BigNum for p\n");
     goto cleanup;
   }
+
   if (create_bignum_from_bytes (params.q.data, params.q.size, &q_bn) != ippStsNoErr) {
     printf ("ERROR: Failed to create BigNum for q\n");
     goto cleanup;
   }
+
   if (create_bignum_from_bytes (params.dp.data, params.dp.size, &dp_bn) != ippStsNoErr) {
     printf ("ERROR: Failed to create BigNum for dP\n");
     goto cleanup;
   }
+
   if (create_bignum_from_bytes (params.dq.data, params.dq.size, &dq_bn) != ippStsNoErr) {
     printf ("ERROR: Failed to create BigNum for dQ\n");
     goto cleanup;
   }
+
   if (create_bignum_from_bytes (params.qinv.data, params.qinv.size, &qinv_bn) != ippStsNoErr) {
     printf ("ERROR: Failed to create BigNum for qInv\n");
     goto cleanup;
@@ -1644,34 +1668,44 @@ cleanup:
   /* Zero BigNum states holding private key factors before freeing.
    * We recompute the state size via ippsBigNumGetSize for each. */
   {
-    int bn_sz = 0;
+    int  bn_sz = 0;
     if (p_bn) {
-      if (ippsBigNumGetSize (params.p.size, &bn_sz) == ippStsNoErr)
+      if (ippsBigNumGetSize (params.p.size, &bn_sz) == ippStsNoErr) {
         explicit_bzero (p_bn, bn_sz);
+      }
+
       free (p_bn);
     }
 
     if (q_bn) {
-      if (ippsBigNumGetSize (params.q.size, &bn_sz) == ippStsNoErr)
+      if (ippsBigNumGetSize (params.q.size, &bn_sz) == ippStsNoErr) {
         explicit_bzero (q_bn, bn_sz);
+      }
+
       free (q_bn);
     }
 
     if (dp_bn) {
-      if (ippsBigNumGetSize (params.dp.size, &bn_sz) == ippStsNoErr)
+      if (ippsBigNumGetSize (params.dp.size, &bn_sz) == ippStsNoErr) {
         explicit_bzero (dp_bn, bn_sz);
+      }
+
       free (dp_bn);
     }
 
     if (dq_bn) {
-      if (ippsBigNumGetSize (params.dq.size, &bn_sz) == ippStsNoErr)
+      if (ippsBigNumGetSize (params.dq.size, &bn_sz) == ippStsNoErr) {
         explicit_bzero (dq_bn, bn_sz);
+      }
+
       free (dq_bn);
     }
 
     if (qinv_bn) {
-      if (ippsBigNumGetSize (params.qinv.size, &bn_sz) == ippStsNoErr)
+      if (ippsBigNumGetSize (params.qinv.size, &bn_sz) == ippStsNoErr) {
         explicit_bzero (qinv_bn, bn_sz);
+      }
+
       free (qinv_bn);
     }
   }
@@ -1691,10 +1725,10 @@ crypto_rsa_sign_internal (
   IppsRSAPrivateKeyState  *priv_key    = NULL;
   const IppsHashMethod    *hash_method = NULL;
   IppStatus               status;
-  int                     key_size_bits    = 0;
-  int                     priv_key_ctx_sz  = 0;
-  int                     buffer_size      = 0;
-  uint8_t                 *scratch_buffer  = NULL;
+  int                     key_size_bits   = 0;
+  int                     priv_key_ctx_sz = 0;
+  int                     buffer_size     = 0;
+  uint8_t                 *scratch_buffer = NULL;
 
   if ((sig_block == NULL) || (digest == NULL) || (privkey_file == NULL)) {
     printf ("ERROR: crypto_rsa_sign_internal called with NULL pointer\n");
@@ -1788,9 +1822,10 @@ crypto_rsa_sign_internal (
         goto rsa_sign_cleanup;
       }
 
-      if (ippsBigNumInit (salt_len, salt_bn) != ippStsNoErr ||
-          ippsTRNGenRDSEED_BN (salt_bn, salt_len * 8, NULL) != ippStsNoErr ||
-          ippsGetOctString_BN (pss_salt, salt_len, salt_bn) != ippStsNoErr) {
+      if ((ippsBigNumInit (salt_len, salt_bn) != ippStsNoErr) ||
+          (ippsTRNGenRDSEED_BN (salt_bn, salt_len * 8, NULL) != ippStsNoErr) ||
+          (ippsGetOctString_BN (pss_salt, salt_len, salt_bn) != ippStsNoErr))
+      {
         free (salt_bn);
         free (pss_salt);
         goto rsa_sign_cleanup;
@@ -1827,6 +1862,7 @@ rsa_sign_cleanup:
   if (priv_key) {
     explicit_bzero (priv_key, priv_key_ctx_sz);
   }
+
   free (priv_key);
   free (scratch_buffer);
   return result_code;
@@ -1848,19 +1884,20 @@ pkcs_get_hashalg (
   }
 
   data += 2;   /* Skip 00 01 */
-// Skip 0xFFs padding and 00 after it
-  size_t max_skip = 256;
-  size_t skip_count = 0;
+  // Skip 0xFFs padding and 00 after it
+  size_t  max_skip   = 256;
+  size_t  skip_count = 0;
 
   while (*data == 0xFF && skip_count < max_skip) {
     data++;
     skip_count++;
   }
-  
+
   // After 0xFFs, expect a 0x00 delimiter
   if (*data != 0x00) {
     return TPM_ALG_NULL;
   }
+
   data++; // Move past 0x00
 
   // Then move to der_oid
@@ -1909,13 +1946,13 @@ crypto_verify_rsa_signature_internal (
   const IppsHashMethod   *hash_method = NULL;
   IppStatus              status;
   int                    key_size_bits;
-  int                    pub_exp_bits     = 32; /* Typical public exponent is 65537 (0x010001) */
-  int                    pub_key_size     = 0;
-  int                    buffer_size      = 0;
-  uint8_t                *scratch_buffer  = NULL;
-  int                    is_valid         = 0;
-  bool                   result           = false;
-  uint8_t                pub_exp[]        = { 0x01, 0x00, 0x01 }; /* 65537 in big-endian */
+  int                    pub_exp_bits    = 32;  /* Typical public exponent is 65537 (0x010001) */
+  int                    pub_key_size    = 0;
+  int                    buffer_size     = 0;
+  uint8_t                *scratch_buffer = NULL;
+  int                    is_valid        = 0;
+  bool                   result          = false;
+  uint8_t                pub_exp[]       = { 0x01, 0x00, 0x01 };  /* 65537 in big-endian */
 
   if ((data == NULL) || (pubkey == NULL) || (signature == NULL)) {
     printf ("ERROR: crypto_verify_rsa_signature_internal called with NULL pointer\n");
@@ -1957,14 +1994,14 @@ crypto_verify_rsa_signature_internal (
                   (ippsRSA_SetPublicKey (temp_mod_bn, temp_exp_bn, temp_key) == ippStsNoErr))
               {
                 /* Allocate scratch buffer for RSA operation */
-                int temp_buf_size = 0;
-                uint8_t *temp_scratch = NULL;
+                int      temp_buf_size = 0;
+                uint8_t  *temp_scratch = NULL;
                 if (ippsRSA_GetBufferSizePublicKey (&temp_buf_size, temp_key) == ippStsNoErr) {
                   temp_scratch = (uint8_t *)malloc (temp_buf_size);
                 }
 
                 /* Perform encryption (which is sig^e mod n = original padded message) */
-                IppStatus enc_st = ippsRSA_Encrypt (sig_bn, result_bn, temp_key, temp_scratch);
+                IppStatus  enc_st = ippsRSA_Encrypt (sig_bn, result_bn, temp_key, temp_scratch);
                 if (enc_st == ippStsNoErr) {
                   /* Extract result to byte array */
                   if (ippsGetOctString_BN (decrypted_sig, pubkey->size, result_bn) == ippStsNoErr) {
@@ -2797,30 +2834,36 @@ validate_lms_sig_algo_type (
   IppsLMSAlgoType      *algo_type
   )
 {
-  if (sig_len < sizeof(lms_signature_block)) {
-    printf ("ERROR: LMS signature too short: %zu (expected %zu)\n", sig_len, sizeof(lms_signature_block));
+  if (sig_len < sizeof (lms_signature_block)) {
+    printf ("ERROR: LMS signature too short: %zu (expected %zu)\n", sig_len, sizeof (lms_signature_block));
     return ippStsSizeErr;
   }
 
   /* Validate LMOTS type at offset sizeof(uint32_t) (after Q) */
   uint32_t  lmots_type;
-  memcpy (&lmots_type, signature + sizeof(uint32_t), sizeof(lmots_type));
+  memcpy (&lmots_type, signature + sizeof (uint32_t), sizeof (lmots_type));
   lmots_type = ntohl (lmots_type);
 
   if (lmots_type != LMOTS_SHA256_N24_W4) {
-    printf ("ERROR: Unsupported LMOTS type in signature: 0x%x (expected LMOTS_SHA256_N24_W4=0x%x)\n",
-            lmots_type, LMOTS_SHA256_N24_W4);
+    printf (
+            "ERROR: Unsupported LMOTS type in signature: 0x%x (expected LMOTS_SHA256_N24_W4=0x%x)\n",
+            lmots_type,
+            LMOTS_SHA256_N24_W4
+            );
     return ippStsNotSupportedModeErr;
   }
 
   /* Validate LMS type after Q + lmots_signature */
   uint32_t  lms_type;
-  memcpy (&lms_type, signature + sizeof(uint32_t) + sizeof(lmots_signature), sizeof(lms_type));
+  memcpy (&lms_type, signature + sizeof (uint32_t) + sizeof (lmots_signature), sizeof (lms_type));
   lms_type = ntohl (lms_type);
 
   if (lms_type != LMS_SHA256_M24_H20) {
-    printf ("ERROR: Unsupported LMS type in signature: 0x%x (expected LMS_SHA256_M24_H20=0x%x)\n",
-            lms_type, LMS_SHA256_M24_H20);
+    printf (
+            "ERROR: Unsupported LMS type in signature: 0x%x (expected LMS_SHA256_M24_H20=0x%x)\n",
+            lms_type,
+            LMS_SHA256_M24_H20
+            );
     return ippStsNotSupportedModeErr;
   }
 
@@ -2858,20 +2901,20 @@ crypto_lms_verify_signature_internal (
     return false;
   }
 
-  if (pubkey_len < sizeof(uint32_t) + sizeof(lms_xdr_key_data)) {
+  if (pubkey_len < sizeof (uint32_t) + sizeof (lms_xdr_key_data)) {
     printf ("ERROR: Public key buffer too short: %zu\n", pubkey_len);
     return false;
   }
 
-  if (sig_len < sizeof(uint32_t) + sizeof(lms_signature_block)) {
+  if (sig_len < sizeof (uint32_t) + sizeof (lms_signature_block)) {
     printf ("ERROR: Signature buffer too short: %zu\n", sig_len);
     return false;
   }
 
   /* Strip LEVELS / NSPK prefixes */
-  actual_pubkey = public_key + sizeof(uint32_t);
-  actual_sig    = signature + sizeof(uint32_t);
-  actual_sig_len = sig_len - sizeof(uint32_t);
+  actual_pubkey  = public_key + sizeof (uint32_t);
+  actual_sig     = signature + sizeof (uint32_t);
+  actual_sig_len = sig_len - sizeof (uint32_t);
 
   /* Validate LMS/LMOTS types in signature and get IPPC algo type */
   status = validate_lms_sig_algo_type (actual_sig, actual_sig_len, &algo_type);
@@ -2920,25 +2963,31 @@ crypto_lms_verify_signature_internal (
   /* Validate LMS and LMOTS types in public key (lms_xdr_key_data) */
   uint32_t  pubkey_lms_type;
   uint32_t  pubkey_lmots_type;
-  memcpy (&pubkey_lms_type, actual_pubkey, sizeof(pubkey_lms_type));
-  memcpy (&pubkey_lmots_type, actual_pubkey + sizeof(uint32_t), sizeof(pubkey_lmots_type));
-  pubkey_lms_type = ntohl (pubkey_lms_type);
+  memcpy (&pubkey_lms_type, actual_pubkey, sizeof (pubkey_lms_type));
+  memcpy (&pubkey_lmots_type, actual_pubkey + sizeof (uint32_t), sizeof (pubkey_lmots_type));
+  pubkey_lms_type   = ntohl (pubkey_lms_type);
   pubkey_lmots_type = ntohl (pubkey_lmots_type);
 
   if (pubkey_lms_type != LMS_SHA256_M24_H20) {
-    printf ("ERROR: Unsupported LMS type in public key: 0x%x (expected LMS_SHA256_M24_H20=0x%x)\n",
-            pubkey_lms_type, LMS_SHA256_M24_H20);
+    printf (
+            "ERROR: Unsupported LMS type in public key: 0x%x (expected LMS_SHA256_M24_H20=0x%x)\n",
+            pubkey_lms_type,
+            LMS_SHA256_M24_H20
+            );
     goto cleanup;
   }
 
   if (pubkey_lmots_type != LMOTS_SHA256_N24_W4) {
-    printf ("ERROR: Unsupported LMOTS type in public key: 0x%x (expected LMOTS_SHA256_N24_W4=0x%x)\n",
-            pubkey_lmots_type, LMOTS_SHA256_N24_W4);
+    printf (
+            "ERROR: Unsupported LMOTS type in public key: 0x%x (expected LMOTS_SHA256_N24_W4=0x%x)\n",
+            pubkey_lmots_type,
+            LMOTS_SHA256_N24_W4
+            );
     goto cleanup;
   }
 
-  const Ipp8u  *pI = actual_pubkey + 2 * sizeof(uint32_t);       /* Skip LmsType + LmotsType */
-  const Ipp8u  *pK = actual_pubkey + 2 * sizeof(uint32_t) + I_LEN; /* After LmsType + LmotsType + I */
+  const Ipp8u  *pI = actual_pubkey + 2 * sizeof (uint32_t);         /* Skip LmsType + LmotsType */
+  const Ipp8u  *pK = actual_pubkey + 2 * sizeof (uint32_t) + I_LEN; /* After LmsType + LmotsType + I */
 
   /* Initialize public key state */
   status = ippsLMSSetPublicKeyState (algo_type, pI, pK, pubkey_state);
@@ -2952,12 +3001,12 @@ crypto_lms_verify_signature_internal (
    * lms_signature_block = Q + lmots_signature + LmsType + Path (LMS_SIGNATURE_BLOCK_SIZE)
    * Size already validated by validate_lms_sig_algo_type(). */
   Ipp32u  q;
-  memcpy (&q, actual_sig, sizeof(q));
+  memcpy (&q, actual_sig, sizeof (q));
   q = ntohl (q);  /* Convert from big-endian */
 
-  const Ipp8u  *pC        = actual_sig + 2 * sizeof(uint32_t);                                        /* Skip Q + LMOTS Type */
-  const Ipp8u  *pY        = actual_sig + 2 * sizeof(uint32_t) + SHA256_192_DIGEST_SIZE;                /* After Q + LMOTS Type + Seed */
-  const Ipp8u  *pAuthPath = actual_sig + sizeof(uint32_t) + sizeof(lmots_signature) + sizeof(uint32_t); /* After Q + lmots_sig + LmsType */
+  const Ipp8u  *pC        = actual_sig + 2 * sizeof (uint32_t);                                            /* Skip Q + LMOTS Type */
+  const Ipp8u  *pY        = actual_sig + 2 * sizeof (uint32_t) + SHA256_192_DIGEST_SIZE;                   /* After Q + LMOTS Type + Seed */
+  const Ipp8u  *pAuthPath = actual_sig + sizeof (uint32_t) + sizeof (lmots_signature) + sizeof (uint32_t); /* After Q + lmots_sig + LmsType */
 
   /* Initialize signature state */
   status = ippsLMSSetSignatureState (algo_type, q, pC, pY, pAuthPath, sig_state);
@@ -3011,8 +3060,8 @@ lms_keygen_rng_callback (
   void    *pCtx
   )
 {
-  lms_keygen_rng_ctx  *ctx    = (lms_keygen_rng_ctx *)pCtx;
-  int                 nBytes  = nBits / 8;
+  lms_keygen_rng_ctx  *ctx   = (lms_keygen_rng_ctx *)pCtx;
+  int                 nBytes = nBits / 8;
 
   if (ctx->call_count == 0) {
     /* First call: provide the secret seed */
@@ -3065,7 +3114,7 @@ crypto_lms_sign_data_internal (
   Ipp32s                  keygen_buf_sz = 0;
   Ipp32s                  sign_buf_sz   = 0;
   uint32_t                leaf_q;
-  Ipp32s                  extra_buf_sz  = 0;
+  Ipp32s                  extra_buf_sz = 0;
 
   /* Fixed algorithm type: LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4 */
   IppsLMSAlgoType  algo_type = {
@@ -3082,23 +3131,32 @@ crypto_lms_sign_data_internal (
 
   /* Validate exact file size */
   if (file_size != LMS_PRV_EXPECTED_SIZE) {
-    printf ("ERROR: Invalid LMS private key file size: %zu (expected %d)\n",
-            file_size, LMS_PRV_EXPECTED_SIZE);
+    printf (
+            "ERROR: Invalid LMS private key file size: %zu (expected %d)\n",
+            file_size,
+            LMS_PRV_EXPECTED_SIZE
+            );
     free (file_data);
     return crypto_operation_fail;
   }
 
   /* Validate compressed parameter sets match LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4 */
   if (file_data[LMS_PRV_PARAMS_OFFSET] != LMS_PRV_COMPRESSED_LM) {
-    printf ("ERROR: Unsupported LMS type in private key: 0x%02x (expected 0x%02x for LMS_SHA256_M24_H20)\n",
-            file_data[LMS_PRV_PARAMS_OFFSET], LMS_PRV_COMPRESSED_LM);
+    printf (
+            "ERROR: Unsupported LMS type in private key: 0x%02x (expected 0x%02x for LMS_SHA256_M24_H20)\n",
+            file_data[LMS_PRV_PARAMS_OFFSET],
+            LMS_PRV_COMPRESSED_LM
+            );
     free (file_data);
     return crypto_operation_fail;
   }
 
   if (file_data[LMS_PRV_PARAMS_OFFSET + 1] != LMS_PRV_COMPRESSED_LMOTS) {
-    printf ("ERROR: Unsupported LMOTS type in private key: 0x%02x (expected 0x%02x for LMOTS_SHA256_N24_W4)\n",
-            file_data[LMS_PRV_PARAMS_OFFSET + 1], LMS_PRV_COMPRESSED_LMOTS);
+    printf (
+            "ERROR: Unsupported LMOTS type in private key: 0x%02x (expected 0x%02x for LMOTS_SHA256_N24_W4)\n",
+            file_data[LMS_PRV_PARAMS_OFFSET + 1],
+            LMS_PRV_COMPRESSED_LMOTS
+            );
     free (file_data);
     return crypto_operation_fail;
   }
@@ -3113,8 +3171,11 @@ crypto_lms_sign_data_internal (
 
   /* Check if key is exhausted (2^20 = 1048576 leaves for H20) */
   if (seq_counter >= ((uint64_t)1 << LMS_SIGN_H)) {
-    printf ("ERROR: LMS private key is exhausted (q=%lu, max=%lu)\n",
-            (unsigned long)seq_counter, (unsigned long)((uint64_t)1 << LMS_SIGN_H));
+    printf (
+            "ERROR: LMS private key is exhausted (q=%lu, max=%lu)\n",
+            (unsigned long)seq_counter,
+            (unsigned long)((uint64_t)1 << LMS_SIGN_H)
+            );
     free (file_data);
     return crypto_operation_fail;
   }
@@ -3125,8 +3186,11 @@ crypto_lms_sign_data_internal (
 
   /* Check output buffer size */
   if (*sig_len < LMS_SIGN_TOTAL_SIZE) {
-    printf ("ERROR: Signature buffer too small: need %zu, have %zu\n",
-            (size_t)LMS_SIGN_TOTAL_SIZE, *sig_len);
+    printf (
+            "ERROR: Signature buffer too small: need %zu, have %zu\n",
+            (size_t)LMS_SIGN_TOTAL_SIZE,
+            *sig_len
+            );
     free (file_data);
     return crypto_buffer_too_small;
   }
@@ -3212,12 +3276,17 @@ crypto_lms_sign_data_internal (
   /* Sanity check: validate mirror struct alignment by verifying the algorithm
    * fields match what we configured.  If these don't match, the IPPC internal
    * struct layout has changed and the mirror structs must be updated. */
-  if (priv_mirror->lmsOIDAlgo != LMS_SHA256_M24_H20 ||
-      priv_mirror->lmotsOIDAlgo != LMOTS_SHA256_N24_W4) {
-    printf ("ERROR: LMS private key mirror struct mismatch: lmsOID=%d lmotsOID=%d "
+  if ((priv_mirror->lmsOIDAlgo != LMS_SHA256_M24_H20) ||
+      (priv_mirror->lmotsOIDAlgo != LMOTS_SHA256_N24_W4))
+  {
+    printf (
+            "ERROR: LMS private key mirror struct mismatch: lmsOID=%d lmotsOID=%d "
             "(expected %d, %d)\n",
-            priv_mirror->lmsOIDAlgo, priv_mirror->lmotsOIDAlgo,
-            LMS_SHA256_M24_H20, LMOTS_SHA256_N24_W4);
+            priv_mirror->lmsOIDAlgo,
+            priv_mirror->lmotsOIDAlgo,
+            LMS_SHA256_M24_H20,
+            LMOTS_SHA256_N24_W4
+            );
     printf ("       IPPC internal layout may have changed — update mirror structs\n");
     goto cleanup;
   }
@@ -3242,17 +3311,22 @@ crypto_lms_sign_data_internal (
   lms_sig_state_mirror  *sig_mirror = (lms_sig_state_mirror *)sig_state;
 
   /* Sanity check signature state mirror alignment via algorithm fields */
-  if (sig_mirror->_lmsOIDAlgo != LMS_SHA256_M24_H20 ||
-      sig_mirror->_lmotsSig._lmotsOIDAlgo != LMOTS_SHA256_N24_W4) {
-    printf ("ERROR: LMS sig state mirror struct mismatch: lmsOID=%d lmotsOID=%d "
+  if ((sig_mirror->_lmsOIDAlgo != LMS_SHA256_M24_H20) ||
+      (sig_mirror->_lmotsSig._lmotsOIDAlgo != LMOTS_SHA256_N24_W4))
+  {
+    printf (
+            "ERROR: LMS sig state mirror struct mismatch: lmsOID=%d lmotsOID=%d "
             "(expected %d, %d)\n",
-            sig_mirror->_lmsOIDAlgo, sig_mirror->_lmotsSig._lmotsOIDAlgo,
-            LMS_SHA256_M24_H20, LMOTS_SHA256_N24_W4);
+            sig_mirror->_lmsOIDAlgo,
+            sig_mirror->_lmotsSig._lmotsOIDAlgo,
+            LMS_SHA256_M24_H20,
+            LMOTS_SHA256_N24_W4
+            );
     printf ("       IPPC internal layout may have changed — update mirror structs\n");
     goto cleanup;
   }
 
-  unsigned char         *p_out      = signature;
+  unsigned char  *p_out = signature;
 
   /* NSPK prefix: u32str(0) for single-level HSS tree */
   uint32_t  nspk = htonl (0);
@@ -3300,11 +3374,11 @@ crypto_lms_sign_data_internal (
     }
 
     {
-      uint8_t  counter_bytes[LMS_PRV_COUNTER_SIZE];
-      uint64_t temp_counter = seq_counter;
+      uint8_t   counter_bytes[LMS_PRV_COUNTER_SIZE];
+      uint64_t  temp_counter = seq_counter;
       for (int i = LMS_PRV_COUNTER_SIZE - 1; i >= 0; i--) {
         counter_bytes[i] = (uint8_t)(temp_counter & 0xFF);
-        temp_counter >>= 8;
+        temp_counter   >>= 8;
       }
 
       if (fwrite (counter_bytes, LMS_PRV_COUNTER_SIZE, 1, fp) != 1) {
@@ -3316,7 +3390,7 @@ crypto_lms_sign_data_internal (
 
       /* Ensure the counter update reaches persistent storage before returning
        * the signature.  LMS security depends on never reusing a leaf index. */
-      if (fflush (fp) != 0 || fsync (fileno (fp)) != 0) {
+      if ((fflush (fp) != 0) || (fsync (fileno (fp)) != 0)) {
         printf ("ERROR: Failed to flush LMS private key counter to disk — risk of key reuse\n");
         fclose (fp);
         result = crypto_operation_fail;
@@ -3399,7 +3473,7 @@ parse_mldsa_public_key_spki (
   size_t  alg_seq_end;
 
   /* Outer SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_SEQUENCE)) {
     return -1;
   }
 
@@ -3410,7 +3484,7 @@ parse_mldsa_public_key_spki (
   }
 
   /* AlgorithmIdentifier SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_SEQUENCE)) {
     return -1;
   }
 
@@ -3435,7 +3509,7 @@ parse_mldsa_public_key_spki (
   offset = alg_seq_end;
 
   /* BIT STRING containing the raw public key */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_BIT_STRING) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_BIT_STRING)) {
     return -1;
   }
 
@@ -3446,7 +3520,7 @@ parse_mldsa_public_key_spki (
   }
 
   /* Skip unused-bits byte (must be 0) */
-  if (offset >= der_size || der_buf[offset] != 0x00) {
+  if ((offset >= der_size) || (der_buf[offset] != 0x00)) {
     return -1;
   }
 
@@ -3454,12 +3528,15 @@ parse_mldsa_public_key_spki (
   bitstring_len--;
 
   if (bitstring_len != MLDSA87_PUBKEY_SIZE) {
-    printf ("ERROR: Unexpected ML-DSA-87 public key size: %zu (expected %d)\n",
-            bitstring_len, MLDSA87_PUBKEY_SIZE);
+    printf (
+            "ERROR: Unexpected ML-DSA-87 public key size: %zu (expected %d)\n",
+            bitstring_len,
+            MLDSA87_PUBKEY_SIZE
+            );
     return -1;
   }
 
-  if (pubkey_buf_size < bitstring_len || offset + bitstring_len > der_size) {
+  if ((pubkey_buf_size < bitstring_len) || (offset + bitstring_len > der_size)) {
     return -1;
   }
 
@@ -3488,7 +3565,7 @@ parse_mldsa_private_key_pkcs8 (
   size_t  octet_len, inner_end, seed_len, expanded_len;
 
   /* Outer SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_SEQUENCE)) {
     return -1;
   }
 
@@ -3499,7 +3576,7 @@ parse_mldsa_private_key_pkcs8 (
   }
 
   /* Version INTEGER (must be 0) */
-  if (offset >= der_size || der_buf[offset] != 0x02) {
+  if ((offset >= der_size) || (der_buf[offset] != 0x02)) {
     return -1;
   }
 
@@ -3517,7 +3594,7 @@ parse_mldsa_private_key_pkcs8 (
   offset++;
 
   /* AlgorithmIdentifier SEQUENCE */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_SEQUENCE) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_SEQUENCE)) {
     return -1;
   }
 
@@ -3542,7 +3619,7 @@ parse_mldsa_private_key_pkcs8 (
   offset = alg_seq_end;
 
   /* Outer OCTET STRING wrapping the private key data */
-  if (offset >= der_size || der_buf[offset] != DER_TAG_OCTET_STRING) {
+  if ((offset >= der_size) || (der_buf[offset] != DER_TAG_OCTET_STRING)) {
     return -1;
   }
 
@@ -3559,7 +3636,7 @@ parse_mldsa_private_key_pkcs8 (
   }
 
   /* Inner SEQUENCE: { OCTET STRING (seed), OCTET STRING (expanded key) } */
-  if (offset >= inner_end || der_buf[offset] != DER_TAG_SEQUENCE) {
+  if ((offset >= inner_end) || (der_buf[offset] != DER_TAG_SEQUENCE)) {
     return -1;
   }
 
@@ -3570,7 +3647,7 @@ parse_mldsa_private_key_pkcs8 (
   }
 
   /* First OCTET STRING: seed (skip it) */
-  if (offset >= inner_end || der_buf[offset] != DER_TAG_OCTET_STRING) {
+  if ((offset >= inner_end) || (der_buf[offset] != DER_TAG_OCTET_STRING)) {
     return -1;
   }
 
@@ -3583,7 +3660,7 @@ parse_mldsa_private_key_pkcs8 (
   offset += seed_len;
 
   /* Second OCTET STRING: expanded private key (what IPPC needs) */
-  if (offset >= inner_end || der_buf[offset] != DER_TAG_OCTET_STRING) {
+  if ((offset >= inner_end) || (der_buf[offset] != DER_TAG_OCTET_STRING)) {
     return -1;
   }
 
@@ -3594,12 +3671,15 @@ parse_mldsa_private_key_pkcs8 (
   }
 
   if (expanded_len != MLDSA87_PRIVKEY_SIZE) {
-    printf ("ERROR: Unexpected ML-DSA-87 expanded private key size: %zu (expected %d)\n",
-            expanded_len, MLDSA87_PRIVKEY_SIZE);
+    printf (
+            "ERROR: Unexpected ML-DSA-87 expanded private key size: %zu (expected %d)\n",
+            expanded_len,
+            MLDSA87_PRIVKEY_SIZE
+            );
     return -1;
   }
 
-  if (privkey_buf_size < expanded_len || offset + expanded_len > der_size) {
+  if ((privkey_buf_size < expanded_len) || (offset + expanded_len > der_size)) {
     return -1;
   }
 
@@ -3625,11 +3705,14 @@ crypto_read_mldsa_pubkey_internal (
   uint8_t   *der_buf   = NULL;
   uint16_t  der_size   = 0;
   uint8_t   pem_type;
-  size_t    raw_len    = 0;
+  size_t    raw_len = 0;
 
   if (pubkey_size < MLDSA87_PUBKEY_SIZE) {
-    printf ("ERROR: ML-DSA pubkey buffer too small: need %d, have %zu\n",
-            MLDSA87_PUBKEY_SIZE, pubkey_size);
+    printf (
+            "ERROR: ML-DSA pubkey buffer too small: need %d, have %zu\n",
+            MLDSA87_PUBKEY_SIZE,
+            pubkey_size
+            );
     return false;
   }
 
@@ -3664,8 +3747,11 @@ crypto_read_mldsa_pubkey_internal (
     free (file_data);
     return true;
   } else {
-    printf ("ERROR: ML-DSA public key file is not PEM, DER, or raw (%zu bytes): %s\n",
-            file_size, file);
+    printf (
+            "ERROR: ML-DSA public key file is not PEM, DER, or raw (%zu bytes): %s\n",
+            file_size,
+            file
+            );
     free (file_data);
     return false;
   }
@@ -3686,10 +3772,10 @@ crypto_read_mldsa_pubkey_internal (
  */
 static bool
 read_mldsa_privkey_from_pem (
-  const char     *file,
-  uint8_t        *privkey,
-  size_t         privkey_size,
-  size_t         *privkey_len
+  const char  *file,
+  uint8_t     *privkey,
+  size_t      privkey_size,
+  size_t      *privkey_len
   )
 {
   uint8_t   *file_data = NULL;
@@ -3728,8 +3814,11 @@ read_mldsa_privkey_from_pem (
     free (file_data);
     return true;
   } else {
-    printf ("ERROR: ML-DSA private key file is not PEM, DER, or raw (%zu bytes): %s\n",
-            file_size, file);
+    printf (
+            "ERROR: ML-DSA private key file is not PEM, DER, or raw (%zu bytes): %s\n",
+            file_size,
+            file
+            );
     free (file_data);
     return false;
   }
@@ -3757,15 +3846,15 @@ crypto_mldsa_sign_data_internal (
   const char           *privkey_file
   )
 {
-  IppStatus         ipp_status    = ippStsNoErr;
-  crypto_status     result        = crypto_operation_fail;
-  IppsMLDSAState    *state        = NULL;
-  Ipp8u             *sign_buf     = NULL;
-  Ipp8u             *prv_key      = NULL;
-  Ipp32s            state_size    = 0;
-  Ipp32s            sign_buf_sz   = 0;
-  IppsMLDSAInfo     info;
-  size_t            prv_len       = 0;
+  IppStatus       ipp_status  = ippStsNoErr;
+  crypto_status   result      = crypto_operation_fail;
+  IppsMLDSAState  *state      = NULL;
+  Ipp8u           *sign_buf   = NULL;
+  Ipp8u           *prv_key    = NULL;
+  Ipp32s          state_size  = 0;
+  Ipp32s          sign_buf_sz = 0;
+  IppsMLDSAInfo   info;
+  size_t          prv_len = 0;
 
   /* Get key sizes */
   ipp_status = ippsMLDSA_GetInfo (&info, ML_DSA_87);
@@ -3776,8 +3865,11 @@ crypto_mldsa_sign_data_internal (
 
   /* Check output buffer size */
   if (*sig_len < (size_t)info.signatureSize) {
-    printf ("ERROR: ML-DSA signature buffer too small: need %d, have %zu\n",
-            info.signatureSize, *sig_len);
+    printf (
+            "ERROR: ML-DSA signature buffer too small: need %d, have %zu\n",
+            info.signatureSize,
+            *sig_len
+            );
     return crypto_buffer_too_small;
   }
 
@@ -3788,8 +3880,13 @@ crypto_mldsa_sign_data_internal (
     return crypto_memory_alloc_fail;
   }
 
-  if (!read_mldsa_privkey_from_pem (privkey_file, prv_key,
-                                     (size_t)info.privateKeySize, &prv_len)) {
+  if (!read_mldsa_privkey_from_pem (
+                                    privkey_file,
+                                    prv_key,
+                                    (size_t)info.privateKeySize,
+                                    &prv_len
+                                    ))
+  {
     printf ("ERROR: Failed to read ML-DSA-87 private key from %s\n", privkey_file);
     free (prv_key);
     return crypto_file_io_error;
@@ -3833,12 +3930,17 @@ crypto_mldsa_sign_data_internal (
 
   /* Sign the message (ctx=NULL, ctxLen=0, rndFunc=NULL uses RDRAND) */
   ipp_status = ippsMLDSA_Sign (
-    (const Ipp8u *)msg, (Ipp32s)msg_len,
-    NULL, 0,                          /* no context string */
-    prv_key, signature,
-    state, sign_buf,
-    NULL, NULL                        /* use RDRAND */
-  );
+                               (const Ipp8u *)msg,
+                               (Ipp32s)msg_len,
+                               NULL,
+                               0,     /* no context string */
+                               prv_key,
+                               signature,
+                               state,
+                               sign_buf,
+                               NULL,
+                               NULL   /* use RDRAND */
+                               );
 
   if (ipp_status != ippStsNoErr) {
     printf ("ERROR: ippsMLDSA_Sign failed: %s\n", ippcpGetStatusString (ipp_status));
@@ -3883,14 +3985,14 @@ crypto_mldsa_verify_signature_internal (
   size_t               pubkey_len
   )
 {
-  IppStatus         ipp_status    = ippStsNoErr;
-  bool              result        = false;
-  IppsMLDSAState    *state        = NULL;
-  Ipp8u             *verify_buf   = NULL;
-  Ipp32s            state_size    = 0;
-  Ipp32s            verify_buf_sz = 0;
-  IppsMLDSAInfo     info;
-  Ipp32s            is_valid      = 0;
+  IppStatus       ipp_status    = ippStsNoErr;
+  bool            result        = false;
+  IppsMLDSAState  *state        = NULL;
+  Ipp8u           *verify_buf   = NULL;
+  Ipp32s          state_size    = 0;
+  Ipp32s          verify_buf_sz = 0;
+  IppsMLDSAInfo   info;
+  Ipp32s          is_valid = 0;
 
   (void)sig_len;    /* ML-DSA-87 signature has a fixed size */
   (void)pubkey_len; /* ML-DSA-87 pubkey has a fixed size */
@@ -3937,13 +4039,16 @@ crypto_mldsa_verify_signature_internal (
 
   /* Verify the signature (ctx=NULL, ctxLen=0) */
   ipp_status = ippsMLDSA_Verify (
-    (const Ipp8u *)msg, (Ipp32s)msg_len,
-    NULL, 0,                          /* no context string */
-    (const Ipp8u *)public_key,
-    (const Ipp8u *)signature,
-    &is_valid,
-    state, verify_buf
-  );
+                                 (const Ipp8u *)msg,
+                                 (Ipp32s)msg_len,
+                                 NULL,
+                                 0,   /* no context string */
+                                 (const Ipp8u *)public_key,
+                                 (const Ipp8u *)signature,
+                                 &is_valid,
+                                 state,
+                                 verify_buf
+                                 );
 
   if (ipp_status != ippStsNoErr) {
     printf ("ERROR: ippsMLDSA_Verify failed: %s\n", ippcpGetStatusString (ipp_status));

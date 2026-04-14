@@ -36,14 +36,31 @@
 #ifndef __POL_H__
 #define __POL_H__
 
-extern size_t get_policy_size(const lcp_policy_t2 *pol);
-extern bool verify_policy(const lcp_policy_t2 *pol, size_t size, bool silent);
-extern void display_policy(const char *prefix, const lcp_policy_t2 *pol,
-                           bool brief);
-extern const char *policy_type_to_str(uint8_t type);
+extern size_t
+get_policy_size (
+  const lcp_policy_t2  *pol
+  );
 
-#endif    /* __POL_H__ */
+extern bool
+verify_policy (
+  const lcp_policy_t2  *pol,
+  size_t               size,
+  bool                 silent
+  );
 
+extern void
+display_policy (
+  const char           *prefix,
+  const lcp_policy_t2  *pol,
+  bool                 brief
+  );
+
+extern const char *
+policy_type_to_str (
+  uint8_t  type
+  );
+
+#endif /* __POL_H__ */
 
 /*
  * Local variables:

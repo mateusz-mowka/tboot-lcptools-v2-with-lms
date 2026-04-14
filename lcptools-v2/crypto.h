@@ -7,34 +7,34 @@
  * Only pull in the standard headers when building userspace tools.
  */
 #ifndef __TYPES_H__
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
+  #include <stdint.h>
+  #include <stddef.h>
+  #include <stdbool.h>
 #endif
 
 #define CRYPTO_SHA256_LENGTH  32
 #define CRYPTO_SM3_LENGTH     32
 #define CRYPTO_SHA384_LENGTH  48
 #define CRYPTO_SHA512_LENGTH  64
-#define MAX_RSA_KEY_SIZE         0x180
-#define MIN_RSA_KEY_SIZE         0x100
-#define MAX_ECC_KEY_SIZE         0x30
-#define MIN_ECC_KEY_SIZE         0x20
+#define MAX_RSA_KEY_SIZE      0x180
+#define MIN_RSA_KEY_SIZE      0x100
+#define MAX_ECC_KEY_SIZE      0x30
+#define MIN_ECC_KEY_SIZE      0x20
 
 /* LMS/LMOTS component sizes (LMS_SHA256_M24_H20 / LMOTS_SHA256_N24_W4) */
-#define LMOTS_SIGNATURE_N_SIZE   24   /* SHA-256/192 digest size */
-#define LMOTS_SIGNATURE_P_SIZE   51   /* Number of n-byte elements in LMOTS signature */
-#define LMOTS_SIGNATURE_BLOCK_SIZE (LMOTS_SIGNATURE_N_SIZE * LMOTS_SIGNATURE_P_SIZE)
+#define LMOTS_SIGNATURE_N_SIZE      24 /* SHA-256/192 digest size */
+#define LMOTS_SIGNATURE_P_SIZE      51 /* Number of n-byte elements in LMOTS signature */
+#define LMOTS_SIGNATURE_BLOCK_SIZE  (LMOTS_SIGNATURE_N_SIZE * LMOTS_SIGNATURE_P_SIZE)
 
-#define LMS_SIGNATURE_H_HEIGHT   20   /* Height of the LMS tree */
-#define LMS_SIGNATURE_M_SIZE     24   /* Bytes in each LMS tree node (SHA-256/192) */
-#define LMS_SIGNATURE_BLOCK_SIZE (LMS_SIGNATURE_H_HEIGHT * LMS_SIGNATURE_M_SIZE)
+#define LMS_SIGNATURE_H_HEIGHT    20  /* Height of the LMS tree */
+#define LMS_SIGNATURE_M_SIZE      24  /* Bytes in each LMS tree node (SHA-256/192) */
+#define LMS_SIGNATURE_BLOCK_SIZE  (LMS_SIGNATURE_H_HEIGHT * LMS_SIGNATURE_M_SIZE)
 
-#define LMS_MAX_PUBKEY_SIZE      48
+#define LMS_MAX_PUBKEY_SIZE  48
 
 /* Maximum LMS signature size (4-byte NSPK prefix + signature block) */
 /* = 4 + 4 + (4 + N + P*N) + 4 + (H * M)                           */
-#define LMS_MAX_SIGNATURE_SIZE ( \
+#define LMS_MAX_SIGNATURE_SIZE  (\
     sizeof(uint32_t) /* NSPK prefix */ + \
     sizeof(uint32_t) /* Q */ + \
     sizeof(uint32_t) + LMOTS_SIGNATURE_N_SIZE + LMOTS_SIGNATURE_BLOCK_SIZE /* lmots_signature */ + \
@@ -43,57 +43,57 @@
     )
 
 /* ML-DSA-87 sizes (NIST FIPS 204, security level 5) */
-#define MLDSA87_PUBKEY_SIZE      2592
-#define MLDSA87_PRIVKEY_SIZE     4896
-#define MLDSA87_SIGNATURE_SIZE   4627
+#define MLDSA87_PUBKEY_SIZE     2592
+#define MLDSA87_PRIVKEY_SIZE    4896
+#define MLDSA87_SIGNATURE_SIZE  4627
 
 /* ML-DSA-87 public key sub-field sizes (FIPS 204 Table 1) */
-#define MLDSA87_RHO_SIZE           32   /* Seed used to generate matrix A */
-#define MLDSA87_T1_SIZE          2560   /* High-order bits of polynomial vector t */
+#define MLDSA87_RHO_SIZE  32            /* Seed used to generate matrix A */
+#define MLDSA87_T1_SIZE   2560          /* High-order bits of polynomial vector t */
 
 /* ML-DSA-87 signature sub-field sizes (FIPS 204 Algorithm 3) */
-#define MLDSA87_COMMIT_HASH_SIZE   64   /* Commitment hash (c_tilde) */
-#define MLDSA87_RESP_VECTOR_SIZE 4480   /* Response vector of l polynomials (z) */
-#define MLDSA87_HINT_VECTOR_SIZE   83   /* Hint vector (h) */
+#define MLDSA87_COMMIT_HASH_SIZE  64    /* Commitment hash (c_tilde) */
+#define MLDSA87_RESP_VECTOR_SIZE  4480  /* Response vector of l polynomials (z) */
+#define MLDSA87_HINT_VECTOR_SIZE  83    /* Hint vector (h) */
 
 /* ASN.1 DER tag constants */
-#define DER_TAG_SEQUENCE         0x30
-#define DER_TAG_BIT_STRING       0x03
-#define DER_TAG_OCTET_STRING     0x04
-#define DER_TAG_OID              0x06
+#define DER_TAG_SEQUENCE      0x30
+#define DER_TAG_BIT_STRING    0x03
+#define DER_TAG_OCTET_STRING  0x04
+#define DER_TAG_OID           0x06
 
 /* EC uncompressed point indicator (not a DER tag, but same byte value as OCTET STRING) */
-#define EC_POINT_UNCOMPRESSED    0x04
+#define EC_POINT_UNCOMPRESSED  0x04
 
 #ifndef __packed
-#define __packed   __attribute__ ((packed))
+#define __packed  __attribute__ ((packed))
 #endif
 
 typedef struct __packed {
-    uint8_t  Version;
-    uint16_t KeySize; //IN BITS - 2048 or 3072!
-    uint32_t Exponent;
-    uint8_t  Modulus[MAX_RSA_KEY_SIZE];
+  uint8_t     Version;
+  uint16_t    KeySize; // IN BITS - 2048 or 3072!
+  uint32_t    Exponent;
+  uint8_t     Modulus[MAX_RSA_KEY_SIZE];
 } rsa_public_key;
 
 typedef struct __packed {
-    uint8_t  Version;
-    uint16_t KeySize; //IN BITS - 2048 or 3072!
-    uint16_t HashAlg;
-    uint8_t  Signature[MAX_RSA_KEY_SIZE];
+  uint8_t     Version;
+  uint16_t    KeySize; // IN BITS - 2048 or 3072!
+  uint16_t    HashAlg;
+  uint8_t     Signature[MAX_RSA_KEY_SIZE];
 } rsa_signature;
 
 typedef struct __packed {
-    uint8_t  Version;
-    uint16_t KeySize; //IN BITS - 256 or 384!
-    uint8_t  QxQy[2*MAX_ECC_KEY_SIZE];
+  uint8_t     Version;
+  uint16_t    KeySize; // IN BITS - 256 or 384!
+  uint8_t     QxQy[2*MAX_ECC_KEY_SIZE];
 } ecc_public_key;
 
 typedef struct __packed {
-    uint8_t Version;
-    uint16_t KeySize; //IN BITS - 256 or 384!
-    uint16_t HashAlg;
-    uint8_t  sigRsigS[2*MAX_ECC_KEY_SIZE];
+  uint8_t     Version;
+  uint16_t    KeySize; // IN BITS - 256 or 384!
+  uint16_t    HashAlg;
+  uint8_t     sigRsigS[2*MAX_ECC_KEY_SIZE];
 } ecc_signature;
 
 typedef enum {
@@ -112,7 +112,7 @@ typedef enum {
 
 typedef struct {
   size_t           size;
-  unsigned char   *data;
+  unsigned char    *data;
 } crypto_sized_buffer;
 
 crypto_status

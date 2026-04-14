@@ -41,7 +41,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <safe_lib.h>
-#define PRINT   printf
+#define PRINT  printf
 #include "../../include/config.h"
 #include "../../include/hash.h"
 #include "crypto.h"
@@ -52,18 +52,25 @@
  * compare whether two hash values are equal.
  *
  */
-bool are_hashes_equal(const tb_hash_t *hash1, const tb_hash_t *hash2,
-		      uint16_t hash_alg)
+bool
+are_hashes_equal (
+  const tb_hash_t  *hash1,
+  const tb_hash_t  *hash2,
+  uint16_t         hash_alg
+  )
 {
-    int diff;
-    if ( ( hash1 == NULL ) || ( hash2 == NULL ) )
-        return false;
-    
-    rsize_t hash_len = get_hash_size(hash_alg);
-    if ( hash_len == 0 )
-        return false;
+  int  diff;
 
-    return (memcmp_s(hash1, hash_len, hash2, hash_len, &diff) == 0 && diff == 0);
+  if ((hash1 == NULL) || (hash2 == NULL)) {
+    return false;
+  }
+
+  rsize_t  hash_len = get_hash_size (hash_alg);
+  if ( hash_len == 0 ) {
+    return false;
+  }
+
+  return (memcmp_s (hash1, hash_len, hash2, hash_len, &diff) == 0 && diff == 0);
 }
 
 /*
@@ -72,73 +79,96 @@ bool are_hashes_equal(const tb_hash_t *hash1, const tb_hash_t *hash2,
  * hash the buffer according to the algorithm
  *
  */
-bool hash_buffer(const unsigned char* buf, size_t size, tb_hash_t *hash,
-                 uint16_t hash_alg)
+bool
+hash_buffer (
+  const unsigned char  *buf,
+  size_t               size,
+  tb_hash_t            *hash,
+  uint16_t             hash_alg
+  )
 {
-    return (crypto_hash_buffer(buf, size, (unsigned char*)hash, hash_alg) == crypto_ok); 
+  return (crypto_hash_buffer (buf, size, (unsigned char *)hash, hash_alg) == crypto_ok);
 }
 
-void print_hash(const tb_hash_t *hash, uint16_t hash_alg)
+void
+print_hash (
+  const tb_hash_t  *hash,
+  uint16_t         hash_alg
+  )
 {
-    if ( hash == NULL )
-        return;
+  if ( hash == NULL ) {
+    return;
+  }
 
-    if ( hash_alg == TB_HALG_SHA256 ) {
-        for ( unsigned int i = 0; i < SHA256_LENGTH; i++ ) {
-            printf("%02x", hash->sha256[i]);
-            if ( i < SHA256_LENGTH-1 )
-                printf(" ");
-        }
-        printf("\n");
+  if ( hash_alg == TB_HALG_SHA256 ) {
+    for ( unsigned int i = 0; i < SHA256_LENGTH; i++ ) {
+      printf ("%02x", hash->sha256[i]);
+      if ( i < SHA256_LENGTH-1 ) {
+        printf (" ");
+      }
     }
-    else if ( hash_alg == TB_HALG_SHA384 ) {
-        for ( unsigned int i = 0; i < SHA384_LENGTH; i++ ) {
-            printf("%02x", hash->sha384[i]);
-            if ( i < SHA384_LENGTH-1 )
-                printf(" ");
-        }
-        printf("\n");
+
+    printf ("\n");
+  } else if ( hash_alg == TB_HALG_SHA384 ) {
+    for ( unsigned int i = 0; i < SHA384_LENGTH; i++ ) {
+      printf ("%02x", hash->sha384[i]);
+      if ( i < SHA384_LENGTH-1 ) {
+        printf (" ");
+      }
     }
-    else if ( hash_alg == TB_HALG_SHA512 ) {
-        for ( unsigned int i = 0; i < SHA512_LENGTH; i++ ) {
-            printf("%02x", hash->sha512[i]);
-            if ( i < SHA512_LENGTH-1 )
-                printf(" ");
-        }
-        printf("\n");
+
+    printf ("\n");
+  } else if ( hash_alg == TB_HALG_SHA512 ) {
+    for ( unsigned int i = 0; i < SHA512_LENGTH; i++ ) {
+      printf ("%02x", hash->sha512[i]);
+      if ( i < SHA512_LENGTH-1 ) {
+        printf (" ");
+      }
     }
-    else if ( hash_alg == TB_HALG_SM3) {
-        for ( unsigned int i = 0; i < SM3_LENGTH; i++ ) {
-            printf("%02x", hash->sm3[i]);
-            if ( i < SM3_LENGTH-1 )
-                printf(" ");
-        }
-        printf("\n");
+
+    printf ("\n");
+  } else if ( hash_alg == TB_HALG_SM3) {
+    for ( unsigned int i = 0; i < SM3_LENGTH; i++ ) {
+      printf ("%02x", hash->sm3[i]);
+      if ( i < SM3_LENGTH-1 ) {
+        printf (" ");
+      }
     }
-    else
-        return;
+
+    printf ("\n");
+  } else {
+    return;
+  }
 }
 
 /*
  * import a hash in the format "755567de6e0a3ee1b71a895b76..."
  */
-bool import_hash(const char *string, tb_hash_t *hash, uint16_t alg)
+bool
+import_hash (
+  const char  *string,
+  tb_hash_t   *hash,
+  uint16_t    alg
+  )
 {
-    size_t hash_len = get_hash_size(alg);
-    size_t string_len = strnlen(string, hash_len * 2 + 1);
-    unsigned int iter_a, iter_b;
-    char byte[3] = {0, 0, 0};
+  size_t        hash_len   = get_hash_size (alg);
+  size_t        string_len = strnlen (string, hash_len * 2 + 1);
+  unsigned int  iter_a, iter_b;
+  char          byte[3] = { 0, 0, 0 };
 
-    for (iter_a = 0, iter_b = 0;
-         iter_a < string_len && iter_b <= hash_len;
-         iter_a += 2, iter_b++) {
-        memcpy_s(byte, sizeof(byte), &string[iter_a], 2);
-        hash->sha512[iter_b] = strtol(byte, NULL, 16);
-    }
-    if (iter_a != string_len || iter_b != hash_len)
-        return false;
+  for (iter_a = 0, iter_b = 0;
+       iter_a < string_len && iter_b <= hash_len;
+       iter_a += 2, iter_b++)
+  {
+    memcpy_s (byte, sizeof (byte), &string[iter_a], 2);
+    hash->sha512[iter_b] = strtol (byte, NULL, 16);
+  }
 
-    return true;
+  if ((iter_a != string_len) || (iter_b != hash_len)) {
+    return false;
+  }
+
+  return true;
 }
 
 /*

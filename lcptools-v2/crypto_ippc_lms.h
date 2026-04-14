@@ -14,9 +14,9 @@
  */
 
 typedef struct {
-  IppsLMOTSAlgo  _lmotsOIDAlgo;
-  Ipp8u          *pC;
-  Ipp8u          *pY;
+  IppsLMOTSAlgo    _lmotsOIDAlgo;
+  Ipp8u            *pC;
+  Ipp8u            *pY;
 } lms_ots_sig_mirror;
 
 /*
@@ -24,11 +24,11 @@ typedef struct {
  * Must match the layout in sources/include/stateful_sig/lms_internal/lms.h.
  */
 typedef struct {
-  Ipp32u              _idCtx;
-  Ipp32u              _q;
-  lms_ots_sig_mirror  _lmotsSig;
-  IppsLMSAlgo         _lmsOIDAlgo;
-  Ipp8u               *_pAuthPath;
+  Ipp32u                _idCtx;
+  Ipp32u                _q;
+  lms_ots_sig_mirror    _lmotsSig;
+  IppsLMSAlgo           _lmsOIDAlgo;
+  Ipp8u                 *_pAuthPath;
 } lms_sig_state_mirror;
 
 /*
@@ -36,14 +36,14 @@ typedef struct {
  * Must match the layout in sources/include/stateful_sig/lms_internal/lms.h.
  */
 typedef struct {
-  Ipp32u         _idCtx;
-  IppsLMSAlgo    lmsOIDAlgo;
-  IppsLMOTSAlgo  lmotsOIDAlgo;
-  Ipp32u         q;
-  Ipp32s         extraBufSize;
-  Ipp8u          *pSecretSeed;
-  Ipp8u          *pI;
-  Ipp8u          *pExtraBuf;
+  Ipp32u           _idCtx;
+  IppsLMSAlgo      lmsOIDAlgo;
+  IppsLMOTSAlgo    lmotsOIDAlgo;
+  Ipp32u           q;
+  Ipp32s           extraBufSize;
+  Ipp8u            *pSecretSeed;
+  Ipp8u            *pI;
+  Ipp8u            *pExtraBuf;
 } lms_privkey_mirror;
 
 /*
@@ -51,9 +51,9 @@ typedef struct {
  * instead of random generation.
  */
 typedef struct {
-  const uint8_t  *seed;
-  const uint8_t  *identifier;
-  int            call_count;
+  const uint8_t    *seed;
+  const uint8_t    *identifier;
+  int              call_count;
 } lms_keygen_rng_ctx;
 
 /*
@@ -65,10 +65,10 @@ typedef struct {
  *   h = 20  (Merkle tree height)
  *   m = 24  (LMS tree node hash size, SHA256/192)
  */
-#define LMS_SIGN_N   LMOTS_SIGNATURE_N_SIZE    /* 24 */
-#define LMS_SIGN_P   LMOTS_SIGNATURE_P_SIZE    /* 51 */
-#define LMS_SIGN_H   LMS_SIGNATURE_H_HEIGHT    /* 20 */
-#define LMS_SIGN_M   LMS_SIGNATURE_M_SIZE      /* 24 */
+#define LMS_SIGN_N  LMOTS_SIGNATURE_N_SIZE     /* 24 */
+#define LMS_SIGN_P  LMOTS_SIGNATURE_P_SIZE     /* 51 */
+#define LMS_SIGN_H  LMS_SIGNATURE_H_HEIGHT     /* 20 */
+#define LMS_SIGN_M  LMS_SIGNATURE_M_SIZE       /* 24 */
 
 /*
  * LMS private key file format for LMS_SHA256_M24_H20 + LMOTS_SHA256_N24_W4:
@@ -82,26 +82,26 @@ typedef struct {
  * Expected compressed params: LM type = 0x09 (LMS_SHA256_M24_H20 - 4),
  *                             LMOTS type = 0x07 (LMOTS_SHA256_N24_W4)
  */
-#define LMS_PRV_COUNTER_OFFSET     0
-#define LMS_PRV_COUNTER_SIZE       8
-#define LMS_PRV_PARAMS_OFFSET      8
-#define LMS_PRV_SEED_OFFSET        24
-#define LMS_PRV_I_SIZE             16
-#define LMS_PRV_EXPECTED_SIZE      (LMS_PRV_SEED_OFFSET + LMS_SIGN_N + LMS_PRV_I_SIZE) /* 64 */
-#define LMS_PRV_COMPRESSED_LM      0x09  /* LMS_SHA256_M24_H20 enum(13) - 4 */
-#define LMS_PRV_COMPRESSED_LMOTS   0x07  /* LMOTS_SHA256_N24_W4 enum(7) */
+#define LMS_PRV_COUNTER_OFFSET    0
+#define LMS_PRV_COUNTER_SIZE      8
+#define LMS_PRV_PARAMS_OFFSET     8
+#define LMS_PRV_SEED_OFFSET       24
+#define LMS_PRV_I_SIZE            16
+#define LMS_PRV_EXPECTED_SIZE     (LMS_PRV_SEED_OFFSET + LMS_SIGN_N + LMS_PRV_I_SIZE) /* 64 */
+#define LMS_PRV_COMPRESSED_LM     0x09                                                /* LMS_SHA256_M24_H20 enum(13) - 4 */
+#define LMS_PRV_COMPRESSED_LMOTS  0x07                                                /* LMOTS_SHA256_N24_W4 enum(7) */
 
 /*
  * Total serialized LMS signature size (including HSS NSPK prefix):
  * NSPK (4) + Q (4) + LMOTS_type (4) + C (24) + Y (24*51=1224) + LMS_type (4) + Path (20*24=480)
  * = 1744 bytes
  */
-#define LMS_SIGN_TOTAL_SIZE  (sizeof (uint32_t)                          /* NSPK */  \
-                              + sizeof (uint32_t)                        /* Q */     \
-                              + sizeof (uint32_t)                        /* LMOTS type */ \
-                              + LMS_SIGN_N                               /* C */     \
-                              + (size_t)LMS_SIGN_N * LMS_SIGN_P          /* Y */     \
-                              + sizeof (uint32_t)                        /* LMS type */ \
+#define LMS_SIGN_TOTAL_SIZE  (sizeof (uint32_t)                         /* NSPK */  \
+                              + sizeof (uint32_t)                       /* Q */     \
+                              + sizeof (uint32_t)                       /* LMOTS type */ \
+                              + LMS_SIGN_N                              /* C */     \
+                              + (size_t)LMS_SIGN_N * LMS_SIGN_P         /* Y */     \
+                              + sizeof (uint32_t)                       /* LMS type */ \
                               + (size_t)LMS_SIGN_H * LMS_SIGN_M)        /* Path */
 
 #endif /* LCPT_CRYPTO_IPPC_LMS_H */
