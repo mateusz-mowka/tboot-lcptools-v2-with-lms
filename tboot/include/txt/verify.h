@@ -42,6 +42,7 @@ extern void set_dma_protection(os_sinit_data_t *os_sinit_data,
 extern bool verify_e820_map(sinit_mdr_t* mdrs_base, uint32_t num_mdrs);
 extern bool verify_stm(unsigned int cpuid);
 extern bool use_mwait(void);
+extern tb_error_t supports_vmx(void);
 
 typedef struct __packed {
     uint64_t base;

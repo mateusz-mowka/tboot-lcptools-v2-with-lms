@@ -115,29 +115,27 @@ static bool read_processor_info(void)
     if ( (g_cpuid_ext_feat_info & CPUID_X86_FEATURE_VMX) ||
          (g_cpuid_ext_feat_info & CPUID_X86_FEATURE_SMX) ) {
         g_feat_ctrl_msr = rdmsr(MSR_IA32_FEATURE_CONTROL);
-        printk(TBOOT_DETA"IA32_FEATURE_CONTROL_MSR: %08lx\n", g_feat_ctrl_msr);        
     }
 
     return true;
 }
 
-static bool supports_vmx(void)
+tb_error_t supports_vmx(void)
 {
     /* check that processor supports VMX instructions */
     if ( !(g_cpuid_ext_feat_info & CPUID_X86_FEATURE_VMX) ) {
         printk(TBOOT_ERR"ERR: CPU does not support VMX\n");
-        return false;
+        return TB_ERR_VMX_NOT_SUPPORTED;
     }
-    printk(TBOOT_INFO"CPU is VMX-capable\n");
 
     /* and that VMX is enabled in the feature control MSR */
     if ( !(g_feat_ctrl_msr & IA32_FEATURE_CONTROL_MSR_ENABLE_VMX_IN_SMX) ) {
         printk(TBOOT_ERR"ERR: VMXON disabled by feature control MSR (%lx)\n",
                g_feat_ctrl_msr);
-        return false;
+        return TB_ERR_VMX_NOT_SUPPORTED;
     }
 
-    return true;
+    return TB_ERR_NONE;
 }
 
 static bool supports_smx(void)
@@ -147,10 +145,9 @@ static bool supports_smx(void)
         printk(TBOOT_ERR"ERR: CPU does not support SMX\n");
         return false;
     }
-    printk(TBOOT_INFO"CPU is SMX-capable\n");
 
     /*
-     * and that SMX is enabled in the feature control MSR
+     * and that SMX/SENTER is enabled in the feature control MSR
      */
 
     /* check that the MSR is locked -- BIOS should always lock it */
@@ -200,20 +197,23 @@ tb_error_t supports_txt(void)
     if ( !supports_smx() )
         return TB_ERR_SMX_NOT_SUPPORTED;
 
-    if ( use_mwait() ) {
-        /* set MONITOR/MWAIT support (SENTER will clear, so always set) */
-        uint64_t misc;
-        misc = rdmsr(MSR_IA32_MISC_ENABLE);
-        misc |= MSR_IA32_MISC_ENABLE_MONITOR_FSM;
-        wrmsr(MSR_IA32_MISC_ENABLE, misc);
+    if (use_mwait()) {
+        if ((rdmsr(MSR_IA32_MISC_ENABLE) & MSR_IA32_MISC_ENABLE_MONITOR_FSM) == 0) {
+            /* set MONITOR/MWAIT support (SENTER will clear, so always set) */
+            uint64_t misc;
+            misc = rdmsr(MSR_IA32_MISC_ENABLE);
+            misc |= MSR_IA32_MISC_ENABLE_MONITOR_FSM;
+            wrmsr(MSR_IA32_MISC_ENABLE, misc);
+        }
     }
-    else if ( !supports_vmx() ) {
+    else if (supports_vmx() != TB_ERR_NONE) {
         return TB_ERR_VMX_NOT_SUPPORTED;
     }
 
     /* testing for chipset support requires enabling SMX on the processor */
-    write_cr4(read_cr4() | CR4_SMXE);
-    printk(TBOOT_INFO"SMX is enabled\n");
+    if ((read_cr4() & CR4_SMXE) == 0) {
+        write_cr4(read_cr4() | CR4_SMXE);
+    }
 
     /*
      * verify that an TXT-capable chipset is present and
@@ -224,7 +224,6 @@ tb_error_t supports_txt(void)
     if ( cap.chipset_present ) {
         if ( cap.senter && cap.sexit && cap.parameters && cap.smctrl &&
              cap.wakeup ) {
-            printk(TBOOT_INFO"TXT chipset and all needed capabilities present\n");
             return TB_ERR_NONE;
         }
         else
