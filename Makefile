@@ -14,7 +14,14 @@ export ROOTDIR=$(CURDIR)
 include Config.mk
 
 # (txt-test is not included because it requires pathing to Linux src)
+
+# Conditionally set SUBDIRS based on USE_IPPC
+ifdef USE_IPPC
+SUBDIRS := tboot safestringlib lcptools-v2/ippc lcptools-v2 tb_polgen utils docs
+$(info Building with IPPC support enabled)
+else
 SUBDIRS := tboot safestringlib lcptools-v2 tb_polgen utils docs
+endif
 
 #
 # build rules
@@ -24,6 +31,9 @@ SUBDIRS := tboot safestringlib lcptools-v2 tb_polgen utils docs
 #    manifest
 #
 .PHONY: manifest
+
+dist-lcptools-v2/ippc:
+	$(MAKE) -C lcptools-v2/ippc build
 manifest : build
 	lcptools/lcp_mlehash tboot/tboot.gz > mle_file
 	lcptools/lcp_crtpol -t 0 -m mle_file -o policy_file
@@ -73,8 +83,17 @@ dist-% :
 .PHONY: world
 world :
 	$(MAKE) clean
+#
+# Explicit rule for subdir with slash (for recursive make)
+ifdef USE_IPPC
+	$(MAKE) -C lcptools-v2/ippc build
+endif
 	$(MAKE) dist
+build-lcptools-v2/ippc:
+	$(MAKE) -C lcptools-v2/ippc build
 
+clean-lcptools-v2/ippc:
+	$(MAKE) -C lcptools-v2/ippc clean
 
 #
 #    clean

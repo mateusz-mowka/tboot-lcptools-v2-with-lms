@@ -40,7 +40,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <safe_lib.h>
-#define PRINT   printf
+#define PRINT  printf
 #include "../include/config.h"
 #include "../include/hash.h"
 #include "../include/uuid.h"
@@ -48,71 +48,93 @@
 #include "polelt_plugin.h"
 #include "lcputils.h"
 
-#define POLELT_MAX_PLUGINS      32
+#define POLELT_MAX_PLUGINS  32
 
-unsigned int nr_polelt_plugins;
-polelt_plugin_t *polelt_plugins[POLELT_MAX_PLUGINS];
+unsigned int     nr_polelt_plugins;
+polelt_plugin_t  *polelt_plugins[POLELT_MAX_PLUGINS];
 
-polelt_plugin_t *find_polelt_plugin_by_type(uint32_t type)
+polelt_plugin_t *
+find_polelt_plugin_by_type (
+  uint32_t  type
+  )
 {
-    for ( unsigned int i = 0; i < nr_polelt_plugins; i++ ) {
-        if ( type == polelt_plugins[i]->type )
-            return polelt_plugins[i];
+  for ( unsigned int i = 0; i < nr_polelt_plugins; i++ ) {
+    if ( type == polelt_plugins[i]->type ) {
+      return polelt_plugins[i];
     }
-    return NULL;
+  }
+
+  return NULL;
 }
 
-polelt_plugin_t *find_polelt_plugin_by_type_string(const char *type_str)
+polelt_plugin_t *
+find_polelt_plugin_by_type_string (
+  const char  *type_str
+  )
 {
-    for ( unsigned int i = 0; i < nr_polelt_plugins; i++ ) {
-        if ( strcmp(type_str, polelt_plugins[i]->type_string) == 0 )
-            return polelt_plugins[i];
+  for ( unsigned int i = 0; i < nr_polelt_plugins; i++ ) {
+    if ( strcmp (type_str, polelt_plugins[i]->type_string) == 0 ) {
+      return polelt_plugins[i];
     }
-    return NULL;
+  }
+
+  return NULL;
 }
 
-bool verify_policy_element(const lcp_policy_element_t *elt, size_t size)
+bool
+verify_policy_element (
+  const lcp_policy_element_t  *elt,
+  size_t                      size
+  )
 {
-    if ( size < sizeof(*elt) ) {
-        ERROR("Error: data is too small\n");
-        return false;
-    }
+  if ( size < sizeof (*elt)) {
+    ERROR ("Error: data is too small\n");
+    return false;
+  }
 
-    if ( size != elt->size ) {
-        ERROR("Error: data is too small\n");
-        return false;
-    }
+  if ( size != elt->size ) {
+    ERROR ("Error: data is too small\n");
+    return false;
+  }
 
-    return true;
+  return true;
 }
 
-void display_policy_element(const char *prefix,
-                            const lcp_policy_element_t *elt, bool brief)
+void
+display_policy_element (
+  const char                  *prefix,
+  const lcp_policy_element_t  *elt,
+  bool                        brief
+  )
 {
-    DISPLAY("%s size: 0x%x\n", prefix, elt->size);
+  DISPLAY ("%s size: 0x%x\n", prefix, elt->size);
 
-    polelt_plugin_t *plugin = find_polelt_plugin_by_type(elt->type);
+  polelt_plugin_t  *plugin = find_polelt_plugin_by_type (elt->type);
 
-    const char *type_str = (plugin == NULL) ? "unknown" : plugin->type_string;
-    DISPLAY("%s type: \'0x%x\' (%s)\n", prefix, elt->type, type_str);
+  const char  *type_str = (plugin == NULL) ? "unknown" : plugin->type_string;
+  DISPLAY ("%s type: \'0x%x\' (%s)\n", prefix, elt->type, type_str);
 
-    DISPLAY("%s policy_elt_control: 0x%08x\n", prefix,
-            elt->policy_elt_control);
+  DISPLAY (
+           "%s policy_elt_control: 0x%08x\n",
+           prefix,
+           elt->policy_elt_control
+           );
 
-    /* don't display element data for brief output */
-    if ( brief )
-        return;
+  /* don't display element data for brief output */
+  if ( brief ) {
+    return;
+  }
 
-    char new_prefix[strnlen_s(prefix, 20)+8];
-    strcpy_s(new_prefix, sizeof(new_prefix), prefix);
-    strcat_s(new_prefix, sizeof(new_prefix), "    ");
-    DISPLAY("%s data:\n", prefix);
-    if ( plugin == NULL )
-        print_hex(new_prefix, elt->data, elt->size - sizeof(*elt));
-    else
-        (*plugin->display)(new_prefix, elt);
+  char  new_prefix[strnlen_s (prefix, 20)+8];
+  strcpy_s (new_prefix, sizeof (new_prefix), prefix);
+  strcat_s (new_prefix, sizeof (new_prefix), "    ");
+  DISPLAY ("%s data:\n", prefix);
+  if ( plugin == NULL ) {
+    print_hex (new_prefix, elt->data, elt->size - sizeof (*elt));
+  } else {
+    (*plugin->display)(new_prefix, elt);
+  }
 }
-
 
 /*
  * Local variables:

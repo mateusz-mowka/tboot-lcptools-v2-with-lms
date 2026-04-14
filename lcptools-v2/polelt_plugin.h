@@ -36,23 +36,31 @@
 #ifndef __POLELT_PLUGIN_H__
 #define __POLELT_PLUGIN_H__
 
-#define MAX_ELT_TYPE_STR_LEN     32
+#define MAX_ELT_TYPE_STR_LEN  32
 
 typedef struct {
-    const char *type_string;
-    struct option *cmdline_opts;
-    const char *help_txt;
-    uint32_t type;
+  const char       *type_string;
+  struct option    *cmdline_opts;
+  const char       *help_txt;
+  uint32_t         type;
 
-    /* c = option char (or 0 for non-option args) */
-    bool (*cmdline_handler)(int c, const char *opt);
-    /* uses state from cmdline_handler */
-    lcp_policy_element_t *(*create_elt)(void);
-    void (*display)(const char *prefix, const lcp_policy_element_t *elt);
+  /* c = option char (or 0 for non-option args) */
+  bool (*cmdline_handler)(
+    int         c,
+    const char  *opt
+    );
+  /* uses state from cmdline_handler */
+  lcp_policy_element_t *(*create_elt)(
+    void
+    );
+  void (*display)(
+    const char                  *prefix,
+    const lcp_policy_element_t  *elt
+    );
 } polelt_plugin_t;
 
 extern unsigned int     nr_polelt_plugins;
-extern polelt_plugin_t *polelt_plugins[];
+extern polelt_plugin_t  *polelt_plugins[];
 
 #define REG_POLELT_PLUGIN(plugin)                               \
     static void reg_plugin(void) __attribute__ ((constructor)); \
@@ -62,12 +70,25 @@ extern polelt_plugin_t *polelt_plugins[];
     }
 
 /* users must define these: */
-extern void ERROR(const char *fmt, ...);
-extern void LOG(const char *fmt, ...);
-extern void DISPLAY(const char *fmt, ...);
+extern void
+ERROR (
+  const char  *fmt,
+  ...
+  );
 
-#endif    /* __POLELT_PLUGIN_H__ */
+extern void
+LOG (
+  const char  *fmt,
+  ...
+  );
 
+extern void
+DISPLAY (
+  const char  *fmt,
+  ...
+  );
+
+#endif /* __POLELT_PLUGIN_H__ */
 
 /*
  * Local variables:

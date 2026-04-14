@@ -39,9 +39,6 @@
 #define LCP_POLICY_DATA_UUID   {0xab0d1925, 0xeee7, 0x48eb, 0xa9fc, \
                                {0xb, 0xac, 0x5a, 0x26, 0x2d, 0xe}}
 
-/*--------- LCP Policy Algorithm ------------*/
-#define LCP_POLHALG_SHA1    0
-
 /*--------- LCP Policy Type ------------*/
 #define LCP_POLTYPE_HASHONLY          0
 #define LCP_POLTYPE_UNSIGNED          1
@@ -71,11 +68,9 @@
 
 
 /*--------- Other data structures of LCP Policy ------------*/
-#define SHA1_LENGTH        20
 #define SHA256_LENGTH      32
 
 typedef union {
-    uint8_t    sha1[SHA1_LENGTH];
     uint8_t    sha256[SHA256_LENGTH];
 } lcp_hash_t;
 

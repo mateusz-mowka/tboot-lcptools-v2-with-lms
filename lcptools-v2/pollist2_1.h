@@ -36,51 +36,138 @@
 #ifndef __POLLIST2_1_H__
 #define __POLLIST2_1_H__
 
+extern uint16_t  signature_alg; // Set by user in CLI
 
-extern uint16_t signature_alg;  //Set by user in CLI
-
-//Useful offsets
-#define SIG_REV_CNT_OFFSET         0x0
-#define SIG_KEY_SIG_VER_OFFSET     0x2
-#define SIG_KEY_SIG_KEY_ALG_OFFSET 0x3
-
+// Useful offsets
+#define SIG_REV_CNT_OFFSET          0x0
+#define SIG_KEY_SIG_VER_OFFSET      0x2
+#define SIG_KEY_SIG_KEY_ALG_OFFSET  0x3
 
 typedef struct __packed {
-    uint16_t  revoc_counter;
-    uint8_t   version;
-    uint16_t  key_alg;
-    uint8_t   key_ver;
-    uint16_t  key_size;
+  uint16_t    revoc_counter;
+  uint8_t     version;
+  uint16_t    key_alg;
+  uint8_t     key_ver;
+  uint16_t    key_size;
 } sig_key_2_1_header;
 
-unsigned char *fill_tpm20_policy_list_2_1_buffer(const lcp_policy_list_t2_1 *pollist,
-                                                                   size_t *len);
-size_t get_tpm20_list_2_1_real_size(const lcp_policy_list_t2_1 *pollist);
-uint16_t get_signature_2_1_key_alg(const lcp_signature_2_1 *sig);
-size_t get_tpm20_policy_list_2_1_size(const lcp_policy_list_t2_1 *pollist);
-lcp_policy_list_t2_1 *read_policy_list_2_1_file(bool sign_it,
-                                                  const char *list_file);
-bool verify_tpm20_policy_list_2_1(const lcp_policy_list_t2_1 *pollist,
-                                             size_t size, bool *has_sig);
-void display_tpm20_policy_list_2_1(const char *prefix,
-                        const lcp_policy_list_t2_1 *pollist, bool brief);
-lcp_policy_list_t2_1 *create_empty_tpm20_policy_list_2_1(void);
-lcp_policy_list_t2_1 *add_tpm20_policy_element_2_1(lcp_policy_list_t2_1
-                              *pollist, const lcp_policy_element_t *elt);
-bool verify_tpm20_pollist_2_1_sig(lcp_policy_list_t2_1 *pollist);
-bool calc_tpm20_policy_list_2_1_hash(const lcp_policy_list_t2_1 *pollist,
-                                   lcp_hash_t2 *hash, uint16_t hash_alg);
-bool write_tpm20_policy_list_2_1_file(const char *file, const char *signature_file,
-                                    const lcp_policy_list_t2_1 *pollist);
-lcp_signature_2_1 *create_empty_ecc_signature_2_1(void);
-lcp_signature_2_1 *create_empty_rsa_signature_2_1(void);
-lcp_signature_2_1 *create_empty_lms_signature_2_1(void);
-lcp_policy_list_t2_1 *get_policy_list_2_1_data(const void *raw_data, size_t base_size,
-                                             uint16_t key_signature_offset);
-bool sign_lcp_policy_list_t2_1(sign_user_input user_input);
-bool add_lcp_signature_2_1(uint16_t revocation_counter, const char *sig_file, const char *policy_list_file);
-bool add_lms_signature_and_key(const char *sig_file, const char *pubkey_file,
-                              const char *policy_list_file);
+unsigned char *
+fill_tpm20_policy_list_2_1_buffer (
+  const lcp_policy_list_t2_1  *pollist,
+  size_t                      *len
+  );
+
+size_t
+get_tpm20_list_2_1_real_size (
+  const lcp_policy_list_t2_1  *pollist
+  );
+
+uint16_t
+get_signature_2_1_key_alg (
+  const lcp_signature_2_1  *sig
+  );
+
+size_t
+get_tpm20_policy_list_2_1_size (
+  const lcp_policy_list_t2_1  *pollist
+  );
+
+lcp_policy_list_t2_1 *
+read_policy_list_2_1_file (
+  bool        sign_it,
+  const char  *list_file
+  );
+
+bool
+verify_tpm20_policy_list_2_1 (
+  const lcp_policy_list_t2_1  *pollist,
+  size_t                      size,
+  bool                        *has_sig
+  );
+
+void
+display_tpm20_policy_list_2_1 (
+  const char                  *prefix,
+  const lcp_policy_list_t2_1  *pollist,
+  bool                        brief
+  );
+
+lcp_policy_list_t2_1 *
+create_empty_tpm20_policy_list_2_1 (
+  void
+  );
+
+lcp_policy_list_t2_1 *
+add_tpm20_policy_element_2_1 (
+  lcp_policy_list_t2_1
+                              *pollist,
+  const lcp_policy_element_t  *elt
+  );
+
+bool
+verify_tpm20_pollist_2_1_sig (
+  lcp_policy_list_t2_1  *pollist
+  );
+
+bool
+calc_tpm20_policy_list_2_1_hash (
+  const lcp_policy_list_t2_1  *pollist,
+  lcp_hash_t2                 *hash,
+  uint16_t                    hash_alg
+  );
+
+bool
+write_tpm20_policy_list_2_1_file (
+  const char                  *file,
+  const char                  *signature_file,
+  const lcp_policy_list_t2_1  *pollist
+  );
+
+lcp_signature_2_1 *
+create_empty_ecc_signature_2_1 (
+  void
+  );
+
+lcp_signature_2_1 *
+create_empty_rsa_signature_2_1 (
+  void
+  );
+
+lcp_signature_2_1 *
+create_empty_lms_signature_2_1 (
+  void
+  );
+
+lcp_signature_2_1 *
+create_empty_mldsa_signature_2_1 (
+  void
+  );
+
+lcp_policy_list_t2_1 *
+get_policy_list_2_1_data (
+  const void  *raw_data,
+  size_t      base_size,
+  uint16_t    key_signature_offset
+  );
+
+bool
+sign_lcp_policy_list_t2_1 (
+  sign_user_input  user_input
+  );
+
+bool
+add_lcp_signature_2_1 (
+  uint16_t    revocation_counter,
+  const char  *sig_file,
+  const char  *policy_list_file
+  );
+
+bool
+add_lms_signature_and_key (
+  const char  *sig_file,
+  const char  *pubkey_file,
+  const char  *policy_list_file
+  );
 
 #endif
 

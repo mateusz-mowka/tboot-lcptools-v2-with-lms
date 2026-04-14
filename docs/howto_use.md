@@ -201,7 +201,7 @@ Instructions for Use:
 -  Tboot provides support to TPM2 module, and following command line option is
    used to select TPM2 extend policy.
 
-       extpol=agile|embedded|sha1|sha256|sm3|...
+       extpol=agile|embedded|sha256|sm3|...
 
    When "agile" policy is selected, ACM will use specific TPM2 commands to compute
    hashes and extend all existing PCR banks at the expense of possible
@@ -213,7 +213,7 @@ Instructions for Use:
    will be capped with "1" value. This policy when selected will ensure maximum
    possible performance at the expense of possible capping of some of the PCRs.
 
-   Other policy, like "sha1", "sha256", etc., only represent one single algorithm.
+   Other policy, like "sha256", "sha384", etc., only represent one single algorithm.
    It means tboot will use this algorithm to compute hash and use TPM2_PCR_Extend
    to extend it into PCRs.
 
