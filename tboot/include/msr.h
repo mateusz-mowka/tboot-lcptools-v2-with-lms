@@ -95,6 +95,10 @@ static inline void wrmsr(uint32_t msr, uint64_t newval)
 /* AMD64 MSR's */
 #define MSR_EFER        0xc0000080      /* extended features */
 
+/* CET MSRs*/
+#define MSR_IA32_U_CET  0x000006a0 /* user mode cet */
+#define MSR_IA32_S_CET  0x000006a2 /* kernel mode cet */
+
 /* EFER bits */
 #define _EFER_LME     8               /* Long mode enable */
 

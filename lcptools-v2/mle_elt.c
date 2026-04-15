@@ -41,7 +41,7 @@
 #define _GNU_SOURCE
 #include <getopt.h>
 #include <safe_lib.h>
-#define PRINT   printf
+#define PRINT  printf
 #include "../include/config.h"
 #include "../include/hash.h"
 #include "../include/uuid.h"
@@ -49,117 +49,129 @@
 #include "polelt_plugin.h"
 #include "lcputils.h"
 
-#define MAX_HASHES       32
+#define MAX_HASHES  32
 
-static uint8_t sinit_min_version;
-static unsigned int nr_hashes;
-static tb_hash_t hashes[MAX_HASHES];
-static char alg_name[32] = "sha1";
-static uint16_t alg_type = TPM_ALG_SHA1;
+static uint8_t       sinit_min_version;
+static unsigned int  nr_hashes;
+static tb_hash_t     hashes[MAX_HASHES];
+static char          alg_name[32] = "sha256";
+static uint16_t      alg_type     = TPM_ALG_SHA256;
 
-static bool parse_mle_line(const char *line)
+static bool
+parse_mle_line (
+  const char  *line
+  )
 {
-    if ( nr_hashes == MAX_HASHES )
-        return false;
+  if ( nr_hashes == MAX_HASHES ) {
+    return false;
+  }
 
-    return parse_line_hashes(line, &hashes[nr_hashes++], alg_type);
+  return parse_line_hashes (line, &hashes[nr_hashes++], alg_type);
 }
 
-static bool cmdline_handler(int c, const char *opt)
+static bool
+cmdline_handler (
+  int         c,
+  const char  *opt
+  )
 {
-    if ( c == 'm' ) {
-        sinit_min_version = (uint8_t)strtoul(opt, NULL, 0);
-        LOG("cmdline opt: sinit_min_version: 0x%x\n", sinit_min_version);
-        return true;
-    }
-    else if (c == 'a') {
-        strlcpy(alg_name, opt,sizeof(alg_name));
-        alg_type = str_to_hash_alg(alg_name);
-        LOG("cmdline opt: hash alg: %s\n",alg_name);
-        return true;
-    }
-
-    else if ( c != 0 ) {
-        ERROR("Error: unknown option for mle type\n");
-        return false;
-    }
-
-    /* MLE hash files */
-    LOG("cmdline opt: mle hash file: %s\n", opt);
-    if ( !parse_file(opt, parse_mle_line) )
-        return false;
-
+  if ( c == 'm' ) {
+    sinit_min_version = (uint8_t)strtoul (opt, NULL, 0);
+    LOG ("cmdline opt: sinit_min_version: 0x%x\n", sinit_min_version);
     return true;
+  } else if (c == 'a') {
+    strlcpy (alg_name, opt, sizeof (alg_name));
+    alg_type = str_to_hash_alg (alg_name);
+    LOG ("cmdline opt: hash alg: %s\n", alg_name);
+    return true;
+  } else if ( c != 0 ) {
+    ERROR ("Error: unknown option for mle type\n");
+    return false;
+  }
+
+  /* MLE hash files */
+  LOG ("cmdline opt: mle hash file: %s\n", opt);
+  if ( !parse_file (opt, parse_mle_line)) {
+    return false;
+  }
+
+  return true;
 }
 
-static lcp_policy_element_t *create(void)
+static lcp_policy_element_t *
+create (
+  void
+  )
 {
-    LOG("[create]\n");
-    size_t data_size =  sizeof(lcp_mle_element_t2) +
-        nr_hashes * get_hash_size(alg_type);
-    lcp_policy_element_t *elt = malloc(sizeof(*elt) + data_size);
-    if ( elt == NULL ) {
-        ERROR("Error: failed to allocate element\n");
-        return NULL;
-    }
+  LOG ("[create]\n");
+  size_t  data_size =  sizeof (lcp_mle_element_t2) +
+                      nr_hashes * get_hash_size (alg_type);
+  lcp_policy_element_t  *elt = malloc (sizeof (*elt) + data_size);
+  if ( elt == NULL ) {
+    ERROR ("Error: failed to allocate element\n");
+    return NULL;
+  }
 
-    memset_s(elt, sizeof(*elt) + data_size, 0);
-    elt->size = sizeof(*elt) + data_size;
-    lcp_mle_element_t2 *mle = (lcp_mle_element_t2 *)&elt->data;
-    mle->sinit_min_version = sinit_min_version;
-    mle->hash_alg = alg_type;
-    mle->num_hashes = nr_hashes;
-    lcp_hash_t2 *hash = mle->hashes;
-    for ( unsigned int i = 0; i < nr_hashes; i++ ) {
-        memcpy_s(hash, get_hash_size(alg_type), &hashes[i], get_hash_size(alg_type));
-        hash = (void *)hash + get_hash_size(alg_type);
-    }
-    LOG("create mle element succeed!\n");
-    return elt;
+  memset_s (elt, sizeof (*elt) + data_size, 0);
+  elt->size = sizeof (*elt) + data_size;
+  lcp_mle_element_t2  *mle = (lcp_mle_element_t2 *)&elt->data;
+  mle->sinit_min_version = sinit_min_version;
+  mle->hash_alg          = alg_type;
+  mle->num_hashes        = nr_hashes;
+  lcp_hash_t2  *hash = mle->hashes;
+  for ( unsigned int i = 0; i < nr_hashes; i++ ) {
+    memcpy_s (hash, get_hash_size (alg_type), &hashes[i], get_hash_size (alg_type));
+    hash = (void *)hash + get_hash_size (alg_type);
+  }
+
+  LOG ("create mle element succeed!\n");
+  return elt;
 }
 
-static void display(const char *prefix, const lcp_policy_element_t *elt)
+static void
+display (
+  const char                  *prefix,
+  const lcp_policy_element_t  *elt
+  )
 {
-    lcp_mle_element_t2 *mle = (lcp_mle_element_t2 *)elt->data;
+  lcp_mle_element_t2  *mle = (lcp_mle_element_t2 *)elt->data;
 
-    DISPLAY("%s sinit_min_version: 0x%x\n", prefix, mle->sinit_min_version);
-    DISPLAY("%s hash_alg: %s\n", prefix, hash_alg_to_str(mle->hash_alg));
-    DISPLAY("%s num_hashes: %u\n", prefix, mle->num_hashes);
+  DISPLAY ("%s sinit_min_version: 0x%x\n", prefix, mle->sinit_min_version);
+  DISPLAY ("%s hash_alg: %s\n", prefix, hash_alg_to_str (mle->hash_alg));
+  DISPLAY ("%s num_hashes: %u\n", prefix, mle->num_hashes);
 
-    uint8_t *hash = (uint8_t *)&mle->hashes;
-    unsigned int hash_size = get_hash_size(mle->hash_alg);
-    for ( unsigned int i = 0; i < mle->num_hashes; i++ ) {
-        DISPLAY("%s hashes[%u]:\n", prefix, i);
-        print_hex(prefix, hash, hash_size);
-        hash += hash_size;
-    }
+  uint8_t       *hash     = (uint8_t *)&mle->hashes;
+  unsigned int  hash_size = get_hash_size (mle->hash_alg);
+  for ( unsigned int i = 0; i < mle->num_hashes; i++ ) {
+    DISPLAY ("%s hashes[%u]:\n", prefix, i);
+    print_hex (prefix, hash, hash_size);
+    hash += hash_size;
+  }
 }
 
-
-static struct option opts[] = {
-    {"minver",         required_argument,    NULL,     'm'},
-    {"alg",            required_argument,    NULL,     'a'},
-    {0, 0, 0, 0}
+static struct option  opts[] = {
+  { "minver", required_argument, NULL, 'm' },
+  { "alg",    required_argument, NULL, 'a' },
+  { 0,        0,                 0,    0   }
 };
 
-static polelt_plugin_t plugin = {
-    "mle2",
-    opts,
-    "      mle2\n"
-    "        Creates current LCP_ELEMENT_MLE2. Supports algorithm agility.\n"
-    "        [--minver <ver>]            minimum version of SINIT\n"
-    "        [--alg <sha1|sha256|sha384|sha512>]    hash alg of element\n"
-    "        <FILE1> [FILE2] ...         one or more files containing MLE\n"
-    "                                    hash(es); each file can contain\n"
-    "                                    multiple hashes\n",
-    LCP_POLELT_TYPE_MLE2,
-    &cmdline_handler,
-    &create,
-    &display
+static polelt_plugin_t  plugin = {
+  "mle2",
+  opts,
+  "      mle2\n"
+  "        Creates current LCP_ELEMENT_MLE2. Supports algorithm agility.\n"
+  "        [--minver <ver>]            minimum version of SINIT\n"
+  "        [--alg <sha256|sha384|sha512>]    hash alg of element\n"
+  "        <FILE1> [FILE2] ...         one or more files containing MLE\n"
+  "                                    hash(es); each file can contain\n"
+  "                                    multiple hashes\n",
+  LCP_POLELT_TYPE_MLE2,
+  &cmdline_handler,
+  &create,
+  &display
 };
 
-REG_POLELT_PLUGIN(&plugin)
-
+REG_POLELT_PLUGIN (&plugin)
 
 /*
  * Local variables:

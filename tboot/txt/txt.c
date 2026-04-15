@@ -575,12 +575,13 @@ static void configure_vtd(void)
  * sets up TXT heap
  */
 static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit,
-                                 loader_ctx *const lctx)
-{
-    txt_heap_t *txt_heap;
-    uint64_t *size;
+                                 loader_ctx *const lctx) {
+    uint32_t   tmp_num_of_e820_entries = 0;
 
-    loader_ctx tmp_lctx = {NULL, 0};
+    txt_heap_t *txt_heap = NULL;
+    uint64_t   *size     = NULL;
+
+    loader_ctx tmp_lctx  = {NULL, 0};
     struct tpm_if *tpm = get_tpm();
 
     txt_heap = get_txt_heap();
@@ -596,7 +597,9 @@ static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit,
      */
     os_mle_data_t *os_mle_data = get_os_mle_data_start(txt_heap);
 
-    if (!(txt_verify_loader_context_protection(lctx))) {
+    if (!txt_verify_loader_context_protection(lctx) ||
+        !verify_g_nr_map_ptr(get_nr_map_ptr()) ||
+        !e820_verify_num_of_entries()) {
         apply_policy(TB_ERR_DMA_CORRUPTION_DETECTED);
     }
 
@@ -605,6 +608,8 @@ static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit,
 
     /* Save loader ctx from OsMleData in temporary structure */
     tb_memcpy(&tmp_lctx, &os_mle_data->lctx, sizeof(loader_ctx));
+    /* Save num of e820 entries from OsMleData in temporary structure */
+    tmp_num_of_e820_entries = os_mle_data->num_of_e820_entries;
 
     tb_memset(os_mle_data, 0, sizeof(*os_mle_data));
 
@@ -612,6 +617,7 @@ static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit,
     os_mle_data->version = 3;
     os_mle_data->saved_misc_enable_msr = rdmsr(MSR_IA32_MISC_ENABLE);
     tb_memcpy(&os_mle_data->lctx, &tmp_lctx, sizeof(loader_ctx));
+    os_mle_data->num_of_e820_entries = tmp_num_of_e820_entries;
 
     /*
      * OS/loader to SINIT data
@@ -886,9 +892,9 @@ void force_pmrs_usage(void)
 
 tb_error_t txt_launch_environment(loader_ctx *const lctx)
 {
-    void          *mle_ptab_base          = NULL;
-    os_mle_data_t *os_mle_data            = NULL;
-    txt_heap_t    *txt_heap               = NULL;
+    void          *mle_ptab_base       = NULL;
+    os_mle_data_t *os_mle_data         = NULL;
+    txt_heap_t    *txt_heap            = NULL;
 
     /*
      * find correct SINIT AC module in modules list
@@ -921,7 +927,6 @@ tb_error_t txt_launch_environment(loader_ctx *const lctx)
     if ( txt_heap == NULL ) {
         return TB_ERR_TXT_NOT_SUPPORTED;
     }
-
 
     /* save MTRRs before we alter them for SINIT launch */
     os_mle_data = get_os_mle_data_start(txt_heap);
@@ -1491,8 +1496,7 @@ bool get_parameters(getsec_parameters_t *params)
     return true;
 }
 
-bool txt_verify_loader_context_protection(loader_ctx *const lctx)
-{
+bool txt_verify_loader_context_protection(loader_ctx *const lctx) {
     txt_heap_t    *heap           = NULL;
     os_mle_data_t *os_mle_data    = NULL;
 
@@ -1527,6 +1531,39 @@ bool txt_verify_loader_context_protection(loader_ctx *const lctx)
     return true;
 }
 
+bool verify_g_nr_map_ptr(uint32_t *const nr_map) {
+    txt_heap_t    *heap           = NULL;
+    os_mle_data_t *os_mle_data    = NULL;
+
+    if (supports_txt() != TB_ERR_NONE) {
+        printk(TBOOT_WARN"TXT is not supported on this platform, skipping "
+                         "g_nr_map pointer TXT protection check.\n");
+        return true;
+    }
+
+    /* Get TXT heap and OsMleData base addresses*/
+    heap = get_txt_heap();
+    if (heap == NULL) {
+        printk(TBOOT_ERR"Error: TXT heap is not initialized.\n");
+        return false;
+    }
+
+    os_mle_data = get_os_mle_data_start(heap);
+    if (os_mle_data == NULL) {
+        printk(TBOOT_ERR"Error: Failed to get os_mle_data pointer.\n");
+        return false;
+    }
+
+    if (nr_map != &os_mle_data->num_of_e820_entries) {
+        printk(TBOOT_ERR"Error: Registered g_nr_map corruption.\n");
+        printk(TBOOT_ERR"g_nr_map should point at the num_of_e820_entries member\n");
+        printk(TBOOT_ERR"in the OsMleData structure\n");
+        printk(TBOOT_ERR"g_nr_map: 0x%p\n", get_nr_map_ptr());
+        return false;
+    }
+
+    return true;
+}
 
 /*
  * Local variables:

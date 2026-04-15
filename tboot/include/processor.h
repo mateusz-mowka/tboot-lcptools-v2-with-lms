@@ -94,6 +94,14 @@
 #define CR4_SMXE 0x00004000/* enable SMX */
 #define CR4_PCIDE 0x00020000/* enable PCID */
 
+#define CPUID_X86_FEATURE_XMM3           (1<<0)
+#define CPUID_X86_FEATURE_VMX            (1<<5)
+#define CPUID_X86_FEATURE_SMX            (1<<6)
+#define CPUID_X86_FEATURE_SGX            (1<<18)
+
+/* Bits in EBX for CPUID leaf 7, sub-leaf 0 */
+#define CPUID_EBX_X86_SGX_SUPPORTED      (1<<2)
+
 #ifndef __ASSEMBLY__
 
 static inline void sse_enable(void)
@@ -174,9 +182,6 @@ static always_inline uint32_t cpuid_edx(unsigned int op)
 
     return regs[3];
 }
-#define CPUID_X86_FEATURE_XMM3   (1<<0)
-#define CPUID_X86_FEATURE_VMX    (1<<5)
-#define CPUID_X86_FEATURE_SMX    (1<<6)
 
 static inline unsigned long read_cr0(void)
 {

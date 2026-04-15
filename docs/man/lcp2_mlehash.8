@@ -32,7 +32,7 @@ Create a hash.
 Specify quote-delimited command line. It is important to specify the command line that is used when launching the MLE or the hash will not match what is calculated by SINIT.
 .TP
 .BI --alg\  hashalg
-Specify the hash algorithm to use. Supported values are sha1, sha256, sha384 and sha512.
+Specify the hash algorithm to use. Supported values are sha256, sha384 and sha512.
 .TP
 .B --help
 Print out the help message.
@@ -42,7 +42,7 @@ Verbose mode, display progress indications.
 
 .SH EXAMPLES
 .EX
-lcp2_mlehash --create --cmdline "logging=memory,serial,vga" --alg sha1 /boot/tboot.gz > mle-hash
+lcp2_mlehash --create --cmdline "logging=memory,serial,vga" --alg sha256 /boot/tboot.gz > mle-hash
 .EE
 .SH "SEE ALSO"
 .BR "Full documentation of MLE, Intel(R) TXT and LCP is available in Intel(R) TXT Measured 

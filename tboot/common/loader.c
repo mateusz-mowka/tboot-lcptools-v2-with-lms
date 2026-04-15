@@ -1286,7 +1286,7 @@ static bool convert_mb2_to_mb1(void)
     /* memory map--we can just use the modified copy for this one */
     if (have_loader_memmap(g_ldr_ctx)){
         mbi->mmap_addr = (uint32_t)get_e820_copy();
-        mbi->mmap_length = (get_nr_map()) * sizeof(memory_map_t);
+        mbi->mmap_length = (*get_nr_map_ptr()) * sizeof(memory_map_t);
         mbi->flags |= MBI_MEMMAP;
     }
 
@@ -1935,7 +1935,7 @@ replace_e820_map(loader_ctx *lctx)
         /* multiboot 1 */
         multiboot_info_t *mbi = (multiboot_info_t *) lctx->addr;
         mbi->mmap_addr = (uint32_t)get_e820_copy();
-        mbi->mmap_length = (get_nr_map()) * sizeof(memory_map_t);
+        mbi->mmap_length = (*get_nr_map_ptr()) * sizeof(memory_map_t);
         mbi->flags |= MBI_MEMMAP;   /* in case only MBI_MEMLIMITS was set */
         return;
     } else {
@@ -1945,7 +1945,7 @@ replace_e820_map(loader_ctx *lctx)
         uint32_t old_memmap_size = get_loader_memmap_length(lctx);
         uint32_t old_memmap_entry_count = 
             old_memmap_size / sizeof(memory_map_t);
-        if (old_memmap_entry_count < (get_nr_map())){
+        if (old_memmap_entry_count < (*get_nr_map_ptr())){
             /* we have to grow */
             struct mb2_tag *map = (struct mb2_tag *)(lctx->addr + 8);
             map = find_mb2_tag_type(map, MB2_TAG_TYPE_MMAP);
@@ -1956,7 +1956,7 @@ replace_e820_map(loader_ctx *lctx)
             if (false ==
                 grow_mb2_tag(lctx, map, 
                              sizeof(memory_map_t) *
-                             ((get_nr_map()) - old_memmap_entry_count))){
+                             ((*get_nr_map_ptr()) - old_memmap_entry_count))){
                 printk(TBOOT_ERR"MB2 failed to grow e820 map tag\n");
                 return;
             }
@@ -1972,7 +1972,7 @@ replace_e820_map(loader_ctx *lctx)
                 printk(TBOOT_ERR"old memory map not found\n");
                 return;
             }
-            for (i = 0; i < (get_nr_map()); i++){
+            for (i = 0; i < (*get_nr_map_ptr()); i++){
                 *old = *new;
                 old++, new++;
             }

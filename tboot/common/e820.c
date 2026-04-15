@@ -58,8 +58,9 @@ uint32_t g_min_ram = 0;
  * this version will replace original in mbi
  */
 #define MAX_E820_ENTRIES      (TBOOT_E820_COPY_SIZE / sizeof(memory_map_t))
-static unsigned int g_nr_map;
-static memory_map_t *g_copy_e820_map = (memory_map_t *)TBOOT_E820_COPY_ADDR;
+static uint32_t            g_num_of_e820_entries = 0;
+static uint32_t            *g_nr_map             = &g_num_of_e820_entries;
+static memory_map_t *const g_copy_e820_map = (memory_map_t *)TBOOT_E820_COPY_ADDR;
 
 static inline void split64b(uint64_t val, uint32_t *val_lo, uint32_t *val_hi)  {
      *val_lo = (uint32_t)(val & 0xffffffff); 
@@ -110,9 +111,9 @@ static const char *e820_mem_type_to_str(uint32_t type)
  * Prints copied e820 map w/o any header (i.e. just entries, indented by a tab)
  *
  */
-static void print_map(memory_map_t *e820, int nr_map)
+static void print_map(memory_map_t *const e820, uint32_t nr_map)
 {
-    for ( int i = 0; i < nr_map; i++ ) {
+    for ( uint32_t i = 0; i < nr_map; i++ ) {
         memory_map_t *entry = &e820[i];
         uint64_t base_addr, length;
 
@@ -127,7 +128,7 @@ static void print_map(memory_map_t *e820, int nr_map)
     }
 }
 
-static bool insert_after_region(memory_map_t *e820map, unsigned int *nr_map,
+static bool insert_after_region(memory_map_t *const e820map, uint32_t *const nr_map,
                                 unsigned int pos, uint64_t addr, uint64_t size,
                                 uint32_t type)
 {
@@ -152,7 +153,7 @@ static bool insert_after_region(memory_map_t *e820map, unsigned int *nr_map,
     return true;
 }
 
-static void remove_region(memory_map_t *e820map, unsigned int *nr_map,
+static void remove_region(memory_map_t *const e820map, uint32_t *const nr_map,
                           unsigned int pos)
 {
     /* shift (copy) everything down one entry */
@@ -162,7 +163,7 @@ static void remove_region(memory_map_t *e820map, unsigned int *nr_map,
     (*nr_map)--;
 }
 
-static bool protect_region(memory_map_t *e820map, unsigned int *nr_map,
+static bool protect_region(memory_map_t *const e820map, uint32_t *const nr_map,
                            uint64_t new_addr, uint64_t new_size,
                            uint32_t new_type)
 {
@@ -298,7 +299,7 @@ memory_map_t *get_e820_copy()
     return g_copy_e820_map;
 }
 
-unsigned int get_nr_map()
+uint32_t *get_nr_map_ptr(void)
 {
     return g_nr_map;
 }
@@ -310,7 +311,7 @@ unsigned int get_nr_map()
  *
  * return:  false = error (no table or table too big for new space)
  */
-bool copy_e820_map(loader_ctx *const lctx) {
+bool copy_e820_map(loader_ctx *const lctx, uint32_t *const nr_map) {
     if (!txt_verify_loader_context_protection(lctx)) {
         printk(TBOOT_ERR"e820 memory map copying failed.\n");
         return false;
@@ -318,7 +319,18 @@ bool copy_e820_map(loader_ctx *const lctx) {
 
     get_tboot_min_ram();
 
-    g_nr_map = 0;
+    /* Verify nr_map pointer */
+    if (nr_map == NULL) {
+        printk(TBOOT_ERR"e820: nr_map pointer is NULL.\n");
+        return false;
+    }
+
+    if (!verify_g_nr_map_ptr(nr_map)) {
+        printk(TBOOT_ERR"e820: memory map copying failed.\n");
+        return false;
+    }
+
+    *nr_map = 0;
 
     if (have_loader_memmap(lctx)){
         uint32_t memmap_length = get_loader_memmap_length(lctx);
@@ -329,14 +341,14 @@ bool copy_e820_map(loader_ctx *const lctx) {
         uint32_t entry_offset = 0;
 
         while ( entry_offset < memmap_length &&
-                g_nr_map < MAX_E820_ENTRIES ) {
+                *nr_map < MAX_E820_ENTRIES ) {
             memory_map_t *entry = (memory_map_t *)
                 (((uint32_t) memmap) + entry_offset);
 
             /* we want to support unordered and/or overlapping entries */
             /* so use protect_region() to insert into existing map, since */
             /* it handles these cases */
-            if ( !protect_region(g_copy_e820_map, &g_nr_map,
+            if ( !protect_region(g_copy_e820_map, nr_map,
                                  e820_base_64(entry), e820_length_64(entry),
                                  entry->type) )
                 return false;
@@ -351,7 +363,7 @@ bool copy_e820_map(loader_ctx *const lctx) {
                 entry_offset += sizeof(memory_map_t);
 
         }
-        if ( g_nr_map == MAX_E820_ENTRIES ) {
+        if ( *nr_map == MAX_E820_ENTRIES ) {
             printk(TBOOT_ERR"Too many e820 entries\n");
             return false;
         }
@@ -377,7 +389,7 @@ bool copy_e820_map(loader_ctx *const lctx) {
         g_copy_e820_map[1].type = E820_RAM;
         g_copy_e820_map[1].size = sizeof(memory_map_t) - sizeof(uint32_t);
 
-        g_nr_map = 2;
+        *nr_map = 2;
     }
     else {
         printk(TBOOT_ERR"no e820 map nor memory limits provided\n");
@@ -389,7 +401,22 @@ bool copy_e820_map(loader_ctx *const lctx) {
 
 bool e820_protect_region(uint64_t addr, uint64_t size, uint32_t type)
 {
-    return protect_region(g_copy_e820_map, &g_nr_map, addr, size, type);
+    return protect_region(g_copy_e820_map, g_nr_map, addr, size, type);
+}
+
+bool e820_verify_num_of_entries(void)
+{
+    /* Verify number of the e820 memory map entries */
+    if (*g_nr_map >= MAX_E820_ENTRIES)
+    {
+        printk(TBOOT_ERR"Too many e820 entries\n");
+        printk(TBOOT_ERR"It should be noticed during e820 memmap copying.\n");
+        printk(TBOOT_ERR"g_nr_map had to be corrupted prior to the Vt-d setup\n");
+        printk(TBOOT_ERR"Number of e820 memmap entries: %u\n", *g_nr_map);
+        return false;
+    }
+
+    return true;
 }
 
 /*
@@ -413,7 +440,7 @@ uint32_t e820_check_region(uint64_t base, uint64_t length)
     e820_base = 0;
     e820_length = 0;
 
-    for ( unsigned int i = 0; i < g_nr_map; i = gap ? i : i+1, gap = !gap ) {
+    for ( unsigned int i = 0; i < *g_nr_map; i = gap ? i : i+1, gap = !gap ) {
         e820_entry = &g_copy_e820_map[i];
         if ( gap ) {
             /* deal with the gap in e820 map */
@@ -515,7 +542,7 @@ bool e820_reserve_ram(uint64_t base, uint64_t length)
     end = base + length;
 
     /* find where our region should cover the ram in e820 */
-    for ( unsigned int i = 0; i < g_nr_map; i++ ) {
+    for ( unsigned int i = 0; i < *g_nr_map; i++ ) {
         e820_entry = &g_copy_e820_map[i];
         e820_base = e820_base_64(e820_entry);
         e820_length = e820_length_64(e820_entry);
@@ -541,7 +568,7 @@ bool e820_reserve_ram(uint64_t base, uint64_t length)
         else if ( (e820_base >= base) && (end > e820_base) &&
                   (e820_end > end) ) {
             /* split the current ram map */
-            if ( !insert_after_region(g_copy_e820_map, &g_nr_map, i-1,
+            if ( !insert_after_region(g_copy_e820_map, g_nr_map, i-1,
                                       e820_base, (end - e820_base),
                                       E820_RESERVED) )
                 return false;
@@ -562,7 +589,7 @@ bool e820_reserve_ram(uint64_t base, uint64_t length)
             split64b((base - e820_base), &(g_copy_e820_map[i].length_low),
                      &(g_copy_e820_map[i].length_high));
             /* split the current ram map */
-            if ( !insert_after_region(g_copy_e820_map, &g_nr_map, i, base,
+            if ( !insert_after_region(g_copy_e820_map, g_nr_map, i, base,
                                       (e820_end - base), E820_RESERVED) )
                 return false;
             i++;
@@ -574,12 +601,12 @@ bool e820_reserve_ram(uint64_t base, uint64_t length)
             split64b((base - e820_base), &(g_copy_e820_map[i].length_low),
                      &(g_copy_e820_map[i].length_high));
             /* split the current ram map */
-            if ( !insert_after_region(g_copy_e820_map, &g_nr_map, i, base,
+            if ( !insert_after_region(g_copy_e820_map, g_nr_map, i, base,
                                       length, E820_RESERVED) )
                 return false;
             i++;
             /* fixup the rest of the current ram map */
-            if ( !insert_after_region(g_copy_e820_map, &g_nr_map, i, end,
+            if ( !insert_after_region(g_copy_e820_map, g_nr_map, i, end,
                                       (e820_end - end), e820_entry->type) )
                 return false;
             i++;
@@ -597,7 +624,7 @@ bool e820_reserve_ram(uint64_t base, uint64_t length)
 
 void print_e820_map(void)
 {
-    print_map(g_copy_e820_map, g_nr_map);
+    print_map(g_copy_e820_map, *g_nr_map);
 }
 
 bool get_ram_ranges(uint64_t *min_lo_ram, uint64_t *max_lo_ram,
@@ -627,7 +654,7 @@ bool get_ram_ranges(uint64_t *min_lo_ram, uint64_t *max_lo_ram,
                g_min_ram, last_min_ram_base, last_min_ram_size);
     }
 
-    for ( unsigned int i = 0; i < g_nr_map; i++ ) {
+    for ( unsigned int i = 0; i < *g_nr_map; i++ ) {
         memory_map_t *entry = &g_copy_e820_map[i];
         uint64_t base = e820_base_64(entry);
         uint64_t limit = base + e820_length_64(entry);
@@ -697,7 +724,7 @@ bool e820_get_highest_sized_ram(uint64_t size, uint64_t limit,
     if ( ram_base == NULL || ram_size == NULL )
         return false;
 
-    for ( unsigned int i = 0; i < g_nr_map; i++ ) {
+    for ( unsigned int i = 0; i < *g_nr_map; i++ ) {
         memory_map_t *entry = &g_copy_e820_map[i];
 
         if ( entry->type == E820_RAM ) {
@@ -723,6 +750,10 @@ bool e820_get_highest_sized_ram(uint64_t size, uint64_t limit,
     }
 }
 
+void set_nr_map_ptr(uint32_t *const addr)
+{
+    g_nr_map = addr;
+}
 
 /*
  * Local variables:

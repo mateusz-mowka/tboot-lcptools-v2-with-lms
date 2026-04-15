@@ -35,6 +35,7 @@
  */
 
 #include <config.h>
+#include <memlog.h>
 #include <types.h>
 #include <stdbool.h>
 #include <stdarg.h>
@@ -154,8 +155,7 @@ static void restore_saved_s3_wakeup_page(void)
            s3_wakeup_end - s3_wakeup_16);
 }
 
-static bool secure_g_ldr_ctx(void)
-{
+static bool secure_g_ldr_ctx(void) {
     txt_heap_t    *heap           = NULL;
     os_mle_data_t *os_mle_data    = NULL;
 
@@ -169,6 +169,30 @@ static bool secure_g_ldr_ctx(void)
     }
 
     return false;
+}
+
+static bool secure_nr_map_ptr(void) {
+    txt_heap_t    *heap           = NULL;
+    os_mle_data_t *os_mle_data    = NULL;
+
+    heap = get_txt_heap();
+    if (heap == NULL) {
+        printk(TBOOT_ERR"Error: TXT heap is not defined.\n");
+        printk(TBOOT_ERR"Failed to secure g_nr_map pointer.\n");
+        return false;
+    }
+
+    os_mle_data = get_os_mle_data_start(heap);
+    if (os_mle_data == NULL) {
+        printk(TBOOT_ERR"Error: Failed to get os_mle_data pointer.\n");
+        printk(TBOOT_ERR"Failed to secure g_nr_map pointer.\n");
+        return false;
+    }
+
+    /* Set g_nr_map to point at the num_of_e820_entries member of the */
+    /* OsMleData struct */
+    set_nr_map_ptr(&os_mle_data->num_of_e820_entries);
+    return true;
 }
 
 static inline void print_tboot_shared(const tboot_shared_t *tboot_shared)
@@ -192,7 +216,6 @@ static void post_launch(void)
     tb_error_t err;
     struct tpm_if *tpm = get_tpm();
     const struct tpm_if_fp *tpm_fp = get_tpm_fp();
-    extern tboot_log_t *g_log;
     extern void shutdown_entry(void);
 
     printk(TBOOT_INFO"measured launch succeeded\n");
@@ -283,7 +306,7 @@ static void post_launch(void)
     tb_memset(&_tboot_shared, 0, PAGE_SIZE);
     _tboot_shared.uuid = (uuid_t)TBOOT_SHARED_UUID;
     _tboot_shared.version = 6;
-    _tboot_shared.log_addr = (uint32_t)g_log;
+    _tboot_shared.log_addr = memlog_get_base();
     _tboot_shared.shutdown_entry = (uint32_t)shutdown_entry;
     _tboot_shared.tboot_base = (uint32_t)&_start;
     _tboot_shared.tboot_size = (uint32_t)&_end - (uint32_t)&_start;
@@ -369,8 +392,9 @@ void check_racm_result(void)
 
 void begin_launch(void *addr, uint32_t magic)
 {
-    tb_error_t    err;
-    bool is_lctx_secured = false;
+    tb_error_t err;
+    bool is_lctx_secured   = false;
+    bool is_nr_map_secured = false;
 
     if (supports_txt() == TB_ERR_NONE) {
         is_lctx_secured = secure_g_ldr_ctx();
@@ -421,8 +445,28 @@ void begin_launch(void *addr, uint32_t magic)
     if ( get_tboot_call_racm_check() )
         check_racm_result(); /* never return */
 
-    if (is_launched()) printk(TBOOT_INFO"SINIT ACM successfully returned...\n");
-    if ( s3_flag ) printk(TBOOT_INFO"Resume from S3...\n");
+    if (supports_txt() == TB_ERR_NONE) {
+        printk(TBOOT_DETA"IA32_FEATURE_CONTROL_MSR: %08llx\n",
+               rdmsr(MSR_IA32_FEATURE_CONTROL));
+        printk(TBOOT_INFO"CPU is SMX-capable\n");
+
+        if (!use_mwait()) {
+            if (supports_vmx() == TB_ERR_NONE) {
+                printk(TBOOT_INFO"CPU is VMX-capable\n");
+            }
+        }
+
+        printk(TBOOT_INFO"SMX is enabled\n");
+        printk(TBOOT_INFO"TXT chipset and all needed capabilities present\n");
+    }
+
+    if (is_launched()) {
+        printk(TBOOT_INFO"SINIT ACM successfully returned...\n");
+    }
+
+    if (s3_flag) {
+        printk(TBOOT_INFO"Resume from S3...\n");
+    }
 
     /* RLM scaffolding
        if (g_ldr_ctx->type == 2)
@@ -458,9 +502,24 @@ void begin_launch(void *addr, uint32_t magic)
     }
     printk(TBOOT_INFO"BSP is cpu %u\n", get_apicid());
 
+    /* secure g_nr_map pointer from DMA unauthorized access */
+    if (supports_txt() == TB_ERR_NONE) {
+        is_nr_map_secured = secure_nr_map_ptr();
+        if (!is_nr_map_secured) {
+            printk(TBOOT_ERR"Error: Failed to secure g_nr_map pointer.\n");
+            printk(TBOOT_ERR"E820 map may be corrupted by DMA attack.\n");
+            apply_policy(TB_ERR_FATAL);
+        }
+        else {
+            printk(TBOOT_INFO"Global ptr for the num of e820 entries has been"
+                             " secured by TBOOT.\n");
+        }
+    }
+
+
     /* make copy of e820 map that we will use and adjust */
     if ( !s3_flag ) {
-        if ( !copy_e820_map(g_ldr_ctx) )  apply_policy(TB_ERR_FATAL);
+        if ( !copy_e820_map(g_ldr_ctx, get_nr_map_ptr()))  apply_policy(TB_ERR_FATAL);
         if (efi_memmap_copy(g_ldr_ctx)) {
             printk(TBOOT_INFO"Original EFI memory map:\n");
             efi_memmap_dump();

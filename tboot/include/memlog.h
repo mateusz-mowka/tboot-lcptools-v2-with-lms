@@ -38,6 +38,7 @@
 
 #include <types.h>
 
+uint32_t memlog_get_base(void);
 void memlog_init(void);
 void memlog_write(const char *str, unsigned int count);
 void memlog_compress(uint32_t required_space);

@@ -1,0 +1,220 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  test_matrix.yaml — Test configuration for functional_test.py
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# This file defines the complete test matrix for cross-backend LCP policy
+# tools testing.  The test runner (functional_test.py) reads this file and
+# generates test cases automatically.
+#
+# To add a new signature algorithm:
+#   1. Add a key entry under 'keys'
+#   2. Add a signature entry under 'signatures'
+#   3. If the algorithm can be used with lcp2_crtpol, add sign_flags
+#      under 'policy.sign_flags'
+#
+# No Python code changes are required for adding new algorithms.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ─── Backends ────────────────────────────────────────────────────────────
+# Crypto backends to build and test against.
+backends:
+  - openssl
+  - ippc
+
+
+# ─── Key Definitions ────────────────────────────────────────────────────
+# Keys are generated (or copied) during test setup.
+#
+# File naming convention (derived from key name + type):
+#   RSA / EC / ML-DSA : {name}_pub.pem, {name}_priv.pem
+#   LMS       : {name}.pub, {name}.prv
+#
+# Supported key types and their required fields:
+#   rsa   — bits: key size in bits
+#   ec    — curve: OpenSSL curve name (e.g. prime256v1, secp384r1)
+#   mldsa — openssl: path to openssl binary (default: "openssl")
+#           ld_library_path: extra LD_LIBRARY_PATH for ML-DSA support (optional)
+#           key_format: pem (default), der, or raw
+#           Generated via: openssl genpkey -algorithm ML-DSA-87
+#   lms   — copy_from: {pub, priv, aux} source filenames in lcptools-v2/
+keys:
+  rsa2048:
+    type: rsa
+    bits: 2048
+
+  rsa3072:
+    type: rsa
+    bits: 3072
+
+  ec256:
+    type: ec
+    curve: prime256v1
+
+  ec384:
+    type: ec
+    curve: secp384r1
+
+  rsa2048_raw:
+    type: rsa
+    bits: 2048
+    key_format: raw
+
+  rsa3072_raw:
+    type: rsa
+    bits: 3072
+    key_format: raw
+
+  ec256_raw:
+    type: ec
+    curve: prime256v1
+    key_format: raw
+
+  ec384_raw:
+    type: ec
+    curve: secp384r1
+    key_format: raw
+
+  mldsa:
+    type: mldsa
+    openssl: /usr/local/bin/openssl
+    ld_library_path: /usr/local/lib64
+
+  mldsa_raw:
+    type: mldsa
+    key_format: raw
+    openssl: /usr/local/bin/openssl
+    ld_library_path: /usr/local/lib64
+
+  mldsa_der:
+    type: mldsa
+    key_format: der
+    openssl: /usr/local/bin/openssl
+    ld_library_path: /usr/local/lib64
+
+  lms:
+    type: lms
+    copy_from:
+      pub:  ../lms_m24_h20_w4.pub
+      priv: ../lms_m24_h20_w4.prv
+      aux:  ../lms_m24_h20_w4.aux
+
+
+# ─── Signature Configurations ───────────────────────────────────────────
+# Each entry produces a full cross-backend test matrix:
+#   create_backend × sign_backend × verify_backend
+# for every list_version listed.
+#
+# Fields:
+#   sigalg              — algorithm name passed to --sigalg
+#   hashalg             — hash algorithm passed to --hashalg (for 0x300)
+#   key                 — reference to a key name above
+#   list_versions       — list format versions to test
+#   supported_backends  — (optional) backends that support this algorithm;
+#                         defaults to all backends.  Used to skip sign /
+#                         verify / show operations on unsupported backends.
+#   skip_flag           — (optional) maps to a --skip-* CLI flag;
+#                         when the flag is set, this config is skipped
+signatures:
+  - sigalg: rsa
+    hashalg: sha256
+    key: rsa2048
+    list_versions: ["0x200", "0x201"]
+
+  - sigalg: rsapss
+    hashalg: sha256
+    key: rsa3072
+    list_versions: ["0x300"]
+
+  - sigalg: ecdsa
+    hashalg: sha256
+    key: ec256
+    list_versions: ["0x200", "0x201", "0x300"]
+
+  - sigalg: ecdsa
+    hashalg: sha384
+    key: ec384
+    list_versions: ["0x200", "0x201", "0x300"]
+
+  - sigalg: mldsa
+    hashalg: sha256
+    key: mldsa
+    list_versions: ["0x300"]
+
+  - sigalg: mldsa
+    hashalg: sha256
+    key: mldsa_raw
+    list_versions: ["0x300"]
+
+  - sigalg: mldsa
+    hashalg: sha256
+    key: mldsa_der
+    list_versions: ["0x300"]
+
+  - sigalg: rsa
+    hashalg: sha256
+    key: rsa2048_raw
+    list_versions: ["0x200", "0x201"]
+
+  - sigalg: rsapss
+    hashalg: sha256
+    key: rsa3072_raw
+    list_versions: ["0x300"]
+
+  - sigalg: ecdsa
+    hashalg: sha256
+    key: ec256_raw
+    list_versions: ["0x200", "0x201", "0x300"]
+
+  - sigalg: ecdsa
+    hashalg: sha384
+    key: ec384_raw
+    list_versions: ["0x200", "0x201", "0x300"]
+
+  - sigalg: lms
+    hashalg: sha256
+    key: lms
+    list_versions: ["0x300"]
+    supported_backends: [ippc]
+    skip_flag: skip_lms
+
+
+# ─── Policy Configuration ───────────────────────────────────────────────
+# Policy creation tests pick one representative signed 0x300 list per
+# sigalg, then test every policy_version × hash_alg combination.
+#
+# sign_flags maps a sigalg to the --sign arguments for lcp2_crtpol.
+# skip_sigalgs lists algorithms that are only used for list signing,
+# not policy creation.
+policy:
+  versions:    ["3.0", "3.2"]
+  hash_algs:   [sha256, sha384]
+  mask_algs:   [sha256, sha384]
+
+  sign_flags:
+    rsa:    [--sign, rsa-2048-sha256]
+    rsapss: [--sign, rsa-3072-sha256]
+    ecdsa:  [--sign, ecdsa-p256, --sign, ecdsa-p384]
+
+  skip_sigalgs: [mldsa, lms]
+
+
+# ─── Element Test Configuration ─────────────────────────────────────────
+# Elements to create for testing.  The first element is also used as the
+# payload when creating policy lists in other tests.
+elements:
+  - name: mle2_sha256
+    type: mle2
+    hashalg: sha256
+    minver: "0x00"
+    ctrl:   "0x00"
+    hash: >-
+      7c 36 05 fe 02 52 a5 c4 e4 09 37 24 96 a3 c2 c7
+      7b 37 3f d8 1d 6b e2 91 ea 91 a8 8e c7 b7 32 13
+
+
+# ─── Tamper Test Configuration ──────────────────────────────────────────
+# Negative test: pick a signed list matching source_pattern, corrupt it,
+# and verify that all backends reject it.
+tamper:
+  source_pattern: "signed_ecdsa_sha256_0x300_*.lst"

@@ -44,6 +44,8 @@
 #define BITN(n) (1 << (n))
 #endif
 
+#include "../lcptools-v2/crypto.h"
+
 /*--------- LCP UUID ------------*/
 #define LCP_POLICY_DATA_UUID   {0xab0d1925, 0xeee7, 0x48eb, 0xa9fc, \
                                {0xb, 0xac, 0x5a, 0x26, 0x2d, 0xe}}
@@ -79,7 +81,7 @@
 #define LCP_MAX_LISTS      8
 
 /*Digest sizes*/
-#define SHA1_DIGEST_SIZE 	20
+#define SHA1_DIGEST_SIZE    20
 #define SHA256_DIGEST_SIZE	32
 #define SHA384_DIGEST_SIZE	48
 #define SHA512_DIGEST_SIZE	64
@@ -90,16 +92,13 @@
 #define LCP_SIG_EXPONENT    65537
 
 /*--------- with LCP_POLICY version 2.0 ------------*/
-#define SHA1_LENGTH        20
 #define SHA256_LENGTH      32
 
 typedef union {
-    uint8_t    sha1[SHA1_LENGTH];
     uint8_t    sha256[SHA256_LENGTH];
 } lcp_hash_t;
 
 /*--------- legacy LCP alg names ------------*/
-#define LCP_POLHALG_SHA1           0
 #define LCP_POLSALG_NONE           0
 #define LCP_POLSALG_RSA_PKCS_15    1
 
@@ -127,7 +126,7 @@ typedef struct __packed {
 
 typedef struct __packed {
     uint8_t      sinit_min_version;
-    uint8_t      hash_alg; //LCP_POLHALG_SHA1
+    uint8_t      hash_alg;
     uint16_t     num_hashes;
     lcp_hash_t  hashes[];
 } lcp_mle_element_t;
@@ -154,11 +153,6 @@ typedef struct __packed {
     uint32_t    policy_elt_control;
     uint8_t     data[];
 } lcp_policy_element_t;
-
-typedef struct __packed {
-    uuid_t       uuid;
-    uint8_t      data[];
-} lcp_custom_element_t;
 
 /*
     LCP_POLICY_LIST  deprecated, kept to support legacy systems
@@ -199,7 +193,7 @@ typedef struct __packed {
 #define LCP_DEFAULT_POLICY_VERSION_2   0x0202
 typedef struct __packed {
     uint16_t    version;         /* must be 0x0204    */
-    uint8_t     hash_alg;        /* LCP_POLHALG_SHA1* */
+    uint8_t     hash_alg;
     uint8_t     policy_type;     /* one of LCP_POLTYPE_* */
     uint8_t     sinit_min_version;
     uint8_t     reserved1;
@@ -209,12 +203,11 @@ typedef struct __packed {
     uint8_t     reserved2;
     uint16_t    reserved3;
     uint32_t    reserved4;
-    lcp_hash_t  policy_hash; //Must be SHA1 - 20 bytes
+    lcp_hash_t  policy_hash;
 } lcp_policy_t;
 
 /*--------- LCP_POLICY version 3.x ------------*/
 #define TPM_ALG_RSA     0x0001
-#define TPM_ALG_SHA1	0x0004
 #define TPM_ALG_SHA256	0x000B
 #define TPM_ALG_SHA384	0x000C
 #define TPM_ALG_SHA512	0x000D
@@ -224,7 +217,6 @@ typedef struct __packed {
 #define TPM_ALG_LMS     0x0070
 
 #define TPM_ALG_MASK_NULL	    0x0000
-#define TPM_ALG_MASK_SHA1	    0x0001
 #define TPM_ALG_MASK_SHA256	    0x0008
 #define TPM_ALG_MASK_SM3_256	0x0020
 #define TPM_ALG_MASK_SHA384	    0x0040
@@ -241,7 +233,8 @@ typedef struct __packed {
 #define SIGN_ALG_MASK_ECDSA_P384            BITN(13) //Sha 384
 #define SIGN_ALG_MASK_LMS_P56B              BITN(14) //Public key size 56 bytes
 #define SIGN_ALG_MASK_SM2                   BITN(16) //ok
-#define SIGN_ALG_MASK_LMS_SHA256_M32_H20    BITN(17) //LMS LMOTS_SHA256_N32_W4 is used with
+#define SIGN_ALG_MASK_LMS_SHA256_M24_H20    BITN(17) //LMS LMOTS_SHA256_N24_W4 is used with
+#define SIGN_ALG_MASK_MLDSA_87              BITN(18) //ML-DSA-87 (NIST level 5)
 
 
 /*--------- Signature algs ------------*/
@@ -250,9 +243,9 @@ typedef struct __packed {
 #define TPM_ALG_ECDSA   0x0018
 #define TPM_ALG_SM2     0x001B
 #define TPM_ALG_LMS     0x0070
+#define TCG_ALG_MLDSA   0x00A1
 
 typedef union {
-    uint8_t    sha1[SHA1_DIGEST_SIZE];
     uint8_t    sha256[SHA256_DIGEST_SIZE];
     uint8_t    sha384[SHA384_DIGEST_SIZE];
     uint8_t    sha512[SHA512_DIGEST_SIZE];
@@ -308,10 +301,6 @@ typedef struct __packed {
 
 #define LCP_POLELT_TYPE_CUSTOM2    0x13
 #define LCP_POLELT_TYPE_CUSTOM     0x03 //Legacy
-typedef struct __packed {
-    uuid_t       uuid;
-    uint8_t      data[];
-} lcp_custom_element_t2;
 
 #define LCP_POLELT_TYPE_STM2       0x14
 typedef struct __packed {
@@ -370,37 +359,6 @@ typedef struct __packed {
 
 /* LCP POLICY LIST 2.1 and its helper structs */
 #define SIGNATURE_VERSION        0x10
-#define MAX_RSA_KEY_SIZE         0x180
-#define MIN_RSA_KEY_SIZE         0x100
-#define MAX_ECC_KEY_SIZE         0x30
-#define MIN_ECC_KEY_SIZE         0x20
-
-typedef struct __packed {
-    uint8_t  Version;
-    uint16_t KeySize; //IN BITS - 2048 or 3072!
-    uint32_t Exponent;
-    uint8_t  Modulus[MAX_RSA_KEY_SIZE];
-} rsa_public_key;
-
-typedef struct __packed {
-    uint8_t  Version;
-    uint16_t KeySize; //IN BITS - 2048 or 3072!
-    uint16_t HashAlg;
-    uint8_t  Signature[MAX_RSA_KEY_SIZE];
-} rsa_signature;
-
-typedef struct __packed {
-    uint8_t  Version;
-    uint16_t KeySize; //IN BITS - 256 or 384!
-    uint8_t  QxQy[2*MAX_ECC_KEY_SIZE];
-} ecc_public_key;
-
-typedef struct __packed {
-    uint8_t Version;
-    uint16_t KeySize; //IN BITS - 256 or 384!
-    uint16_t HashAlg;
-    uint8_t  sigRsigS[2*MAX_ECC_KEY_SIZE];
-} ecc_signature;
 
 typedef struct __packed {
     uint8_t        Version;
@@ -419,25 +377,12 @@ typedef struct __packed {
 } rsa_key_and_signature;
 
 //LCP supports these LMS and LMOTS types:
-#define LMS_SHA256_M32_H20   0x8
-#define LMS_SHA256_M24_H20   0xD
-
-#define LMOTS_SIGNATURE_N_SIZE SHA256_192_DIGEST_SIZE // bytes in SHA256/192 digest
-#define LMOTS_SIGNATURE_P_SIZE 51 // Number of n-byte string elements that make up the LMOTS signature
-// With N and P we calculate the size of the signature block:
-#define LMOTS_SIGNATURE_BLOCK_SIZE (LMOTS_SIGNATURE_N_SIZE * LMOTS_SIGNATURE_P_SIZE)
-
-#define LMS_SIGNATURE_H_HEIGHT 20 // Height of the LMS tree
-#define LMS_SIGNATURE_M_SIZE SHA256_192_DIGEST_SIZE // Number of bytes in each LMS tree node
-
-// With H and M we calculate the size of the LMS signature:
-#define LMS_SIGNATURE_BLOCK_SIZE (LMS_SIGNATURE_H_HEIGHT * LMS_SIGNATURE_M_SIZE)
-
-#define LMS_MAX_PUBKEY_SIZE 48
+#define LMS_SHA256_M24_H20   0x0000000D
+#define LMOTS_SHA256_N24_W4  0x00000007
 
 typedef struct __packed {
     uint32_t LmsType; //Must be 0xD (LMS_SHA256_M24_H20)
-    uint32_t LmotsType; //Must be 0x3 (LMOTS_SHA256_N24_W4)
+    uint32_t LmotsType; //Must be 0x7 (LMOTS_SHA256_N24_W4)
     uint8_t  I[16]; //LMS key identifier
     uint8_t  T1[24]; //24-byte string associated with the 1st node of binary Merkel tree.
 } lms_xdr_key_data;
@@ -449,7 +394,7 @@ typedef struct __packed {
 } lms_public_key;
 
 typedef struct __packed {
-    uint32_t Type; // Must be 0x3 (LMOTS_SHA256_N24_W4)
+    uint32_t Type; // Must be 0x7 (LMOTS_SHA256_N24_W4)
     uint8_t  Seed[SHA256_192_DIGEST_SIZE];
     uint8_t  Y[LMOTS_SIGNATURE_BLOCK_SIZE];
 } lmots_signature;
@@ -457,7 +402,7 @@ typedef struct __packed {
 typedef struct __packed {
     uint32_t        Q; //Leaf number
     lmots_signature Lmots;
-    uint32_t        LmsType; //Must be 0x8 (LMS_SHA256_M32_H20)
+    uint32_t        LmsType; //Must be 0xD (LMS_SHA256_M24_H20)
     uint8_t         Path[LMS_SIGNATURE_BLOCK_SIZE];
 } lms_signature_block;
 
@@ -476,10 +421,44 @@ typedef struct __packed {
     lms_signature Signature;
 } lms_key_and_signature;
 
+typedef struct __packed {
+    uint8_t  Version;
+    uint16_t KeySize; /* In bytes: MLDSA87_PUBKEY_SIZE = 2592 */
+    union __packed {
+        uint8_t  PubKey[MLDSA87_PUBKEY_SIZE]; /* Opaque access */
+        struct __packed {
+            uint8_t  Rho[MLDSA87_RHO_SIZE];   /* 32-byte seed for matrix A */
+            uint8_t  T1[MLDSA87_T1_SIZE];      /* High-order bits of vector t */
+        };
+    };
+} mldsa_public_key;
+
+typedef struct __packed {
+    uint8_t  Version;
+    uint16_t KeySize; /* In bytes: MLDSA87_SIGNATURE_SIZE = 4627 */
+    union __packed {
+        uint8_t  Signature[MLDSA87_SIGNATURE_SIZE]; /* Opaque access */
+        struct __packed {
+            uint8_t  CommitHash[MLDSA87_COMMIT_HASH_SIZE];   /* Commitment hash (c_tilde) */
+            uint8_t  RespVector[MLDSA87_RESP_VECTOR_SIZE];   /* Response vector (z) */
+            uint8_t  HintVector[MLDSA87_HINT_VECTOR_SIZE];   /* Hint vector (h) */
+        };
+    };
+} mldsa_signature;
+
+typedef struct __packed {
+    uint8_t          Version;
+    uint16_t         KeyAlg;
+    mldsa_public_key Key;
+    uint16_t         SigScheme;
+    mldsa_signature  Signature;
+} mldsa_key_and_signature;
+
 typedef union __packed {
     rsa_key_and_signature     RsaKeyAndSignature;
     ecc_key_and_signature     EccKeyAndSignature;
     lms_key_and_signature     LmsKeyAndSignature;
+    mldsa_key_and_signature   MldsaKeyAndSignature;
 } lcp_key_and_sig;
 
 typedef struct __packed {

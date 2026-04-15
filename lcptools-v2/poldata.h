@@ -36,28 +36,53 @@
 #ifndef __POLDATA2_H__
 #define __POLDATA2_H__
 
-extern size_t list_21_sizes[LCP_MAX_LISTS];
+extern size_t  list_21_sizes[LCP_MAX_LISTS];
 
-extern size_t get_policy_data_size(const lcp_policy_data_t2 *poldata);
-extern bool verify_policy_data(const lcp_policy_data_t2 *poldata, size_t size);
-extern void display_policy_data(const char *prefix,
-                                const lcp_policy_data_t2 *poldata, bool brief);
+extern size_t
+get_policy_data_size (
+  const lcp_policy_data_t2  *poldata
+  );
 
-extern lcp_policy_data_t2 *add_tpm12_policy_list(lcp_policy_data_t2 *poldata,
-                                          const lcp_policy_list_t *pollist);
+extern bool
+verify_policy_data (
+  const lcp_policy_data_t2  *poldata,
+  size_t                    size
+  );
 
-extern lcp_policy_data_t2 *add_tpm20_policy_list(lcp_policy_data_t2 *poldata,
-                                          const lcp_policy_list_t2 *pollist);
+extern void
+display_policy_data (
+  const char                *prefix,
+  const lcp_policy_data_t2  *poldata,
+  bool                      brief
+  );
 
-extern lcp_policy_data_t2 *add_tpm20_policy_list2_1(lcp_policy_data_t2 *poldata,
-                        size_t *list_size, const lcp_policy_list_t2_1 *pollist);
+extern lcp_policy_data_t2 *
+add_tpm12_policy_list (
+  lcp_policy_data_t2       *poldata,
+  const lcp_policy_list_t  *pollist
+  );
 
-extern void calc_policy_data_hash(const lcp_policy_data_t2 *poldata,
-                                  lcp_hash_t2 *hash, uint16_t hash_alg);
+extern lcp_policy_data_t2 *
+add_tpm20_policy_list (
+  lcp_policy_data_t2        *poldata,
+  const lcp_policy_list_t2  *pollist
+  );
 
+extern lcp_policy_data_t2 *
+add_tpm20_policy_list2_1 (
+  lcp_policy_data_t2          *poldata,
+  size_t                      *list_size,
+  const lcp_policy_list_t2_1  *pollist
+  );
 
-#endif    /* __POLDATA_H__ */
+extern void
+calc_policy_data_hash (
+  const lcp_policy_data_t2  *poldata,
+  lcp_hash_t2               *hash,
+  uint16_t                  hash_alg
+  );
 
+#endif /* __POLDATA_H__ */
 
 /*
  * Local variables:
