@@ -575,13 +575,13 @@ static void configure_vtd(void)
  * sets up TXT heap
  */
 static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit,
-                                 loader_ctx *lctx)
-{
+                                 loader_ctx *const lctx) {
     uint32_t   tmp_num_of_e820_entries = 0;
 
     txt_heap_t *txt_heap = NULL;
     uint64_t   *size     = NULL;
 
+    loader_ctx tmp_lctx  = {NULL, 0};
     struct tpm_if *tpm = get_tpm();
 
     txt_heap = get_txt_heap();
@@ -597,17 +597,17 @@ static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit,
      */
     os_mle_data_t *os_mle_data = get_os_mle_data_start(txt_heap);
 
-    if (!verify_g_nr_map_ptr(get_nr_map_ptr())) {
-        apply_policy(TB_ERR_DMA_CORRUPTION_DETECTED);
-    }
-
-    if (!e820_verify_num_of_entries()) {
+    if (!txt_verify_loader_context_protection(lctx) ||
+        !verify_g_nr_map_ptr(get_nr_map_ptr()) ||
+        !e820_verify_num_of_entries()) {
         apply_policy(TB_ERR_DMA_CORRUPTION_DETECTED);
     }
 
     size = (uint64_t *)((uint32_t)os_mle_data - sizeof(uint64_t));
     *size = sizeof(*os_mle_data) + sizeof(uint64_t);
 
+    /* Save loader ctx from OsMleData in temporary structure */
+    tb_memcpy(&tmp_lctx, &os_mle_data->lctx, sizeof(loader_ctx));
     /* Save num of e820 entries from OsMleData in temporary structure */
     tmp_num_of_e820_entries = os_mle_data->num_of_e820_entries;
 
@@ -615,8 +615,8 @@ static txt_heap_t *init_txt_heap(void *ptab_base, acm_hdr_t *sinit,
 
     /* Set OsMleData */
     os_mle_data->version = 3;
-    os_mle_data->lctx_addr = lctx->addr;
     os_mle_data->saved_misc_enable_msr = rdmsr(MSR_IA32_MISC_ENABLE);
+    tb_memcpy(&os_mle_data->lctx, &tmp_lctx, sizeof(loader_ctx));
     os_mle_data->num_of_e820_entries = tmp_num_of_e820_entries;
 
     /*
@@ -890,7 +890,7 @@ void force_pmrs_usage(void)
     return;
 }
 
-tb_error_t txt_launch_environment(loader_ctx *lctx)
+tb_error_t txt_launch_environment(loader_ctx *const lctx)
 {
     void          *mle_ptab_base       = NULL;
     os_mle_data_t *os_mle_data         = NULL;
@@ -905,11 +905,11 @@ tb_error_t txt_launch_environment(loader_ctx *lctx)
     // g_sinit = copy_sinit(g_sinit);
     // if ( g_sinit == NULL )
     //    return TB_ERR_SINIT_NOT_PRESENT;
-    /* do some checks on it */
+    /* do checks on it */
     // if ( !verify_acmod(g_sinit) )
      //   return TB_ERR_ACMOD_VERIFY_FAILED;
 
-    /* print some debug info */
+    /* print debug info */
     print_file_info();
     print_mle_hdr(&g_mle_hdr);
 
@@ -1012,7 +1012,7 @@ bool txt_s3_launch_environment(void)
     return false;
 }
 
-tb_error_t txt_launch_racm(loader_ctx *lctx)
+tb_error_t txt_launch_racm(loader_ctx *const lctx)
 {
     acm_hdr_t *racm = NULL;
 
@@ -1496,8 +1496,42 @@ bool get_parameters(getsec_parameters_t *params)
     return true;
 }
 
-bool verify_g_nr_map_ptr(uint32_t *const nr_map)
-{
+bool txt_verify_loader_context_protection(loader_ctx *const lctx) {
+    txt_heap_t    *heap           = NULL;
+    os_mle_data_t *os_mle_data    = NULL;
+
+    if (supports_txt() != TB_ERR_NONE) {
+        printk(TBOOT_WARN"TXT not supported, skipping loader context TXT"
+                         " protection check.\n");
+        return true;
+    }
+
+    heap = get_txt_heap();
+    if (heap == NULL) {
+        printk(TBOOT_ERR"Error: TXT heap does not exist.\n");
+        return false;
+    }
+
+    os_mle_data = get_os_mle_data_start(heap);
+    if (os_mle_data == NULL) {
+        printk(TBOOT_ERR"Error: OS MLE data structure does not exist.\n");
+        return false;
+    }
+
+    if (lctx != (loader_ctx *) &os_mle_data->lctx) {
+        printk(TBOOT_ERR"Error: Registered g_ldr_ctx corruption.\n");
+        printk(TBOOT_ERR"g_ldr_ctx should point at the loader ctx address in"
+                        " the OsMleData structure\n");
+        printk(TBOOT_ERR"g_ldr_ctx: 0x%p\n", lctx);
+        printk(TBOOT_ERR"OsMleData loader ctx address: 0x%lX\n",
+               (unsigned long) &os_mle_data->lctx);
+        return false;
+    }
+
+    return true;
+}
+
+bool verify_g_nr_map_ptr(uint32_t *const nr_map) {
     txt_heap_t    *heap           = NULL;
     os_mle_data_t *os_mle_data    = NULL;
 

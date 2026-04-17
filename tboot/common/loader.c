@@ -147,8 +147,7 @@ static struct mb2_tag
     return start;
 }
 
-static module_t 
-*get_module_mb2(loader_ctx *lctx, unsigned int i)
+static module_t *get_module_mb2(loader_ctx *const lctx, unsigned int i)
 {
     struct mb2_tag *start = (struct mb2_tag *)(lctx->addr + 8);
     unsigned int ii;
@@ -280,9 +279,14 @@ void print_mbi(const multiboot_info_t *mbi)
 #endif
 
 
-bool verify_loader_context(loader_ctx *lctx)
+bool verify_loader_context(loader_ctx *const lctx)
 {
     unsigned int count;
+
+    if (!(txt_verify_loader_context_protection(lctx))) {
+        return false;
+    }
+
     if (LOADER_CTX_BAD(lctx))
         return false;
     count = get_module_count(lctx);
@@ -300,7 +304,7 @@ bool verify_loader_context(loader_ctx *lctx)
     }
 }
 
-static bool remove_mb2_tag(loader_ctx *lctx, struct mb2_tag *cur)
+static bool remove_mb2_tag(loader_ctx *const lctx, struct mb2_tag *cur)
 {
     uint8_t *s, *d, *e;
     struct mb2_tag *next, *end;
@@ -611,7 +615,7 @@ bool is_kernel_linux(void)
 }
 
 static bool 
-find_module(loader_ctx *lctx, void **base, size_t *size,
+find_module(loader_ctx *const lctx, void **base, size_t *size,
             const void *data, size_t len)
 {
     if ( lctx == NULL || lctx->addr == NULL) {
@@ -729,7 +733,7 @@ remove_txt_modules(loader_ctx *lctx)
 
 extern unsigned long get_tboot_mem_end(void);
 
-static bool below_tboot(unsigned long addr)
+static bool below_tboot(const unsigned long addr)
 {
     return addr < TBOOT_BASE_ADDR;
 }
@@ -952,7 +956,7 @@ static bool move_modules_above_elf_kernel(  loader_ctx      *lctx,
     return true;
 }
 
-static void fixup_modules(loader_ctx *lctx, size_t offset)
+static void fixup_modules(loader_ctx *const lctx, size_t offset)
 {
     unsigned int module_count = get_module_count(lctx);
     for ( unsigned int i = 0; i < module_count; i++ ) {
@@ -975,7 +979,7 @@ static void fixup_modules(loader_ctx *lctx, size_t offset)
  * moved, adjust the addr field in context, otherwise, leave alone.
  */
 static 
-void fixup_loader_ctx(loader_ctx *lctx, size_t offset)
+void fixup_loader_ctx(loader_ctx *const lctx, size_t offset)
 {
     if (LOADER_CTX_BAD(lctx))
         return;
@@ -984,9 +988,12 @@ void fixup_loader_ctx(loader_ctx *lctx, size_t offset)
     multiboot_info_t *mbi = lctx->addr;
 
     if ( moving_ctx ) {
-        printk(TBOOT_INFO"loader context was moved from %p to ", lctx->addr);
+        printk(TBOOT_INFO"Relocating loader context metadata above tboot memory"
+               " from %p to: ", lctx->addr);
         lctx->addr += offset;
         printk(TBOOT_INFO"%p\n", lctx->addr);
+        printk(TBOOT_INFO"Loader context pointer after relocation: %p\n",
+               lctx->addr);
     }
 
     if (0 < get_module_count(lctx)) {
@@ -1019,7 +1026,7 @@ void fixup_loader_ctx(loader_ctx *lctx, size_t offset)
         start = (struct mb2_tag *) (lctx->addr + 8);
         victim = find_mb2_tag_type(start, MB2_TAG_TYPE_ELF_SECTIONS);
         if (victim != NULL)
-            (void) remove_mb2_tag(lctx,victim);
+            (void) remove_mb2_tag(lctx, victim);
         /* and that's all, folks! */
         return;
     }
@@ -1059,7 +1066,7 @@ void fixup_loader_ctx(loader_ctx *lctx, size_t offset)
     return;
 }
 
-static uint32_t get_lowest_mod_start_below_tboot(loader_ctx *lctx)
+static uint32_t get_lowest_mod_start_below_tboot(loader_ctx *const lctx)
 {
     uint32_t lowest = 0xffffffff;
     unsigned int mod_count = get_module_count(lctx);
@@ -1073,7 +1080,7 @@ static uint32_t get_lowest_mod_start_below_tboot(loader_ctx *lctx)
     return lowest;
 }
 
-static uint32_t get_highest_mod_end(loader_ctx *lctx)
+static uint32_t get_highest_mod_end(loader_ctx *const lctx)
 {
     uint32_t highest = 0;
     unsigned int mod_count = get_module_count(lctx);
@@ -1089,8 +1096,14 @@ static uint32_t get_highest_mod_end(loader_ctx *lctx)
 /*
  * Move any mbi components/modules/mbi that are below tboot to just above tboot
  */
-void move_modules(loader_ctx *lctx)
+void move_modules(loader_ctx *const lctx)
 {
+    if (!txt_verify_loader_context_protection(lctx))
+    {
+        printk(TBOOT_ERR"Loader context protection check failed\n");
+        return;
+    }
+
     if (LOADER_CTX_BAD(lctx))
         return;
 
@@ -1133,14 +1146,14 @@ void move_modules(loader_ctx *lctx)
         to = get_loader_ctx_end(lctx);
 
     tb_memcpy((void *)to, (void *)from, TBOOT_BASE_ADDR - from);
-    
+
     printk(TBOOT_DETA"0x%lx bytes copied from 0x%lx to 0x%lx\n",
            TBOOT_BASE_ADDR - from, from, to);
     fixup_loader_ctx(lctx, to - from);
     return;
 }
 
-module_t *get_module(loader_ctx *lctx, unsigned int i)
+module_t *get_module(loader_ctx *const lctx, unsigned int i)
 {
     if (LOADER_CTX_BAD(lctx))
         return NULL;
@@ -1612,8 +1625,12 @@ char *get_first_module_cmd(loader_ctx *lctx)
     return get_module_cmd(lctx, mod);
 }
 
-char *get_cmdline(loader_ctx *lctx)
+char *get_cmdline(loader_ctx *const lctx)
 {
+    if (!txt_verify_loader_context_protection(lctx)) {
+        return NULL;
+    }
+
     if (LOADER_CTX_BAD(lctx))
         return NULL;
 
@@ -1636,7 +1653,7 @@ char *get_cmdline(loader_ctx *lctx)
     }
 }
 
-bool have_loader_memlimits(loader_ctx *lctx)
+bool have_loader_memlimits(loader_ctx *const lctx)
 {
     if (LOADER_CTX_BAD(lctx))
         return false;
@@ -1650,7 +1667,7 @@ bool have_loader_memlimits(loader_ctx *lctx)
     }
 }
 
-uint32_t get_loader_mem_lower(loader_ctx *lctx)
+uint32_t get_loader_mem_lower(loader_ctx *const lctx)
 {
     if (LOADER_CTX_BAD(lctx))
         return 0;
@@ -1667,7 +1684,7 @@ uint32_t get_loader_mem_lower(loader_ctx *lctx)
     return 0;
 }
 
-uint32_t get_loader_mem_upper(loader_ctx *lctx)
+uint32_t get_loader_mem_upper(loader_ctx *const lctx)
 {
     if (LOADER_CTX_BAD(lctx))
         return 0;
@@ -1684,7 +1701,7 @@ uint32_t get_loader_mem_upper(loader_ctx *lctx)
     return 0;
 }
 
-unsigned int get_module_count(loader_ctx *lctx)
+unsigned int get_module_count(loader_ctx *const lctx)
 {
     if (LOADER_CTX_BAD(lctx))
         return 0;
@@ -1705,7 +1722,7 @@ unsigned int get_module_count(loader_ctx *lctx)
     }
 }
 
-bool have_loader_memmap(loader_ctx *lctx)
+bool have_loader_memmap(loader_ctx *const lctx)
 {
     if (LOADER_CTX_BAD(lctx))
         return false;
@@ -1719,7 +1736,7 @@ bool have_loader_memmap(loader_ctx *lctx)
     }
 }
 
-memory_map_t *get_loader_memmap(loader_ctx *lctx)
+memory_map_t *get_loader_memmap(loader_ctx *const lctx)
 {
     if (LOADER_CTX_BAD(lctx))
         return NULL;
@@ -1743,7 +1760,7 @@ memory_map_t *get_loader_memmap(loader_ctx *lctx)
     }
 }
 
-uint32_t get_loader_memmap_length(loader_ctx *lctx)
+uint32_t get_loader_memmap_length(loader_ctx *const lctx)
 {
     if (LOADER_CTX_BAD(lctx))
         return 0;
@@ -1765,8 +1782,7 @@ uint32_t get_loader_memmap_length(loader_ctx *lctx)
     }
 }
 
-unsigned long
-get_loader_ctx_end(loader_ctx *lctx)
+unsigned long get_loader_ctx_end(loader_ctx *const lctx)
 {
     if (LOADER_CTX_BAD(lctx))
         return 0;
@@ -1784,8 +1800,7 @@ get_loader_ctx_end(loader_ctx *lctx)
  * will go through all modules to find an RACM that matches the platform
  * (size can be NULL)
  */
-bool 
-find_platform_racm(loader_ctx *lctx, void **base, uint32_t *size)
+bool find_platform_racm(loader_ctx *const lctx, void **base, uint32_t *size)
 {
     if ( base != NULL )
         *base = NULL;
@@ -1859,9 +1874,14 @@ regions_overlap(const void *base1, size_t size1, const void *base2, size_t size2
  * will go through all modules to find an SINIT that matches the platform
  * (size can be NULL)
  */
-bool 
-find_platform_sinit_module(loader_ctx *lctx, void **base, uint32_t *size)
+bool find_platform_sinit_module(loader_ctx *const lctx, void **base,
+                                uint32_t *size)
 {
+    if (!txt_verify_loader_context_protection(lctx)) {
+        printk(TBOOT_ERR"Search for SINIT ACM module has been aborted.\n");
+        return false;
+    }
+
     if ( base != NULL )
         *base = NULL;
     if ( size != NULL )
@@ -1962,7 +1982,7 @@ replace_e820_map(loader_ctx *lctx)
     return;
 }
 
-void print_loader_ctx(loader_ctx *lctx)
+void print_loader_ctx(loader_ctx *const lctx)
 {
     if (lctx->type != MB2_ONLY){
         printk(TBOOT_ERR"this routine only prints out multiboot 2\n");
@@ -2091,7 +2111,9 @@ find_efi_memmap(loader_ctx *lctx, uint32_t *descr_size,
 bool
 is_loader_launch_efi(loader_ctx *lctx)
 {
-    uint32_t addr = 0; uint64_t long_addr = 0;
+    uint32_t addr      = 0;
+    uint64_t long_addr = 0;
+
     if (LOADER_CTX_BAD(lctx))
         return false;
     return (get_loader_efi_ptr(lctx, &addr, &long_addr));
@@ -2146,8 +2168,12 @@ bool load_framebuffer_info(loader_ctx *lctx, void *vscr, bool efifb)
 
 }
 
-struct mb2_fb* get_framebuffer_info(loader_ctx *lctx)
+struct mb2_fb* get_framebuffer_info(loader_ctx *const lctx)
 {
+    if (!txt_verify_loader_context_protection(lctx)) {
+        return NULL;
+    }
+
     if (LOADER_CTX_BAD(lctx) || lctx->type != MB2_ONLY) {
         return NULL;
     }
@@ -2156,14 +2182,14 @@ struct mb2_fb* get_framebuffer_info(loader_ctx *lctx)
     return (struct mb2_fb*)find_mb2_tag_type(start, MB2_TAG_TYPE_FRAMEBUFFER);
 }
 
-void determine_loader_type(void *addr, uint32_t magic)
+void determine_loader_type(loader_ctx *const lctx, void *addr, const uint32_t magic)
 {
-    if (g_ldr_ctx->addr == NULL){
+    if (lctx->addr == NULL) {
         /* brave new world */
-        g_ldr_ctx->addr = addr;  /* save for post launch */
-        switch (magic){
+        lctx->addr = addr;  /* save for post launch */
+        switch (magic) {
         case MB_MAGIC:
-            g_ldr_ctx->type = MB1_ONLY;
+            lctx->type = MB1_ONLY;
             { 
                 /* we may as well do this here--if we received an ELF
                  * sections tag, we won't use it, and it's useless to
@@ -2180,7 +2206,7 @@ void determine_loader_type(void *addr, uint32_t magic)
             }
             break;
         case MB2_LOADER_MAGIC:
-            g_ldr_ctx->type = MB2_ONLY;
+            lctx->type = MB2_ONLY;
             /* save the original MB2 info size, since we have
              * to put updates inline
              */
@@ -2194,15 +2220,15 @@ void determine_loader_type(void *addr, uint32_t magic)
                     (struct mb2_tag *)(addr + 8);
                 start = find_mb2_tag_type(start, MB2_TAG_TYPE_ELF_SECTIONS);
                 if (start != NULL)
-                    (void) remove_mb2_tag(g_ldr_ctx, start);
+                    (void) remove_mb2_tag(lctx, start);
             }
             break;
         default:
-            g_ldr_ctx->type = 0;
+            lctx->type = 0;
             break;
         }
     }
-    /* so at this point, g_ldr_ctx->type has one of three values:
+    /* so at this point, lctx->type has one of three values:
      * 0: not a multiboot launch--we're doomed
      * 1: MB1 launch
      * 2: MB2 launch

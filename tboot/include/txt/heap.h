@@ -35,6 +35,8 @@
 
 #ifndef __TXT_HEAP_H__
 #define __TXT_HEAP_H__
+
+#include "../loader.h"
 /*
  * Extensible TXT heap data structure
  */
@@ -295,7 +297,7 @@ typedef struct __packed {
 typedef struct __packed {
     uint32_t          version;           /* currently 3 */
     mtrr_state_t      saved_mtrr_state;  /* saved prior to changes for SINIT */
-    void 			 *lctx_addr;         /* needs to be restored to ebx */
+    loader_ctx        lctx;              /* loader context */
     uint32_t          num_of_e820_entries; /* number of entries in the copy of */
                                            /* e820 map */
     uint32_t          saved_misc_enable_msr;  /* saved prior to SENTER */

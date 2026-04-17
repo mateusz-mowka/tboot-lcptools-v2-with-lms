@@ -86,7 +86,7 @@ extern void         set_nr_map_ptr(uint32_t *const);
 extern bool         verify_g_nr_map_ptr(uint32_t *const nr_map);
 
 extern memory_map_t *get_e820_copy(void);
-extern bool copy_e820_map(loader_ctx *lctx, uint32_t *const);
+extern bool copy_e820_map(loader_ctx *const lctx, uint32_t *const);
 extern bool e820_protect_region(uint64_t addr, uint64_t size, uint32_t type);
 extern bool e820_reserve_ram(uint64_t base, uint64_t length);
 extern bool e820_verify_num_of_entries(void);
