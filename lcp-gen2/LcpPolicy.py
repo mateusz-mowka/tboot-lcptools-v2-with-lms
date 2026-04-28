@@ -33,9 +33,6 @@ class LCP_POLICY2( object ):
     self.AuxHashAlgMask = 0         # UINT16 Hash Mask for Auto-Promotion
     # Reserved                      # UINT16
     self.PolicyHash = []
-    
-    # Doesn't really need to use 2 variable for each hash size for python
-    #self.PolicyHashSha1       = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] # LCP_HASH
     #self.PolicyHashSha256     = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 
     #
@@ -45,7 +42,6 @@ class LCP_POLICY2( object ):
     # 'struct' module format string for a LCP_POLICY Structure
     #     where: B = UINT8, H = UINT16, L = UINT32
     #           '<' means Little Endian, std size, no alignment between fields
-    #self.LcpPolicyFormatString       = "<BBHBB8HLBBHHH20B"   # for SHA1 policy hash
     #self.LcpPolicyFormatStringSha256 = "<BBHBB8HLBBHHH32B"   # for SHA256 policy hash
     self.LcpPolicyFormatStringNoHash = "<BBHBB8HLBBHLHH"
     self.LcpPolicyFormatString       = "<BBHBB8HLBBHHH"      # for policy hash - Hash added separately
@@ -221,7 +217,6 @@ class LCP_MLE_ELEMENT2( ElementBase ):
     #     where: B = UINT8, H = UINT16, L = UINT32 c = char
     #           '<' means Little Endian, std size, no alignment between fields
     self.MleDataFormatString              = "<LLLBBHH"
-    self.MleDataSha1HashFormatString      = "<20B"
     self.MleDataSha256HashFormatString    = "<32B"
 
   def pack(self):
@@ -274,7 +269,6 @@ class LCP_STM_ELEMENT2( ElementBase ):
     #     where: B = UINT8, H = UINT16, L = UINT32 c = char
     #           '<' means Little Endian, std size, no alignment between fields
     self.StmDataFormatString              = "<LLLHH"
-    self.StmDataSha1HashFormatString      = "<20B"
     self.StmDataSha256HashFormatString    = "<32B"
 
   def pack(self):
@@ -326,8 +320,6 @@ class LCP_PCONF_ELEMENT2( ElementBase ):
     #     where: B = UINT8, H = UINT16, L = UINT32 c = char
     #           '<' means Little Endian, std size, no alignment between fields
     self.PconfDataFormatString        = "<LLLHH"    # ElementSize,Type,Ctl,HashAlg,NumPcrInfos
-    
-    self.PconfDataSha1FormatString   = "<20B"
     self.PconfDataSha256FormatString = "<32B"
 
   def pack(self):
@@ -483,9 +475,7 @@ class LCP_SBIOS_ELEMENT2( ElementBase ):
     #           '<' means Little Endian, std size, no alignment between fields
     self.SbiosDataFormatString           = "<LLLHBB"
     self.SbiosDataHashFormatString       = "<HH"
-    self.SbiosDataSha1FormatString       = "<LLLHBB20BHH"       # SHA1   fallback hash
     self.SbiosDataSha256FormatString     = "<LLLHBB32BHH"       # SHA256 fallback hash
-    self.SbiosDataSha1HashFormatString   = "<20B"
     self.SbiosDataSha256HashFormatString = "<32B"
 
   def pack(self):
@@ -521,7 +511,6 @@ class LCP_SBIOS_ELEMENT2( ElementBase ):
 
     return( elementData )
 
-    
 #
 #   UINT32 ElementSize;
 #   UINT32 ElementType;
@@ -559,7 +548,6 @@ class LCP_MLE_ELEMENT( ElementBase ):
     #     where: B = UINT8, H = UINT16, L = UINT32 c = char
     #           '<' means Little Endian, std size, no alignment between fields
     self.MleDataFormatString              = "<LLLBBH"
-    self.MleDataSha1HashFormatString      = "<20B"
     self.MleDataSha256HashFormatString    = "<32B"
 
   def pack(self):
@@ -573,15 +561,9 @@ class LCP_MLE_ELEMENT( ElementBase ):
     try:
       # reverse lookup of the hash algorithm name(key) for the given HashAlg value
       hashAlgName = (key for key,val in DEFINES.TPM_ALG_HASH.items() if (val == self.HashAlg)).next()
-      hashAlgName = 'SHA1'
     except StopIteration:
       print ("MLE elements with unsupported hash algorithm, aborting build")
       print("%s - build failed, see status bar" % (func))  # DBGDBG
-      return
-      
-    if(self.HashAlg != DEFINES.TPM_ALG_HASH['SHA1_LEGACY']):
-      #elementFileFormat = MleDataSha256HashFormatString
-      print ("MLE Legacy elements only support SHA1, aborting build")
       return
 
     # pack the element based on its type and return the binary string
@@ -624,7 +606,7 @@ class LCP_PCONF_ELEMENT( ElementBase ):
     #     where: B = UINT8, H = UINT16, L = UINT32 c = char
     #           '<' means Little Endian, std size, no alignment between fields
     self.PconfDataFormatString            = "<LLLH"    # Size,Type,Ctl,NumPcrInfos
-    self.PconfDataSha1PcrInfoFormatString = ">H3BB"    # TPM_PCR_INFO_SHORT: sizeOfSelect,pcrSelect,localityAtRelease
+    self.PconfDataPcrInfoFormatString = ">H3BB"    # TPM_PCR_INFO_SHORT: sizeOfSelect,pcrSelect,localityAtRelease
     # Note: the 20B of the digestAtRelease is output directly, ie does not need to be packed
     # since all ready a binary string
 
@@ -657,7 +639,7 @@ class LCP_PCONF_ELEMENT( ElementBase ):
       #
       # So do likewise
 
-      elementData += pack( self.PconfDataSha1PcrInfoFormatString,
+      elementData += pack( self.PconfDataPcrInfoFormatString,
                            thisPcrInfo.pcrSelection.sizeOfSelect,
                            thisPcrInfo.pcrSelection.pcrSelect[0],
                            thisPcrInfo.pcrSelection.pcrSelect[1],
@@ -708,7 +690,7 @@ class TPM_PCR_SELECTION( object ):
 
 
 #   typedef struct tdTPM_DIGEST{
-#     BYTE digest[digestSize];    // digestSize = 20 bytes for SHA1
+#     BYTE digest[digestSize];
 #   } TPM_DIGEST;
 #
 #   typedef TPM_DIGEST TPM_COMPOSITE_HASH; // hash of multiple measurements
@@ -720,7 +702,7 @@ class TPM_DIGEST( object ):
     """__init__() - TPM_DIGEST class constructor"""
 
     self.digest            = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-                                 0,0,0,0]             # BYTE digest[digestSize] MAX_HASH = 20 for SHA1
+                                 0,0,0,0]             # BYTE digest[digestSize]
 
 
 #   typedef struct {
@@ -757,7 +739,6 @@ class LCP_SBIOS_ELEMENT( ElementBase ):
     #           '<' means Little Endian, std size, no alignment between fields
     #self.SbiosDataFormatString           = "<LLLB3BHH"
     self.SbiosDataFormatString           = "<LLLBBBB20BHH"
-    self.SbiosDataSha1HashFormatString   = "<20B"
     self.SbiosDataSha256HashFormatString = "<32B"
 
   def pack(self):
@@ -772,16 +753,10 @@ class LCP_SBIOS_ELEMENT( ElementBase ):
     try:
       # reverse lookup of the hash algorithm name(key) for the given HashAlg value
       hashAlgName = (key for key,val in DEFINES.TPM_ALG_HASH.items() if (val == self.HashAlg)).next()
-      hashAlgName = 'SHA1'
     except StopIteration:
-      print ("SBIOS Legacy elements only support SHA1, aborting build")
+      print ("SBIOS Legacy elements only support SHA256, aborting build")
       print("%s - build failed, see status bar" % (func))  # DBGDBG
       return
-      
-    # SBIOS legacy element must be SHA1
-    #if(self.HashAlg != DEFINES.TPM_ALG_HASH['SHA1_LEGACY']):
-    #  print ("SBIOS Legacy elements only support SHA1, aborting build")
-    #  return
 
     # pack the element based on its type and return the binary string
     elementData = pack(
@@ -813,23 +788,13 @@ class ListMeasurements( object ):
   def __init__(self):
     """__init__() - ListMeasurements class constructor"""
 
-    # SHA1 - 20 bytes
-    self.hashes =   {'0': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-                     '1': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-                     '2': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-                     '3': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-                     '4': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-                     '5': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-                     '6': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-                     '7': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}
-
     # SHA256 - 32 bytes
-    #self.hashes32 = {'0': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    #                 '1': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    #                 '2': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    #                 '3': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    #                 '4': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    #                 '5': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    #                 '6': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    #                 '7': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}
+    self.hashes =   {'0': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                     '1': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                     '2': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                     '3': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                     '4': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                     '5': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                     '6': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                     '7': [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}
 

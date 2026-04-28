@@ -47,7 +47,7 @@ class TOOLS(object):
   #   biosFileName - name of the bios file to be hashed
   #   startOffset  - offset into the file to start hashing from, aka base
   #   offsetSize   - size to hash from startOffset
-  #   hashAlg      - hash algorithm to use, TPM_ALG_XXXX where XXXX is SHA1 or SHA256
+  #   hashAlg      - hash algorithm to use, TPM_ALG_XXXX e.g. SHA256
 
   # Return True on success or
   #        False on any error

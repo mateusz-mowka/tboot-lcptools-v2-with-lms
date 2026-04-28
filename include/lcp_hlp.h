@@ -31,39 +31,12 @@
 #ifndef __TXT_LCP2_HELPER_H__
 #define __TXT_LCP2_HELPER_H__
 
-static inline lcp_signature_t *get_signature(const lcp_policy_list_t *pollist)
-{
-    if ( pollist == NULL )
-        return NULL;
-
-    if ( pollist->sig_alg != LCP_POLSALG_RSA_PKCS_15 )
-        return NULL;
-
-    return (lcp_signature_t *)((const void *)&pollist->policy_elements +
-                               pollist->policy_elements_size);
-}
-
 static inline size_t get_signature_size(const lcp_signature_t *sig)
 {
     if ( sig == NULL )
         return 0;
+
     return offsetof(lcp_signature_t, pubkey_value) + 2*sig->pubkey_size;
-}
-
-
-static inline size_t get_policy_list_size(const lcp_policy_list_t *pollist)
-{
-    size_t size = 0;
-
-    if ( pollist == NULL )
-        return 0;
-
-    size = offsetof(lcp_policy_list_t, policy_elements) +
-           pollist->policy_elements_size;
-    /* add sig size */
-    if ( pollist->sig_alg == LCP_POLSALG_RSA_PKCS_15 )
-        size += get_signature_size(get_signature(pollist));
-    return size;
 }
 
 #endif    /*  __TXT_LCP2_HELPER_H__ */

@@ -57,12 +57,6 @@ display_policy_data (
   );
 
 extern lcp_policy_data_t2 *
-add_tpm12_policy_list (
-  lcp_policy_data_t2       *poldata,
-  const lcp_policy_list_t  *pollist
-  );
-
-extern lcp_policy_data_t2 *
 add_tpm20_policy_list (
   lcp_policy_data_t2        *poldata,
   const lcp_policy_list_t2  *pollist

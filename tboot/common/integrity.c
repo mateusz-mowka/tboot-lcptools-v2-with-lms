@@ -68,10 +68,6 @@ static __data uint32_t sealed_pre_k_state_size;
 static __data uint8_t  sealed_post_k_state[2048];
 static __data uint32_t sealed_post_k_state_size;
 
-/* PCR 17+18 values post-launch and before extending (used to seal verified
-   launch hashes and memory integrity UMAC) */
-__data tpm_pcr_value_t post_launch_pcr17, post_launch_pcr18;
-
 extern tboot_shared_t _tboot_shared;
 
 extern bool hash_policy(tb_hash_t *hash, uint16_t hash_alg);
@@ -218,7 +214,6 @@ static bool verify_sealed_data(const uint8_t *sealed_data,  uint32_t sealed_data
 bool seal_pre_k_state(void)
 {
     struct tpm_if *tpm = get_tpm();
-    const struct tpm_if_fp *tpm_fp = get_tpm_fp();
     
     /* save hash of current policy into g_pre_k_s3_state */
     tb_memset(&g_pre_k_s3_state.pol_hash, 0, sizeof(g_pre_k_s3_state.pol_hash));
@@ -228,13 +223,6 @@ bool seal_pre_k_state(void)
     }
 
     print_pre_k_s3_state();
-
-    /* read PCR 17/18, only for tpm1.2 */
-    if ( tpm->major == TPM12_VER_MAJOR ) {
-        if ( !tpm_fp->pcr_read(tpm, 2, 17, &post_launch_pcr17) ||
-             !tpm_fp->pcr_read(tpm, 2, 18, &post_launch_pcr18) )
-            goto error;
-    }
 
     sealed_pre_k_state_size = sizeof(sealed_pre_k_state);
     if ( !seal_data(&g_pre_k_s3_state, sizeof(g_pre_k_s3_state),
@@ -380,21 +368,8 @@ static bool measure_memory_integrity(uint8_t* mac, uint8_t* key)
  */
 bool verify_integrity(void)
 {
-    tpm_pcr_value_t pcr17, pcr18;
     struct tpm_if *tpm = get_tpm();
     const struct tpm_if_fp *tpm_fp = get_tpm_fp();
-
-    /* read PCR 17/18, only for tpm1.2 */
-    if ( tpm->major == TPM12_VER_MAJOR ) {
-        if ( !tpm_fp->pcr_read(tpm, 2, 17, &pcr17) ||
-             !tpm_fp->pcr_read(tpm, 2, 18, &pcr18) )
-            goto error;
-        printk(TBOOT_DETA"PCRs before unseal:\n");
-        printk(TBOOT_DETA"  PCR 17: ");
-        print_hash((tb_hash_t *)&pcr17, TB_HALG_SHA1);
-        printk(TBOOT_DETA"  PCR 18: ");
-        print_hash((tb_hash_t *)&pcr18, TB_HALG_SHA1);
-    }
 
     /* verify integrity of pre-kernel state data */
     printk(TBOOT_INFO"verifying pre_k_s3_state\n");

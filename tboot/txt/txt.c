@@ -87,7 +87,6 @@ extern struct mutex ap_lock;
 extern tboot_shared_t _tboot_shared;
 extern void apply_policy(tb_error_t error);
 extern void cpu_wakeup(uint32_t cpuid, uint32_t sipi_vec);
-extern void print_event(const tpm12_pcr_event_t *evt);
 extern void print_event_2(void *evt, uint16_t alg);
 extern uint32_t print_event_2_1(void *evt);
 
@@ -212,28 +211,8 @@ static void *build_mle_pagetable(uint32_t mle_start, uint32_t mle_size)
 }
 
 
-static __data event_log_container_t *g_elog = NULL;
 static __data heap_event_log_ptr_elt2_t *g_elog_2 = NULL;
 static __data heap_event_log_ptr_elt2_1_t *g_elog_2_1 = NULL;
-
-/* should be called after os_mle_data initialized */
-static void *init_event_log(void)
-{
-    os_mle_data_t *os_mle_data = get_os_mle_data_start(get_txt_heap());
-    g_elog = (event_log_container_t *)&os_mle_data->event_log_buffer;
-
-    tb_memcpy((void *)g_elog->signature, EVTLOG_SIGNATURE,
-           sizeof(g_elog->signature));
-    g_elog->container_ver_major = EVTLOG_CNTNR_MAJOR_VER;
-    g_elog->container_ver_minor = EVTLOG_CNTNR_MINOR_VER;
-    g_elog->pcr_event_ver_major = EVTLOG_EVT_MAJOR_VER;
-    g_elog->pcr_event_ver_minor = EVTLOG_EVT_MINOR_VER;
-    g_elog->size = sizeof(os_mle_data->event_log_buffer);
-    g_elog->pcr_events_offset = sizeof(*g_elog);
-    g_elog->next_event_offset = sizeof(*g_elog);
-
-    return (void *)g_elog;
-}
 
 /* initialize TCG compliant TPM 2.0 event log descriptor */
 static void init_evtlog_desc_1(heap_event_log_ptr_elt2_1_t *evt_log)
@@ -284,9 +263,7 @@ int get_evtlog_type(void)
 {
     struct tpm_if *tpm = get_tpm();
 
-    if (tpm->major == TPM12_VER_MAJOR) {
-        return EVTLOG_TPM12;
-    } else if (tpm->major == TPM20_VER_MAJOR) {
+    if (tpm->major == TPM20_VER_MAJOR) {
         /*
          * Force use of legacy TPM2 log format to deal with a bug in some SINIT
          * ACMs that where they don't log the MLE hash to the event log.
@@ -310,17 +287,11 @@ int get_evtlog_type(void)
 static void init_os_sinit_ext_data(heap_ext_data_element_t* elts)
 {
     heap_ext_data_element_t* elt = elts;
-    heap_event_log_ptr_elt_t* evt_log;
     heap_tpr_req_element_t* tpr_elt = NULL;
     struct tpm_if *tpm = get_tpm();
  
     int log_type = get_evtlog_type();
-    if ( log_type == EVTLOG_TPM12 ) {
-        evt_log = (heap_event_log_ptr_elt_t *)elt->data;
-        evt_log->event_log_phys_addr = (uint64_t)(unsigned long)init_event_log();
-        elt->type = HEAP_EXTDATA_TYPE_TPM_EVENT_LOG_PTR;
-        elt->size = sizeof(*elt) + sizeof(*evt_log);
-    } else if ( log_type == EVTLOG_TPM2_TCG ) {
+    if ( log_type == EVTLOG_TPM2_TCG ) {
         g_elog_2_1 = (heap_event_log_ptr_elt2_1_t *)elt->data;
         init_evtlog_desc_1(g_elog_2_1);
         elt->type = HEAP_EXTDATA_TYPE_TPM_EVENT_LOG_PTR_2_1;
@@ -356,28 +327,6 @@ static void init_os_sinit_ext_data(heap_ext_data_element_t* elts)
     elt->size = sizeof(*elt);
 }
 
-bool evtlog_append_tpm12(uint8_t pcr, tb_hash_t *hash, uint32_t type)
-{
-    if ( g_elog == NULL )
-        return true;
-
-    tpm12_pcr_event_t *next = (tpm12_pcr_event_t *)
-                              ((void*)g_elog + g_elog->next_event_offset);
-    
-    if ( g_elog->next_event_offset + sizeof(*next) > g_elog->size )
-        return false;
-
-    next->pcr_index = pcr;
-    next->type = type;
-    tb_memcpy(next->digest, hash, sizeof(next->digest));
-    next->data_size = 0;
-
-    g_elog->next_event_offset += sizeof(*next) + next->data_size;
-
-    print_event(next);
-    return true;
-}
-
 void dump_event_2(void)
 {
     heap_event_log_descr_t *log_descr;
@@ -402,10 +351,8 @@ void dump_event_2(void)
         *((u64 *)(&next)) = log_descr->phys_addr +
                 log_descr->next_event_offset;
 
-        if ( log_descr->alg != TB_HALG_SHA1 ) {
-            print_event_2(curr, TB_HALG_SHA1);
-            curr += sizeof(tpm12_pcr_event_t) + sizeof(tpm20_log_descr_t);
-        }
+        /* TCG legacy format: first entry is always a tcg_pcr_event header, skip it */
+        curr += sizeof(tcg_pcr_event) + sizeof(tpm20_log_descr_t);
 
         while ( curr < next ) {
             print_event_2(curr, log_descr->alg);
@@ -509,10 +456,6 @@ bool evtlog_append(uint8_t pcr, hash_list_t *hl, uint32_t type)
 {
     int log_type = get_evtlog_type();
     switch (log_type) {
-    case EVTLOG_TPM12:
-        if ( !evtlog_append_tpm12(pcr, &hl->entries[0].hash, type) )
-            return false;
-        break;
     case EVTLOG_TPM2_LEGACY:
         for (unsigned int i=0; i<hl->count; i++) {
             if ( !evtlog_append_tpm2_legacy(pcr, hl->entries[i].alg,
@@ -986,9 +929,7 @@ bool txt_s3_launch_environment(void)
     }
 	/* initialize event log in os_sinit_data, so that events will not */
 	/* repeat when s3 */
-	if ( log_type == EVTLOG_TPM12 && g_elog ) {
-		g_elog = (event_log_container_t *)init_event_log();
-    } else if ( log_type == EVTLOG_TPM2_TCG && g_elog_2_1)  {
+	if ( log_type == EVTLOG_TPM2_TCG && g_elog_2_1)  {
         init_evtlog_desc_1(g_elog_2_1);
     } else if ( log_type == EVTLOG_TPM2_LEGACY && g_elog_2)  {
         init_evtlog_desc(g_elog_2);

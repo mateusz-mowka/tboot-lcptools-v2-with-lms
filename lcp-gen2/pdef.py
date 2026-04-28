@@ -13,7 +13,7 @@ from util import UTILS
 utilities = UTILS()
 
 
-_GlobalHashData   = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+_GlobalHashData   = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 
 PCONF_ELEMENT2_HDR_SIZE = 16  # size of LCP_PCONF_ELEMENT2's fields except PcrInfo's
                               # i.e. sizeof(ElementSize+ElementType+
@@ -21,8 +21,6 @@ PCONF_ELEMENT2_HDR_SIZE = 16  # size of LCP_PCONF_ELEMENT2's fields except PcrIn
 
 PCR_INFO2_HDR_SIZE = 12       # size of TPMS_QUOTE_INFO's fileds except buffer
                               # i.e. sizeof(count+hash+sizeOfSelect+pcrSelect+size)
-
-SHA1_PCR_INFO_SIZE = 26       # for PconfLegacyElement
 
 
 # TXT Policy Generator Tool
@@ -42,7 +40,7 @@ class PDEF( object ):
     #
     self.MaxLists =          8                                 # UINT8  MAX_LISTS = 8      - Max lists per policy
     #self.MaxElements =       4                                 # UINT8  MAX_ELEMENTS = 4   - Max elements per list per element
-    self.MaxElements =       2                                 # only support SHA1 & SHA256 so far, not yet SHA384 & SHA512
+    self.MaxElements =       3                                 # support SHA256, SHA384, SHA512
 
     self.MaxHashSize =       64                                # UINT8  MAX_HASH_SIZE = 64 - Max allowed HASH size
     self.MaxHashes =         16                                # UINT16 MAX_HASHES = 16    - Max hashes per element, 0=unlimited
@@ -78,11 +76,7 @@ class PDEF( object ):
     self.AuxHashAlgMask = DEFINES.TPM_ALG_HASH_MASK['SHA256']  # UINT16  TPM_ALG_HASH_MASK_XXXXX
     self.LcpSignAlgMask = DEFINES.TPM_ALG_HASH_MASK['SHA256']  # UINT32  TPM_ALG_SIGN_MASK_XXXXX
 
-    # save both the raw and hex formatted versions of the SHA1 and SHA256 hashes
-    #self.PolicyHashSha1       = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    #                             0,0,0,0]                          # MAX_HASH = 20 for SHA1,
-    #self.PolicyHashSha1Hex    = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    #                             0,0,0,0]
+    # save the raw and hex formatted versions of the SHA256 hashes
     #self.PolicyHashSha256     = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     #                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]  # MAX_HASH = 32 for SHA256
     #self.PolicyHashSha256Hex  = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -164,8 +158,8 @@ class PLIST_DEF( object ):
     self.ListValid               = False                   # BOOLEAN - indicates if this list is to be included
     self.ListModified            = False                   # BOOLEAN - indicates if this list has changed since last build; only clear when building policy.
     # Reserved[3]           = 0                            # UINT8
-    self.SigAlgorithm            = DEFINES.TPM_ALG_SIGN['NULL']    # UINT8 - USER: 0=Not signed, 1 = PSA PKCS15
-    self.sigAlgorithmHash        = DEFINES.TPM_ALG_HASH['SHA1']    # corresponds to 1
+    self.SigAlgorithm            = DEFINES.TPM_ALG_SIGN['NULL']    # UINT8 - USER: 0=Not signed
+    self.sigAlgorithmHash        = DEFINES.TPM_ALG_HASH['SHA256']   # corresponds to signing hash
     self.PolicyElementSize       = 0                       # UINT32 - total size of all elements in this list
     self.CurrentElementView      = "None"                  # UINT8 - saves user state: 0=MLE, 1=PCONF, 3=SBIOS, 0xFF=None
     # Reserved2[3]          = 0                            # UINT8
@@ -260,7 +254,6 @@ class MLE_DEF( object ):
     elementSize += DEFINES.DIGEST_SIZE[hashAlgName] * self.NumbHashes
 
     # ElementSize = 16 +HashSize* (PDEF.PolListInfo[i].MleDefData[index].NumbHashes)
-    # if HashAlg == SHA-1, HashSize=20
     policyElement.ElementSize = elementSize
     print("%s - done, size=0x%x" % (func, elementSize))
 
@@ -272,89 +265,6 @@ class MLE_DEF( object ):
 
     #print("printMleDef - object: %s" % (mleDefData))     # DBGDBG
     print("***MLE_DEF***",                                      file=f)
-    print("InfoSize",             " = ", self.InfoSize,         file=f)
-    print("Tag",                  " = ", self.Tag,              file=f)
-    #print("IncludeInList",        " = ", self.IncludeInList,    file=f)
-    print("SinitMinVersion",      " = ", self.SinitMinVersion,  file=f)
-    print("HashAlg",              " = ", hex(self.HashAlg),     file=f)
-    print("Control",              " = ", self.Control,          file=f)
-    print("NumbHashes",           " = ", self.NumbHashes,       file=f)
-    print("CurrentView",          " = ", self.CurrentView,      file=f)
-    print("HashFiles",            " = ", self.HashFiles,        file=f)
-
-
-class MLELEGACY_DEF( object ):
-  """MLELEGACY_DEF class"""
-
-  def __init__(self):
-    """__init__() = MLELEGACY_DEF class constructor"""
-    #print("constructing a MLELEGACY_DEF")
-
-    self.Name                = DEFINES.ELEMENT_NAME_MLE_LEGACY  # String - Name used for GUI identification
-    self.InfoSize            = 24                          # UINT32 - number of bytes in this structure
-    self.Tag                 = "MLE_"                      # UINT32 - confirms this is a MLE_DEF
-    self.IncludeInList       = False                       # BOOLEAN - indicates this LIST includes an MLE element
-    #Reserved3[5]            = 0                           # UINT8
-    self.SinitMinVersion     = 0                           # UINT8 - USER
-    self.HashAlg             = 0                           # UINT8 - SHA1
-    self.Control             = 0                           # UINT32 - USER: Bit0: Ignore PS MLE elements
-    self.NumbHashes          = 0                           # UINT16 - Tracks number of valid entries in MleHashFiles[]
-    self.CurrentView         = 0                           # UINT16 - User state: last MleHashFiles[] selected
-    self.HashFiles           = []                          # variable size array containing filenames of hashes
-
-  # Build the MLE element and return its size
-  # thisPdefList - is the list's source data from pdef.PolListInfo[list]
-  # policyElement - is the destination LCP POLICY element
-  # Return the elementSize built, or 0 if an error occurs
-  #
-  def build(self, thisPdefList, policyElements, cwd):
-    """buildMleLegacyElement - build the MLE element"""
-
-    func = "buildMleLegacyElement"
-    print("%s" %(func)) # DBGDBG
-    elementSize = 16        # size all fields except Hashes[] in bytes
-
-    # build the element's data
-    #mleDefData = thisPdefList.MleLegacyDefData[DEFINES.DEFDATA_INDEX['SHA1']]
-    policyElement = LCP_MLE_ELEMENT()
-    policyElement.PolEltControl = self.Control
-    policyElement.SINITMinVersion = self.SinitMinVersion
-    policyElement.HashAlg = self.HashAlg
-    policyElement.NumHashes = self.NumbHashes
-    print("%s - PolEltControl=%d, SINITMinVersion=%d from %d" %
-          (func, policyElement.PolEltControl, policyElement.SINITMinVersion, self.SinitMinVersion)) # DBGDBG
-
-    # Build the hashes from each HashFiles[]
-    for file in self.HashFiles:
-      hashdata = utilities.getHashFromFile(os.path.join(cwd, file), DEFINES.TPM_ALG_HASH['SHA1'])
-      if(len(hashdata) != DEFINES.DIGEST_SIZE['SHA1']):
-        print ("Invalid hash file %s, aborting build" % (file))
-        return 0
-
-      policyElement.Hashes.append(hashdata)      # the hash data from the file
-      print("%s - policyElement.Hashes size=0x%x" % (func, len(policyElement.Hashes))) # DBGDBG
-
-    if(self.HashAlg == DEFINES.TPM_ALG_HASH['SHA1_LEGACY']):
-      # update elementSize
-      elementSize += DEFINES.DIGEST_SIZE['SHA1'] * self.NumbHashes
-    else:
-      print ("HashAlg=%d is not supported, aborting build" % (thisPdefList.HashAlg))
-      return 0
-
-    # ElementSize = 16 +HashSize* (PDEF.PolListInfo[i].MleDefData.NumbHashes)
-    # if HashAlg == SHA-1, HashSize=20
-    policyElement.ElementSize = elementSize
-    print("%s - done, size=0x%x" % (func, elementSize))
-
-    policyElements.append(policyElement)
-    return(elementSize)
-
-  def printDef(self, f):
-    """printMleDef - write the Mle Def to the specified human readable text file for printing"""
-
-    #print("printMleDef - object: %s" % (mleDefData))     # DBGDBG
-
-    print("***MLELEGACY_DEF***",                                file=f)
     print("InfoSize",             " = ", self.InfoSize,         file=f)
     print("Tag",                  " = ", self.Tag,              file=f)
     #print("IncludeInList",        " = ", self.IncludeInList,    file=f)
@@ -430,7 +340,6 @@ class STM_DEF( object ):
     elementSize += DEFINES.DIGEST_SIZE[hashAlgName] * self.NumbHashes
 
     # ElementSize = 16 +HashSize* (PDEF.PolListInfo[i].StmDefData[index].NumbHashes)
-    # if HashAlg == SHA-1, HashSize=20
     policyElement.ElementSize = elementSize
     print("%s - done, size=0x%x" % (func, elementSize))
 
@@ -647,137 +556,6 @@ class PCONF_DEF( object ):
     print("Tag",                  " = ", pconfInfo.pcrFile,           file=f)
 
 
-class PCONFLEGACY_DEF( object ):
-  """PCONFLEGACY_DEF class"""
-
-  def __init__(self):
-    """__init__() PCONFLEGACY_DEF constructor"""
-    #print("constructing a PCONFLEGACY_DEF")
-
-    self.Name                = DEFINES.ELEMENT_NAME_PCONF_LEGACY # String - Name used for GUI identification
-    self.InfoSize            = 24                          # UINT32 - number of bytes in this struct
-    self.Tag                 = "PCON"                      # UINT32 - confirms that this is a PCONF policy defintion element
-    self.IncludeInList       = False                       # BOOLEAN - indicates this LIST includes a PCONF element
-    # Reserved5[6]           = 0                           # UINT8
-    self.HashAlg             = 0                           # UINT8 - 0 = SHA1, others reserved for future use ...
-    self.Control             = 0                           # UINT32 - USER: Bit0: Ignore PS PCONF elements
-    self.NumbHashes          = 0                           # UINT16 - Tracks number of valid entries in PconfFiles[]
-    self.CurrentView         = 0                           # UINT16 - User state: last PconfFiles[] selected
-    #PCONF_INFO PcrInfoSrc[]                               # array of PCR selection and PCR dump file names
-    self.PcrInfoSrc = []
-
-
-  # Build the PCONF element and return its size
-  # thisPdefList - is the list's source data from pdef.PolListInfo[list]
-  # policyElement - is the destination LCP POLICY element
-  #
-  def build(self, thisPdefList, policyElements, cwd):
-    """buildPconfLegacyElement - build the PCONF Legacy element"""
-
-    func = "buildPconfLegacyElement"
-    print("%s" %(func)) # DBGDBG
-    elementSize = 14     # size of all fields except PcrInfo's
-
-    # build the element's data
-    #pconfDefData = thisPdefList.PconfLegacyDefData
-    policyElement = LCP_PCONF_ELEMENT()
-    policyElement.PolEltControl = self.Control
-    policyElement.NumPCRInfos = self.NumbHashes
-
-    # Build each policyElement.PCRInfos[NumPCRInfos]
-    # for each hash to NumbHashes-1 i.e. to NumPCRInfos-1
-    #
-    i = 0     # number of PcrInfoSrc's in LCP_PCONF_ELEMENT
-    for pdefPcrInfo in self.PcrInfoSrc:
-        thisTpmPcrInfoShort = TPM_PCR_INFO_SHORT()
-        policyElement.PCRInfos.append(thisTpmPcrInfoShort)
-        thisTpmPcrInfoShort = policyElement.PCRInfos[i]
-        thisTpmPcrInfoShort.localityAtRelease = 0x1f        # any locality
-
-        # Set pcrSelection (which is type: TPM_PCR_SELECTION) to indicate the selected PCRs.
-        # Size of Select is always 3
-        #   (because the TPM has 24 PCRs and thus requires 24-bits to indicate which PCR)
-        # However the 2nd and 3rd bytes of pcrSelect[] are always 0x00 because the policy
-        #   only selects between the first 8 PCRs.
-        # pcrSelect[0] is a bit mask formed from thisPdefList.PconfLegacyDefData[index].PcrInfoSrc[i].pcrSelect[0]
-        #   which is an 8 element list corresponding to each selected pcr from 0-7
-        #
-        thisTpmPcrSelection = thisTpmPcrInfoShort.pcrSelection
-        thisTpmPcrSelection.sizeOfSelect = 0x0003
-
-        pcr0to7SelectionBitMask = 0
-        numSelectedPcrs = 0
-        thisBit = 0x80
-        pcr0to7SelectionList = pdefPcrInfo.pcrSelect[0]
-        for eachBit in pcr0to7SelectionList:
-          if(eachBit == 1):
-              pcr0to7SelectionBitMask |= thisBit
-              numSelectedPcrs += 1
-
-          thisBit >>= 1
-
-        thisTpmPcrSelection.pcrSelect[0] =  pcr0to7SelectionBitMask
-        thisTpmPcrSelection.pcrSelect[1] =  0
-        thisTpmPcrSelection.pcrSelect[2] =  0
-
-        print("%s - PCRInfos[%d], pcrSelect[0]=0x%x" % (func, i, thisTpmPcrSelection.pcrSelect[0])) # DBGDBG
-        i += 1
-
-        #  Build tpmPcrSelection.digestAtRelease from the PCR data in this pdef list's selected pcrFiles
-        file = pdefPcrInfo.pcrFile
-        hashdata = utilities.hashPcrInfoFromFile(os.path.join(cwd, file), pcr0to7SelectionBitMask, numSelectedPcrs)
-        if(len(hashdata) != DEFINES.DIGEST_SIZE['SHA1']):
-            print("%s - Invalid PCR file %s, aborting build" % (func, file))
-            return 0
-
-        thisTpmPcrInfoShort.digestAtRelease = hashdata      # hash of the selected PCR data from the file
-        #print("buildPconfElement - digestAtRelease=%s, _GlobalPcrHash=%s" % ( thisTpmPcrInfoShort.digestAtRelease, _GlobalPcrHash))
-
-    if(self.HashAlg == DEFINES.TPM_ALG_HASH['SHA1_LEGACY']):
-      # ElementSize = 14 +PcrInfoSize* (PDEF.PolListInfo[i].PconfDefData[index].NumbHashes)
-      # if HashAlg == SHA-1, PcrInfoSize=26
-      elementSize += SHA1_PCR_INFO_SIZE * self.NumbHashes
-    else:
-      print ("HashAlg=%d is not supported, aborting build" % (thisPdefList.HashAlg))
-      return 0
-
-    # update this element's size
-    policyElement.ElementSize = elementSize
-    print("%s - done, size=0x%x" % (func, elementSize))
-
-    policyElements.append(policyElement)
-    return(elementSize)
-
-  def printDef(self, f):
-    """printPconfDef - write the PCONF_DEF to the specified file"""
-
-    #print("printPconfDef - object: %s" % (pconfDefData))     # DBGDBG
-
-    print("***PCONFLegacy_DEF***",                              file=f)
-    print("InfoSize",             " = ", self.InfoSize,         file=f)
-    print("Tag",                  " = ", self.Tag,              file=f)
-    print("IncludeInList",        " = ", self.IncludeInList,    file=f)
-    print("HashAlg",              " = ", hex(self.HashAlg),     file=f)
-    print("Control",              " = ", self.Control,          file=f)
-    print("NumbHashes",           " = ", self.NumbHashes,       file=f)
-    print("CurrentView",          " = ", self.CurrentView,      file=f)
-
-    i = 0
-    for eachPconfInfo in self.PcrInfoSrc:
-      print("\n", file=f)         # for readability
-      self.printPconfInfo(eachPconfInfo, i, f)
-      i += 1
-
-  def printPconfInfo(self, pconfInfo, index, f):
-    """printPconfInfo - write the PCONF_INFO to the specified human readable text file for printing"""
-
-    #print("printPconfInfo %d object: %s" % (index, pconfInfo))     # DBGDBG
-
-    print("***PCONF_INFO", index, "***",                              file=f)
-    print("InfoSize",             " = ", pconfInfo.pcrSelect,         file=f)
-    print("Tag",                  " = ", pconfInfo.pcrFile,           file=f)
-
-
 class SBIOS_DEF( object ):
   """SBIOS_DEF class"""
 
@@ -867,7 +645,6 @@ class SBIOS_DEF( object ):
     elementSize += DEFINES.DIGEST_SIZE[hashAlgName] * (self.NumbHashes+1) # +1 for fallback hash
 
     # ElementSize = 20 +HashSize* (1+PDEF.PolListInfo[i].SbiosDefData[index].NumbHashes)
-    # if HashAlg == SHA-1, HashSize=20
     policyElement.ElementSize = elementSize
     print("%s - done, size=0x%x" % (func, elementSize))
 
@@ -880,108 +657,6 @@ class SBIOS_DEF( object ):
     #print("printSbiosDef - object: %s" % (sbiosDefData))     # DBGDBG
 
     print("***SBIOS_DEF***",                                    file=f)
-    print("InfoSize",             " = ", self.InfoSize,         file=f)
-    print("Tag",                  " = ", self.Tag,              file=f)
-    #print("IncludeInList",        " = ", self.IncludeInList,    file=f)
-    print("HashAlg",              " = ", hex(self.HashAlg),     file=f)
-    print("FallBackHashFile",     " = ", self.FallBackHashFile, file=f)
-    print("Control",              " = ", self.Control,          file=f)
-    print("NumbHashes",           " = ", self.NumbHashes,       file=f)
-    print("CurrentView",          " = ", self.CurrentView,      file=f)
-    print("SbiosFiles",           " = ", self.SbiosFiles,       file=f)
-
-
-class SBIOSLEGACY_DEF( object ):
-  """SBIOS_DEF class"""
-
-  def __init__(self):
-    """__init__() SBIOSLEGACY_DEF constructor"""
-    #print("constructing a SBIOSLEGACY_DEF")
-
-    self.Name                = DEFINES.ELEMENT_NAME_SBIOS_LEGACY  # String - Name used for GUI identification
-    self.InfoSize            = 56                          # UINT32 - number of bytes in this struct
-    self.Tag                 = "SBIO"                      # UINT32 - confirms that this is a SBIOS policy defintion element
-    self.IncludeInList       = False                       # BOOLEAN - indicates this LIST includes a SBIOS element
-    # Reserved5[6]           = 0                           # UINT8
-    self.HashAlg             = 0                           # UINT8 - 0 = SHA1, others reserved for future use ...
-    self.FallBackHashFile    = ""                          # FILEName - user - filename containing the fallback hash
-    self.Control             = 0                           # UINT32 - USER: There are no defined controls at this time
-    self.NumbHashes          = 0                           # UINT16 - Tracks number of valid entries in SbiosFiles[]
-    self.CurrentView         = 0                           # UINT16 - User state: last PconfFiles[] selected
-    self.SbiosFiles          = []                          # variable size array containing filenames of hashes
-
-  # Build the SBIOS element and return its size
-  # thisPdefList - is the list's source data from pdef.PolListInfo[list]
-  # policyElement - is the destination LCP POLICY element
-  # Return the elementSize built, or 0 if an error occurs
-  #
-  def build(self, thisPdefList, policyElements, cwd):
-    """buildSbiosElement - build the SBIOS element"""
-
-    func = "buildSbiosLegacyElement"
-    print("%s" %(func))
-    elementSize = 20
-
-    # build the element's data
-    #sbiosDefData = thisPdefList.SbiosLegacyDefData[DEFINES.DEFDATA_INDEX_SHA1]
-    policyElement = LCP_SBIOS_ELEMENT()
-    policyElement.PolEltControl = self.Control
-    policyElement.HashAlg   = self.HashAlg
-    invalidMsg = "Invalid fallbackhash file, aborting build"
-    noneMsg    = "No fallbackhash file was specified, aborting build"
-
-    # open the FallbackHash file and get the hash data
-    file = self.FallBackHashFile
-    if(file != ""):
-      hashdata = utilities.getHashFromFile(os.path.join(cwd, file), DEFINES.TPM_ALG_HASH['SHA1'])
-      if(len(hashdata) != DEFINES.DIGEST_SIZE['SHA1']):
-        print("%s" % (invalidMsg))    # also show in output window
-        return 0
-    else:
-      print("%s" % (noneMsg))         # also show in output window
-      return 0
-
-    # if there was no fallback hash file specified, then hash 0's [the init value of _GlobalHashData
-    # otherwise use the value from that file
-    policyElement.FallbackHash = hashdata      # the hash data from the file
-    #policyElement.Hashes.append(hashdata)
-
-    # print("buildSbiosElement: type=%d, Alg=%d, Fallback=%s, GlobalHash=%s, NumbHashes=%d" %
-    #        (policyElement.ElementType, policyElement.HashAlg ,
-    #         policyElement.FallbackHash, _GlobalHashData, policyElement.NumHashes))     # DBGDBG
-
-    policyElement.NumHashes    = self.NumbHashes
-    # Build the hashes from each SbiosFiles[]
-    for file in self.SbiosFiles:
-      hashdata = utilities.getHashFromFile(os.path.join(cwd, file), DEFINES.TPM_ALG_HASH['SHA1'])
-      if(len(hashdata) != DEFINES.DIGEST_SIZE['SHA1']):
-        print ("Invalid hash file %s, aborting build" % (file))
-        return 0
-
-      policyElement.Hashes.append(hashdata)      # the hash data from the file
-      print("%s - policyElement.Hashes size=0x%x" % (func, len(policyElement.Hashes))) # DBGDBG
-
-    if(self.HashAlg == DEFINES.TPM_ALG_HASH['SHA1_LEGACY']):
-      # update elementSize
-      elementSize += DEFINES.DIGEST_SIZE['SHA1'] * (self.NumbHashes+1)   # +1 for fallback hash
-    else:
-      print("%s - HashAlg=%d is not supported, aborting build" % (func, thisPdefList.HashAlg))
-      return 0
-
-    # ElementSize = 20 +HashSize* (1+PDEF.PolListInfo[i].SbiosDefData.NumbHashes)
-    # if HashAlg == SHA-1, HashSize=20
-    policyElement.ElementSize = elementSize
-    print("%s - done, size=0x%x" % (func, elementSize))
-
-    policyElements.append(policyElement)
-    return(elementSize)
-
-  def printDef(self, f):
-    """printSbiosDef - write the Sbios Def to the specified human readable text file for printing"""
-
-    #print("printSbiosDef - object: %s" % (sbiosDefData))     # DBGDBG
-
-    print("***SBIOSLEGACY_DEF***",                              file=f)
     print("InfoSize",             " = ", self.InfoSize,         file=f)
     print("Tag",                  " = ", self.Tag,              file=f)
     #print("IncludeInList",        " = ", self.IncludeInList,    file=f)

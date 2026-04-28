@@ -112,9 +112,7 @@ typedef union {
 
 /* tpm_family field values */
 #define TPM_FAMILY_ILLEGAL      0x0000
-#define TPM_FAMILY_DTPM_12      0x0001
 #define TPM_FAMILY_DTPM_20      0x0010
-#define TPM_FAMILY_DTPM_BOTH    0x0011
 #define TPM_FAMILY_PTT_20       0x1000
 
 typedef struct {

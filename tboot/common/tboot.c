@@ -284,12 +284,6 @@ static void post_launch(void)
     verify_all_modules(g_ldr_ctx);
 
     /*
-     * verify nv indices against policy
-     */
-    if ( (tpm->major == TPM12_VER_MAJOR) &&  get_tboot_measure_nv() ) 
-	verify_all_nvindices();
-
-    /*
      * seal hashes of modules and VL policy to current value of PCR17 & 18
      */
     if ( !seal_pre_k_state() )        

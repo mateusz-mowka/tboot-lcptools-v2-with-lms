@@ -83,7 +83,7 @@ static const cmdline_option_t g_tboot_cmdline_options[] = {
     { "min_ram", "0" },              /* size in bytes | 0 for no min */
     { "call_racm", "false" },        /* true|false|check */
     { "measure_nv", "false" },       /* true|false */
-    { "extpol",    "sha256" },         /*agile|embedded|sha1|sha256|sm3|... */
+    { "extpol",    "sha256" },         /*agile|embedded|sha256|sm3|... */
     { "ignore_prev_err", "true"},    /* true|false */
     { "force_pmrs", "false"},        /* true|false */
     { "force_tpm2_legacy_log", "false"}, /* true|false */
@@ -526,10 +526,6 @@ void get_tboot_extpol(void)
     } else if ( tb_strcmp(extpol, "sha256") == 0 ) {
         tpm->extpol = TB_EXTPOL_FIXED;
         tpm->cur_alg = TB_HALG_SHA256;
-    } else if ( tb_strcmp(extpol, "sha1") == 0 ) {
-        printk(TBOOT_WARN"Warning: SHA1 is selected in extpol, this is an unsafe option\n");
-        tpm->extpol = TB_EXTPOL_FIXED;
-        tpm->cur_alg = TB_HALG_SHA1;
     } else if ( tb_strcmp(extpol, "sm3") == 0 ) {
         tpm->extpol = TB_EXTPOL_FIXED;
         tpm->cur_alg = TB_HALG_SM3;

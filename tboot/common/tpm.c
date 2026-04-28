@@ -43,7 +43,6 @@
 #include <io.h>
 #include <string.h>
 #include <tpm.h>
-#include <sha1.h>
 
 __data uint8_t g_tpm_ver = TPM_VER_UNKNOWN;
 __data struct tpm_if g_tpm = {
@@ -54,12 +53,11 @@ __data struct tpm_if g_tpm = {
     .timeout.timeout_d = TIMEOUT_D,
 };
 
-u16 tboot_alg_list[] = {TB_HALG_SHA1, TB_HALG_SHA256, TB_HALG_SHA384, TB_HALG_SHA512};
+u16 tboot_alg_list[] = {TB_HALG_SHA256, TB_HALG_SHA384, TB_HALG_SHA512};
 const uint8_t tboot_alg_list_count = ARRAY_SIZE(tboot_alg_list);
 
 /* Global variables for TPM status register */
 static tpm20_reg_sts_t       g_reg_sts, *g_reg_sts_20 = &g_reg_sts;
-static tpm12_reg_sts_t       *g_reg_sts_12 = (tpm12_reg_sts_t *)&g_reg_sts;
 
 uint8_t g_tpm_family = 0;
 
@@ -86,16 +84,10 @@ typedef union {
 #define TPM_VALIDATE_LOCALITY_TIME_OUT  0x100
 
 #define read_tpm_sts_reg(locality) { \
-if ( g_tpm_family == 0 ) \
-    read_tpm_reg(locality, TPM_REG_STS, g_reg_sts_12); \
-else \
     read_tpm_reg(locality, TPM_REG_STS, g_reg_sts_20); \
 }
 
 #define write_tpm_sts_reg(locality) { \
-if ( g_tpm_family == 0 ) \
-    write_tpm_reg(locality, TPM_REG_STS, g_reg_sts_12); \
-else \
     write_tpm_reg(locality, TPM_REG_STS, g_reg_sts_20); \
 }
 
@@ -210,21 +202,11 @@ static bool tpm_check_cmd_ready_status(uint32_t locality)
 
 static void tpm_print_status_register(void)
 {
-    if ( g_tpm_family == 0 )
-    {
-        printk(TBOOT_DETA"TPM: status reg content: %02x %02x %02x\n",
-            (uint32_t)g_reg_sts_12->_raw[0],
-            (uint32_t)g_reg_sts_12->_raw[1],
-            (uint32_t)g_reg_sts_12->_raw[2]);
-    }
-    else
-    {
-        printk(TBOOT_DETA"TPM: status reg content: %02x %02x %02x %02x\n",
-            (uint32_t)g_reg_sts_20->_raw[0],
-            (uint32_t)g_reg_sts_20->_raw[1],
-            (uint32_t)g_reg_sts_20->_raw[2],
-            (uint32_t)g_reg_sts_20->_raw[3]);
-    }
+    printk(TBOOT_DETA"TPM: status reg content: %02x %02x %02x %02x\n",
+        (uint32_t)g_reg_sts_20->_raw[0],
+        (uint32_t)g_reg_sts_20->_raw[1],
+        (uint32_t)g_reg_sts_20->_raw[2],
+        (uint32_t)g_reg_sts_20->_raw[3]);
 }
 
 static u16 tpm_get_burst_count(uint32_t locality)
@@ -861,7 +843,7 @@ bool tpm_detect(void)
     	  }
     }
     else {
-		g_tpm_ver = TPM_VER_12; 
+		g_tpm_ver = TPM_VER_20;
 		tpm_fp = get_tpm_fp(); /* Don't leave tpm_fp as NULL */
 
 		if ( tpm_validate_locality(0) )  printk(TBOOT_INFO"TPM: FIFO_INF Locality 0 is open\n");
@@ -869,18 +851,10 @@ bool tpm_detect(void)
 			printk(TBOOT_ERR"TPM: FIFO_INF Locality 0 is not open\n");
 			return false;
 			}
-		/* determine TPM family from command check */
-		if ( tpm_fp->check() )  {
-			g_tpm_family = TPM_IF_12;
-			printk(TBOOT_INFO"TPM: discrete TPM1.2 Family 0x%d\n", g_tpm_family);	
-			}
-		else {
-			g_tpm_family = TPM_IF_20_FIFO;
-			printk(TBOOT_INFO"TPM: discrete TPM2.0 Family 0x%d\n", g_tpm_family);
-			}
+		g_tpm_family = TPM_IF_20_FIFO;
+		printk(TBOOT_INFO"TPM: discrete TPM2.0 Family 0x%d\n", g_tpm_family);
 	}
    
-    if (g_tpm_family == TPM_IF_12)  g_tpm_ver = TPM_VER_12;
     if (g_tpm_family == TPM_IF_20_FIFO)  g_tpm_ver = TPM_VER_20;
     if (g_tpm_family == TPM_IF_20_CRB)  g_tpm_ver = TPM_VER_20;
 
@@ -906,9 +880,7 @@ struct tpm_if *get_tpm(void)
 
 const struct tpm_if_fp *get_tpm_fp(void)
 {
-    if ( g_tpm_ver == TPM_VER_12 )
-        return &tpm_12_if_fp;
-    else if ( g_tpm_ver == TPM_VER_20)
+    if ( g_tpm_ver == TPM_VER_20)
         return &tpm_20_if_fp;
 
     return NULL;

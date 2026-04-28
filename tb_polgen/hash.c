@@ -63,8 +63,6 @@ bool are_hashes_equal(const tb_hash_t *hash1, const tb_hash_t *hash2,
     }
 
     switch (hash_alg) {
-        case TB_HALG_SHA1:
-            return (memcmp_s(hash1, SHA1_LENGTH, hash2, SHA1_LENGTH, &diff) == EOK && diff == 0);
         case TB_HALG_SHA256:
             return (memcmp_s(hash1, SHA256_LENGTH, hash2, SHA256_LENGTH, &diff) == EOK && diff == 0);
         case TB_HALG_SHA384:
@@ -93,13 +91,9 @@ bool hash_buffer(const unsigned char* buf, size_t size, tb_hash_t *hash,
 
     const EVP_MD *md;
     uint8_t* hash_out;
-    EVP_MD_CTX *ctx = EVP_MD_CTX_create();
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
 
     switch (hash_alg) {
-        case TB_HALG_SHA1:
-            md = EVP_sha1();
-            hash_out = hash->sha1;
-            break;
         case TB_HALG_SHA256:
             md = EVP_sha256();
             hash_out = hash->sha256;
@@ -124,7 +118,7 @@ bool hash_buffer(const unsigned char* buf, size_t size, tb_hash_t *hash,
     EVP_DigestInit(ctx, md);
     EVP_DigestUpdate(ctx, buf, size);
     EVP_DigestFinal(ctx, hash_out, NULL);
-    EVP_MD_CTX_destroy(ctx);
+    EVP_MD_CTX_free(ctx);
     return true;
 }
 
@@ -144,18 +138,9 @@ bool extend_hash(tb_hash_t *hash1, const tb_hash_t *hash2, uint16_t hash_alg)
     }
 
     const EVP_MD *md;
-    EVP_MD_CTX *ctx = EVP_MD_CTX_create();
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
 
-    if ( hash_alg == TB_HALG_SHA1 ) {
-        memcpy_s(buf, sizeof(buf), &(hash1->sha1), sizeof(hash1->sha1));
-        memcpy_s(buf + sizeof(hash1->sha1), sizeof(buf) - sizeof(hash1->sha1),
-                 &(hash2->sha1), sizeof(hash1->sha1));
-        md = EVP_sha1();
-        EVP_DigestInit(ctx, md);
-        EVP_DigestUpdate(ctx, buf, 2*sizeof(hash1->sha1));
-        EVP_DigestFinal(ctx, hash1->sha1, NULL);
-        EVP_MD_CTX_destroy(ctx);
-    } else if ( hash_alg == TB_HALG_SHA256 ) {
+    if ( hash_alg == TB_HALG_SHA256 ) {
         memcpy_s(buf, sizeof(buf), &(hash1->sha256), sizeof(hash1->sha256));
         memcpy_s(buf + sizeof(hash1->sha256), sizeof(buf) - sizeof(hash1->sha256),
                  &(hash2->sha256), sizeof(hash1->sha256));
@@ -163,7 +148,7 @@ bool extend_hash(tb_hash_t *hash1, const tb_hash_t *hash2, uint16_t hash_alg)
         EVP_DigestInit(ctx, md);
         EVP_DigestUpdate(ctx, buf, 2*sizeof(hash1->sha256));
         EVP_DigestFinal(ctx, hash1->sha256, NULL);
-        EVP_MD_CTX_destroy(ctx);
+        EVP_MD_CTX_free(ctx);
     } else if ( hash_alg == TB_HALG_SHA384 ) {
         memcpy_s(buf, sizeof(buf), &(hash1->sha384), sizeof(hash1->sha384));
         memcpy_s(buf + sizeof(hash1->sha384), sizeof(buf) - sizeof(hash1->sha384),
@@ -172,7 +157,7 @@ bool extend_hash(tb_hash_t *hash1, const tb_hash_t *hash2, uint16_t hash_alg)
         EVP_DigestInit(ctx, md);
         EVP_DigestUpdate(ctx, buf, 2*sizeof(hash1->sha384));
         EVP_DigestFinal(ctx, hash1->sha384, NULL);
-        EVP_MD_CTX_destroy(ctx);
+        EVP_MD_CTX_free(ctx);
     }
     else if ( hash_alg == TB_HALG_SHA512 ) {
         memcpy_s(buf, sizeof(buf), &(hash1->sha512), sizeof(hash1->sha512));
@@ -182,7 +167,7 @@ bool extend_hash(tb_hash_t *hash1, const tb_hash_t *hash2, uint16_t hash_alg)
         EVP_DigestInit(ctx, md);
         EVP_DigestUpdate(ctx, buf, 2*sizeof(hash1->sha512));
         EVP_DigestFinal(ctx, hash1->sha512, NULL);
-        EVP_MD_CTX_destroy(ctx);
+        EVP_MD_CTX_free(ctx);
     }
     else {
         error_msg("unsupported hash alg (%d)\n", hash_alg);
@@ -200,12 +185,6 @@ void print_hash(const tb_hash_t *hash, uint16_t hash_alg)
     }
 
     switch (hash_alg) {
-        case TB_HALG_SHA1:
-            for ( unsigned int i = 0; i < sizeof(hash->sha1); i++ ) {
-                printf("%02x ", hash->sha1[i]);
-            }
-            printf("\n");
-            break;
         case TB_HALG_SHA256:
             for ( unsigned int i = 0; i < sizeof(hash->sha256); i++ ) {
                 printf("%02x ", hash->sha256[i]);
@@ -238,9 +217,6 @@ void copy_hash(tb_hash_t *dest_hash, const tb_hash_t *src_hash,
     }
 
     switch (hash_alg) {
-        case TB_HALG_SHA1:
-            memcpy_s(dest_hash, SHA1_LENGTH, src_hash, SHA1_LENGTH);
-            break;
         case TB_HALG_SHA256:
             memcpy_s(dest_hash, SHA256_LENGTH, src_hash, SHA256_LENGTH);
             break;

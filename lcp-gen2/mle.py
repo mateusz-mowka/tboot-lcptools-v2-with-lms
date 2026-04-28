@@ -55,8 +55,6 @@ class MLE( ElementGui ):
     self.myIndex = DEFINES.DEFDATA_INDEX[hashAlgName]
     #if( hashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
     #  self.myIndex = DEFINES.DEFDATA_INDEX_SHA256
-    #elif( hashAlg == DEFINES.TPM_ALG_HASH['SHA1']):
-    #  self.myIndex = DEFINES.DEFDATA_INDEX_SHA1
     #else:
     #  print("MLE::__init__ - invalid hashAlg=%d" % (hashAlg))
 
@@ -145,8 +143,6 @@ class MLE( ElementGui ):
 
     #if(self.myHashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
     #  hashAlgStr = "SHA256"
-    #elif(self.myHashAlg == DEFINES.TPM_ALG_HASH['SHA1']):
-    #  hashAlgStr = "SHA1"
     #else:
     #  print("createOrShowMlePanel - invalid myHashAlg=%d" % (self.myHashAlg))
 

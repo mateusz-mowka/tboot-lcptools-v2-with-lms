@@ -100,8 +100,12 @@ void print_hash(const tb_hash_t *hash, uint16_t hash_alg)
         return;
     }
 
-    if ( hash_alg == TB_HALG_SHA1 )
-        print_hex(NULL, (uint8_t *)hash->sha1, sizeof(hash->sha1));
+    if ( hash_alg == TB_HALG_SHA256 )
+        print_hex(NULL, (uint8_t *)hash->sha256, sizeof(hash->sha256));
+    else if ( hash_alg == TB_HALG_SHA384 )
+        print_hex(NULL, (uint8_t *)hash->sha384, sizeof(hash->sha384));
+    else if ( hash_alg == TB_HALG_SHA512 )
+        print_hex(NULL, (uint8_t *)hash->sha512, sizeof(hash->sha512));
     else {
         printk("unsupported hash alg (%u)\n", hash_alg);
         return;

@@ -6,7 +6,7 @@ from defines import DEFINES
 
 class ElementBase(object):
 
-  #MleDataSha1HashFormatString      = "<20B"
+  #MleDataSha256HashFormatString    = "<32B"
   #MleDataSha256HashFormatString    = "<32B"
   #MleDataSha384HashFormatString    = "<48B"
   #MleDataSha512HashFormatString    = "<64B"
@@ -36,18 +36,13 @@ class ElementBase(object):
 
 
 if __name__ == "__main__":
-  sha1data = [val for val in range(DEFINES.DIGEST_SIZE['SHA1'])]
   sha256data = [val for val in range(DEFINES.DIGEST_SIZE['SHA256'])]
   e = ElementBase();
-  packedHash = pack("<20B", sha1data[0], sha1data[1], sha1data[2], sha1data[3], sha1data[4], sha1data[5],
-               sha1data[6], sha1data[7], sha1data[8], sha1data[9], sha1data[10], sha1data[11], sha1data[12],
-               sha1data[13], sha1data[14], sha1data[15], sha1data[16], sha1data[17], sha1data[18], sha1data[19])
-  joinedHash = e.packHash('SHA256', sha1data)
-  
-  if (packedHash == joinedHash):
+  joinedHash = e.packHash('SHA256', sha256data)
+
+  if (joinedHash is not None):
     print "SUCCESS"
   else:
     print "FAILED"
-  
-  print packedHash
+
   print joinedHash

@@ -131,9 +131,9 @@ static const tb_policy_map_t g_policy_map[] = {
 
 /* buffer for policy as read from TPM NV */
 #define MAX_POLICY_SIZE                             \
-    (( MAX_TB_POLICY_SIZE > sizeof(lcp_policy_t) )  \
+    (( MAX_TB_POLICY_SIZE > sizeof(lcp_policy_t2) )  \
         ? MAX_TB_POLICY_SIZE                        \
-        : sizeof(lcp_policy_t) )
+        : sizeof(lcp_policy_t2) )
 static uint8_t _policy_index_buf[MAX_POLICY_SIZE];
 
 /* default policy */
@@ -141,36 +141,6 @@ static const tb_policy_t _def_policy = {
     version        : 2,
     policy_type    : TB_POLTYPE_CONT_NON_FATAL,
     hash_alg       : TB_HALG_SHA256,
-    policy_control : TB_POLCTL_EXTEND_PCR17,
-    num_entries    : 3,
-    entries        : {
-        {   /* mod 0 is extended to PCR 18 by default, so don't re-extend it */
-            mod_num    : 0,
-            pcr        : TB_POL_PCR_NONE,
-            hash_type  : TB_HTYPE_ANY,
-            num_hashes : 0
-        },
-        {   /* all other modules are extended to PCR 19 */
-            mod_num    : TB_POL_MOD_NUM_ANY,
-            pcr        : 19,
-            hash_type  : TB_HTYPE_ANY,
-            num_hashes : 0
-        },
-        {   /* NV index for geo-tagging will be extended to PCR 22 */
-            mod_num    : TB_POL_MOD_NUM_NV_RAW,
-            pcr        : 22,
-            hash_type  : TB_HTYPE_ANY,
-            nv_index   : 0x40000010,
-            num_hashes : 0
-        }
-    }
-};
-
-/* default policy for TPM 1.2 */
-static const tb_policy_t _def_policy_12 = {
-    version        : 2,
-    policy_type    : TB_POLTYPE_CONT_NON_FATAL,
-    hash_alg       : TB_HALG_SHA1,
     policy_control : TB_POLCTL_EXTEND_PCR17,
     num_entries    : 3,
     entries        : {
@@ -345,12 +315,7 @@ static bool unwrap_lcp_policy(void)
         //Read list version
         tb_memcpy((void*)&list_ver, (const void *)pollist, sizeof(uint16_t));
         for ( int i = 0; i < poldata->num_lists; i++ ) {
-            if (MAJOR_VER(list_ver) == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION)) {
-                elt = pollist->tpm12_policy_list.policy_elements;
-                elts_size = 0;
-                all_elt_size = pollist->tpm12_policy_list.policy_elements_size;
-            }
-            else if (MAJOR_VER(list_ver) ==
+            if (MAJOR_VER(list_ver) ==
                         MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION)) {
                 elt = pollist->tpm20_policy_list.policy_elements;
                 elts_size = 0;
@@ -391,11 +356,7 @@ static bool unwrap_lcp_policy(void)
                 elt = (void *)elt + elt->size;
             }
             //If necessary go to next list.
-            if ( MAJOR_VER(list_ver) == MAJOR_VER(LCP_TPM12_POLICY_LIST_VERSION)) {
-                pollist = (void *)pollist +
-                       get_tpm12_policy_list_size((lcp_policy_list_t *)pollist);
-            }
-            else if ( MAJOR_VER(list_ver) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION)) {
+            if ( MAJOR_VER(list_ver) == MAJOR_VER(LCP_TPM20_POLICY_LIST_VERSION)) {
                 pollist = (void *)pollist + 
                       get_tpm20_policy_list_size((lcp_policy_list_t2 *)pollist);
             }
@@ -444,14 +405,6 @@ tb_error_t set_policy(void)
             check_index_attribute(tpm->lcp_own_index)) {
         printk(TBOOT_DETA"\t:%lu bytes read\n", policy_index_size);
         /* assume lcp policy has been verified by sinit already */
-        lcp_policy_t *pol = (lcp_policy_t *)_policy_index_buf;
-        if ( MAJOR_VER(pol->version) == MAJOR_VER(LCP_DEFAULT_POLICY_VERSION_2) &&
-             pol->policy_type == LCP_POLTYPE_LIST && unwrap_lcp_policy() ) {
-            if ( verify_policy((tb_policy_t *)_policy_index_buf,
-                     calc_policy_size((tb_policy_t *)_policy_index_buf),
-                     true) )
-                goto policy_found;
-        }
         lcp_policy_t2 *pol2 = (lcp_policy_t2 *)_policy_index_buf;
         /*Only check if major version is 3, minor is checked by sinit*/
         if ( MAJOR_VER(pol2->version) == MAJOR_VER(LCP_DEFAULT_POLICY_VERSION) &&
@@ -466,11 +419,7 @@ tb_error_t set_policy(void)
 
     /* either no policy in TPM NV or policy is invalid, so use default */
     printk(TBOOT_WARN"failed to read policy from TPM NV, using default\n");
-    if (g_tpm_ver == TPM_VER_12) {
-        g_policy = &_def_policy_12;
-    } else {
-        g_policy = g_using_da ? &_def_policy_da : &_def_policy;
-    }
+    g_policy = g_using_da ? &_def_policy_da : &_def_policy;
     policy_index_size = calc_policy_size(g_policy);
 
     /* sanity check; but if it fails something is really wrong */
@@ -480,12 +429,6 @@ tb_error_t set_policy(void)
         return TB_ERR_POLICY_NOT_PRESENT;
 
 policy_found:
-    /* compatible with tb_policy tools for TPM 1.2 */
-    {
-        tb_policy_t *tmp_policy = (tb_policy_t *)_policy_index_buf;
-        if (tmp_policy->hash_alg == 0)
-            tmp_policy->hash_alg = TB_HALG_SHA1;
-    }
     g_policy = (tb_policy_t *)_policy_index_buf;
     return TB_ERR_NONE;
 }
@@ -514,7 +457,7 @@ static bool hash_module(hash_list_t *hl,
         return false;
     }
 
-    /* final hash is SHA-1( SHA-1(cmdline) | SHA-1(image) ) */
+    /* final hash is hash( hash(cmdline) | hash(image) ) */
     /* where cmdline is first stripped of leading spaces, file name, then */
     /* any spaces until the next non-space char */
     /* (e.g. "  /foo/bar   baz" -> "baz"; "/foo/bar" -> "") */
@@ -868,7 +811,7 @@ static tb_error_t verify_nvindex(tb_policy_entry_t *pol_entry,
                                  uint16_t hash_alg)
 {
     size_t nv_size = sizeof(nv_buf);
-    tb_hash_t digest;
+    tb_hash_t digest = {0};
     uint32_t attribute;
     struct tpm_if *tpm = get_tpm();
     const struct tpm_if_fp *tpm_fp = get_tpm_fp();
@@ -902,18 +845,21 @@ static tb_error_t verify_nvindex(tb_policy_entry_t *pol_entry,
     switch ( pol_entry->mod_num ) {
     case TB_POL_MOD_NUM_NV:
         if ( !hash_buffer((const uint8_t*)nv_buf, nv_size, &digest,
-                          TB_HALG_SHA1) ) {
+                          hash_alg)) {
             printk(TBOOT_ERR"\t :nv content hash failed\n");
             return TB_ERR_NV_VERIFICATION_FAILED;
         }
         break;
     case TB_POL_MOD_NUM_NV_RAW:
-        if ( nv_size != sizeof(digest.sha1) ) {
-            printk(TBOOT_ERR"\t :raw nv with wrong size (%d), should be %d\n",
-                   (int)nv_size, sizeof(digest.sha1));
+        if (nv_size != SHA256_DIGEST_SIZE && nv_size != SHA384_DIGEST_SIZE
+             && nv_size != SHA512_DIGEST_SIZE) {
+            printk(TBOOT_ERR"\t :raw nv with wrong size (%d), should be"
+                   " %d, %d or %d\n",
+                   (int)nv_size, SHA256_DIGEST_SIZE, SHA384_DIGEST_SIZE,
+                   SHA512_DIGEST_SIZE);
             return TB_ERR_NV_VERIFICATION_FAILED;
         }
-        tb_memcpy(digest.sha1, nv_buf, nv_size);
+        tb_memcpy(digest.sha512, nv_buf, nv_size);
         break;
     default:
         printk(TBOOT_ERR"\t :bad mod number for NV measuring in policy entry: %d\n",
@@ -929,9 +875,9 @@ static tb_error_t verify_nvindex(tb_policy_entry_t *pol_entry,
     else if ( pol_entry->pcr != TB_POL_PCR_NONE ) {
         VL_ENTRIES(NUM_VL_ENTRIES).pcr = pol_entry->pcr;
         VL_ENTRIES(NUM_VL_ENTRIES).hl.count = 1;
-        VL_ENTRIES(NUM_VL_ENTRIES).hl.entries[0].alg = TB_HALG_SHA1;
-        tb_memcpy(VL_ENTRIES(NUM_VL_ENTRIES++).hl.entries[0].hash.sha1,
-                digest.sha1, SHA1_LENGTH);
+        VL_ENTRIES(NUM_VL_ENTRIES).hl.entries[0].alg = hash_alg;
+        tb_memcpy(VL_ENTRIES(NUM_VL_ENTRIES++).hl.entries[0].hash.sha512,
+                digest.sha512, SHA512_LENGTH);
     }
 
     /* verify nv content */

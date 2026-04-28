@@ -757,7 +757,6 @@ main (
           (sigalg_type != TPM_ALG_ECDSA) &&
           (sigalg_type != TPM_ALG_RSAPSS) &&
           (sigalg_type != TPM_ALG_SM3_256) &&
-          (sigalg_type != LCP_POLSALG_RSA_PKCS_15) &&
           (sigalg_type != TPM_ALG_SM2) &&
           (sigalg_type != TPM_ALG_LMS) &&
           (sigalg_type != TCG_ALG_MLDSA))

@@ -118,7 +118,7 @@ class PCONFLegacy( ElementGui ):
     self.pconfPanelWidgets.append(self.contolOptionsLabel)
     self.pconfPanelWidgets.append(self.overridePsPolicy)
 
-    hashList = ['SHA1']
+    hashList = ['SHA256']
     self.hashAlgLabel = wx.StaticText(self.pconfPanel, label="Hash Algorithm")
     font = wx.Font( 10, wx.FONTFAMILY_DEFAULT, wx.NORMAL, wx.BOLD)
     self.hashAlgLabel.SetFont( font )
@@ -127,7 +127,7 @@ class PCONFLegacy( ElementGui ):
 
     # Style=wx.CB_READONLY same as wx.CB_DROPDOWN,
     # Except only the strings specified as the combobox choices can be selected
-    hashAlgEdit = wx.ComboBox( self.pconfPanel, size=(75, -1), value="SHA1", choices=hashList, style=wx.CB_DROPDOWN )
+    hashAlgEdit = wx.ComboBox( self.pconfPanel, size=(75, -1), value="SHA256", choices=hashList, style=wx.CB_DROPDOWN )
     pconfGridSizer.Add(hashAlgEdit, pos=(1,20))
     self.pconfPanelWidgets.append(hashAlgEdit)
 
@@ -383,7 +383,7 @@ class PCONFLegacy( ElementGui ):
       return
 
     # validate that the specified PCR file is properly formatted
-    result = utilities.verifyPcrFile(os.path.join(filepath, filename), DEFINES.TPM_ALG_HASH['SHA1'])
+    result = utilities.verifyPcrFile(os.path.join(filepath, filename), DEFINES.TPM_ALG_HASH['SHA256'])
     if( result[0] == False):
       return
 

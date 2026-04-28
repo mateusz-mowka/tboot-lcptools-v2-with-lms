@@ -111,14 +111,14 @@ class SBIOSLegacy( ElementGui ):
     self.sbiosPanelWidgets.append(self.contolOptionsLabel)
     self.sbiosPanelWidgets.append(self.overridePsPolicy)
 
-    hashList = ['SHA1']
+    hashList = ['SHA256']
     self.hashAlgLabel = wx.StaticText(self.sbiosPanel, label="Hash Algorithm")
     font = wx.Font( 10, wx.FONTFAMILY_DEFAULT, wx.NORMAL, wx.NORMAL)
     self.hashAlgLabel.SetFont( font )
     sbiosGridSizer.Add(self.hashAlgLabel, pos=(0,20))
     self.sbiosPanelWidgets.append(self.hashAlgLabel)
 
-    hashAlgEdit = wx.ComboBox( self.sbiosPanel, size=(75, -1), value="SHA1", choices=hashList, style=wx.CB_DROPDOWN )
+    hashAlgEdit = wx.ComboBox( self.sbiosPanel, size=(75, -1), value="SHA256", choices=hashList, style=wx.CB_DROPDOWN )
     sbiosGridSizer.Add(hashAlgEdit, pos=(1,20))
     self.sbiosPanelWidgets.append(hashAlgEdit)
 
