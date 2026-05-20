@@ -92,59 +92,6 @@ static void print_custom_elt(const heap_ext_data_element_t *elt)
     printk(TBOOT_DETA"\n");
 }
 
-/* HEAP_EVENT_LOG_POINTER_ELEMENT */
-static inline void print_heap_hash(const sha1_hash_t hash)
-{
-    print_hash((const tb_hash_t *)hash, TB_HALG_SHA1);
-}
-
-void print_event(const tpm12_pcr_event_t *evt)
-{
-    printk(TBOOT_DETA"\t\t\t Event:\n");
-    printk(TBOOT_DETA"\t\t\t     PCRIndex: %u\n", evt->pcr_index);
-    printk(TBOOT_DETA"\t\t\t         Type: 0x%x\n", evt->type);
-    printk(TBOOT_DETA"\t\t\t       Digest: ");
-    print_heap_hash(evt->digest);
-    printk(TBOOT_DETA"\t\t\t         Data: %u bytes", evt->data_size);
-    print_hex("\t\t\t         ", evt->data, evt->data_size);
-}
-
-static void print_evt_log(const event_log_container_t *elog)
-{
-    printk(TBOOT_DETA"\t\t\t Event Log Container:\n");
-    printk(TBOOT_DETA"\t\t\t     Signature: %s\n", elog->signature);
-    printk(TBOOT_DETA"\t\t\t  ContainerVer: %u.%u\n",
-           elog->container_ver_major, elog->container_ver_minor);
-    printk(TBOOT_DETA"\t\t\t   PCREventVer: %u.%u\n",
-           elog->pcr_event_ver_major, elog->pcr_event_ver_minor);
-    printk(TBOOT_DETA"\t\t\t          Size: %u\n", elog->size);
-    printk(TBOOT_DETA"\t\t\t  EventsOffset: [%u,%u]\n",
-           elog->pcr_events_offset, elog->next_event_offset);
-
-    const tpm12_pcr_event_t *curr, *next;
-    curr = (tpm12_pcr_event_t *)((void*)elog + elog->pcr_events_offset);
-    next = (tpm12_pcr_event_t *)((void*)elog + elog->next_event_offset);
-
-    while ( curr < next ) {
-        print_event(curr);
-        curr = (void *)curr + sizeof(*curr) + curr->data_size;
-    }
-}
-
-static void print_evt_log_ptr_elt(const heap_ext_data_element_t *elt)
-{
-    const heap_event_log_ptr_elt_t *elog_elt =
-              (const heap_event_log_ptr_elt_t *)elt->data;
-
-    printk(TBOOT_DETA"\t\t EVENT_LOG_POINTER:\n");
-    printk(TBOOT_DETA"\t\t       size: %u\n", elt->size);
-    printk(TBOOT_DETA"\t\t  elog_addr: 0x%jx\n", elog_elt->event_log_phys_addr);
-
-    if ( elog_elt->event_log_phys_addr )
-        print_evt_log((event_log_container_t *)(unsigned long)
-                      elog_elt->event_log_phys_addr);
-}
-
 void print_event_2(void *evt, uint16_t alg)
 {
     uint32_t hash_size, data_size; 
@@ -238,12 +185,6 @@ uint32_t print_event_2_1(void *evt)
         hash_alg = evt_ptr->digest.digests[0].hash_alg;
         for ( uint32_t i = 0; i < evt_ptr->digest.count; i++ ) { 
             switch (hash_alg) {
-                case TB_HALG_SHA1:
-                    printk(TBOOT_INFO"SHA1: \n");
-                    print_hex(NULL, evt_data_ptr, SHA1_LENGTH);
-                    evt_data_ptr += SHA1_LENGTH;
-                    break;
- 
                 case TB_HALG_SHA256:
                     printk(TBOOT_INFO"SHA256: \n");
                     print_hex(NULL, evt_data_ptr, SHA256_LENGTH);
@@ -324,8 +265,8 @@ static void print_evt_log_ptr_elt_2(const heap_ext_data_element_t *elt)
         next = (void *)(unsigned long)log_descr->phys_addr +
                 log_descr->next_event_offset;
         
-        //It is required for each of the non-SHA1 event log the first entry to be the following
-        //TPM1.2 style TCG_PCR_EVENT record specifying type of the log:
+        //The first entry of each event log is a TCG legacy header:
+        //TCG_PCR_EVENT record specifying type of the log:
         //TCG_PCR_EVENT.PCRIndex = 0
         //TCG_PCR_EVENT.EventType = 0x03 // EV_NO_ACTION per TCG EFI
                                        // Platform specification
@@ -334,10 +275,16 @@ static void print_evt_log_ptr_elt_2(const heap_ext_data_element_t *elt)
         //TCG_PCR_EVENT.EventData = TCG_LOG_DESCRIPTOR
         //The digest of this record MUST NOT be extended into any PCR.
 
-        if (log_descr->alg != TB_HALG_SHA1){
-            print_event_2(curr, TB_HALG_SHA1);
-            curr += sizeof(tpm12_pcr_event_t) + sizeof(tpm20_log_descr_t);
-        }
+        /* TCG legacy format: first entry is always a tcg_pcr_event (20-byte digest) header */
+        tcg_pcr_event *first = (tcg_pcr_event *)curr;
+        printk(TBOOT_DETA"\t\t\t Event (legacy header):\n");
+        printk(TBOOT_DETA"\t\t\t     PCRIndex: %u\n", first->pcr_index);
+        printk(TBOOT_DETA"\t\t\t         Type: 0x%x\n", first->event_type);
+        printk(TBOOT_DETA"\t\t\t       Digest: ");
+        print_hex(NULL, first->digest, 20);
+        printk(TBOOT_DETA"\t\t\t         Data: %u bytes", first->event_data_size);
+        print_hex("\t\t\t         ", first->event_data, first->event_data_size);
+        curr += sizeof(tcg_pcr_event) + sizeof(tpm20_log_descr_t);
 
         while ( curr < next ) {
             print_event_2(curr, log_descr->alg);
@@ -408,9 +355,6 @@ static void print_ext_data_elts(const heap_ext_data_element_t elts[])
                 break;
             case HEAP_EXTDATA_TYPE_CUSTOM:
                 print_custom_elt(elt);
-                break;
-            case HEAP_EXTDATA_TYPE_TPM_EVENT_LOG_PTR:
-                print_evt_log_ptr_elt(elt);
                 break;
             case HEAP_EXTDATA_TYPE_TPM_EVENT_LOG_PTR_2:
                 print_evt_log_ptr_elt_2(elt);
@@ -508,51 +452,6 @@ static bool verify_custom_elt(const heap_ext_data_element_t *elt)
     return true;
 }
 
-static bool verify_evt_log(const event_log_container_t *elog)
-{
-    if ( elog == NULL ) {
-        printk(TBOOT_ERR"Event log container pointer is NULL\n");
-        return false;
-    }
-
-    if ( tb_memcmp(elog->signature, EVTLOG_SIGNATURE, sizeof(elog->signature)) ) {
-        printk(TBOOT_ERR"Bad event log container signature: %s\n", elog->signature);
-        return false;
-    }
-
-    if ( elog->size != MAX_EVENT_LOG_SIZE ) {
-        printk(TBOOT_ERR"Bad event log container size: 0x%x\n", elog->size);
-        return false;
-    }
-
-    /* no need to check versions */
-
-    if ( elog->pcr_events_offset < sizeof(*elog) ||
-         elog->next_event_offset < elog->pcr_events_offset ||
-         elog->next_event_offset > elog->size ) {
-        printk(TBOOT_ERR"Bad events offset range: [%u, %u)\n",
-               elog->pcr_events_offset, elog->next_event_offset);
-        return false;
-    }
-
-    return true;
-}
-
-static bool verify_evt_log_ptr_elt(const heap_ext_data_element_t *elt)
-{
-    const heap_event_log_ptr_elt_t *elog_elt =
-              (const heap_event_log_ptr_elt_t *)elt->data;
-
-    if ( elt->size != sizeof(*elt) + sizeof(*elog_elt) ) {
-        printk(TBOOT_ERR"HEAP_EVENT_LOG_POINTER element has wrong size (%u)\n",
-               elt->size);
-        return false;
-    }
-
-    return verify_evt_log((event_log_container_t *)(unsigned long)
-                          elog_elt->event_log_phys_addr);
-}
-
 static bool verify_evt_log_ptr_elt_2(const heap_ext_data_element_t *elt)
 {
     if ( !elt ) {
@@ -591,10 +490,6 @@ static bool verify_ext_data_elts(const heap_ext_data_element_t elts[],
                 break;
             case HEAP_EXTDATA_TYPE_CUSTOM:
                 if ( !verify_custom_elt(elt) )
-                    return false;
-                break;
-            case HEAP_EXTDATA_TYPE_TPM_EVENT_LOG_PTR:
-                if ( !verify_evt_log_ptr_elt(elt) )
                     return false;
                 break;
             case HEAP_EXTDATA_TYPE_TPM_EVENT_LOG_PTR_2:
@@ -739,8 +634,7 @@ uint64_t calc_os_sinit_data_size(uint32_t version)
         offsetof(os_sinit_data_t, efi_rsdt_ptr) + sizeof(uint64_t),
         sizeof(os_sinit_data_t) + sizeof(uint64_t),
         sizeof(os_sinit_data_t) + sizeof(uint64_t) +
-            2 * sizeof(heap_ext_data_element_t) +
-            sizeof(heap_event_log_ptr_elt_t)
+            2 * sizeof(heap_ext_data_element_t)
     };
     struct tpm_if *tpm = get_tpm();
     int log_type = get_evtlog_type();
@@ -891,15 +785,15 @@ static void print_sinit_mle_data(const sinit_mle_data_t *sinit_mle_data)
            *((uint64_t *)sinit_mle_data - 1));
     printk(TBOOT_DETA"\t version: %u\n", sinit_mle_data->version);
     printk(TBOOT_DETA"\t bios_acm_id: \n\t");
-    print_heap_hash(sinit_mle_data->bios_acm_id);
+    print_hex(NULL, sinit_mle_data->bios_acm_id, 20);
     printk(TBOOT_DETA"\t edx_senter_flags: 0x%08x\n",
            sinit_mle_data->edx_senter_flags);
     printk(TBOOT_DETA"\t mseg_valid: 0x%Lx\n", sinit_mle_data->mseg_valid);
-    printk(TBOOT_DETA"\t sinit_hash:\n\t"); print_heap_hash(sinit_mle_data->sinit_hash);
-    printk(TBOOT_DETA"\t mle_hash:\n\t"); print_heap_hash(sinit_mle_data->mle_hash);
-    printk(TBOOT_DETA"\t stm_hash:\n\t"); print_heap_hash(sinit_mle_data->stm_hash);
+    printk(TBOOT_DETA"\t sinit_hash:\n\t"); print_hex(NULL, sinit_mle_data->sinit_hash, 20);
+    printk(TBOOT_DETA"\t mle_hash:\n\t"); print_hex(NULL, sinit_mle_data->mle_hash, 20);
+    printk(TBOOT_DETA"\t stm_hash:\n\t"); print_hex(NULL, sinit_mle_data->stm_hash, 20);
     printk(TBOOT_DETA"\t lcp_policy_hash:\n\t");
-        print_heap_hash(sinit_mle_data->lcp_policy_hash);
+        print_hex(NULL, sinit_mle_data->lcp_policy_hash, 20);
     printk(TBOOT_DETA"\t lcp_policy_control: 0x%08x\n",
            sinit_mle_data->lcp_policy_control);
     printk(TBOOT_DETA"\t rlp_wakeup_addr: 0x%x\n", sinit_mle_data->rlp_wakeup_addr);

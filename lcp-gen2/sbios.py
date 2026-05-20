@@ -56,8 +56,10 @@ class SBIOS( ElementGui ):
     self.myIndex = DEFINES.DEFDATA_INDEX[hashAlgName]
     #if( hashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
     #  self.myIndex = DEFINES.DEFDATA_INDEX_SHA256
-    #elif( hashAlg == DEFINES.TPM_ALG_HASH['SHA1']):
-    #  self.myIndex = DEFINES.DEFDATA_INDEX_SHA1
+    #else:
+    #  print("SBIOS::__init__ - invalid hashAlg=%d" % (hashAlg))
+    #if( hashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
+    #  self.myIndex = DEFINES.DEFDATA_INDEX_SHA256
     #else:
     #  print("SBIOS::__init__ - invalid hashAlg=%d" % (hashAlg))
 
@@ -156,8 +158,6 @@ class SBIOS( ElementGui ):
       fallbackFile = "FallbackDflt" + hashAlgStr + ".hash"
       #if(hashAlgStr == "SHA256"):
       #  fallbackFile = "FallbackDfltSha256.hash"
-      #elif(hashAlgStr == "SHA1"):
-      #  fallbackFile = "FallbackDfltSha1.hash"
       #else:
       #  print("Warning - unexpected hashAlgStr found when setting fallbackFile")
     self.fallbackFileEdit.AppendText(fallbackFile)

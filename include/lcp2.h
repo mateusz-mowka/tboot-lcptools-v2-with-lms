@@ -75,25 +75,11 @@ typedef union {
     uint8_t    sha256[SHA256_LENGTH];
 } lcp_hash_t;
 
-#define LCP_DEFAULT_POLICY_VERSION     0x0202
 #define LCP_DEFAULT_POLICY_CONTROL     0x00
 
 #define LCP_MAX_LISTS      8
 
-typedef struct __packed {
-    uint16_t    version;
-    uint8_t     hash_alg;        /* one of LCP_POLHALG_* */
-    uint8_t     policy_type;     /* one of LCP_POLTYPE_* */
-    uint8_t     sinit_min_version;
-    uint8_t     reserved1;
-    uint16_t    data_revocation_counters[LCP_MAX_LISTS];
-    uint32_t    policy_control;
-    uint32_t    reserved2[2];
-    lcp_hash_t  policy_hash;
-} lcp_policy_t;
-
 #define LCP_POLSALG_NONE           0
-#define LCP_POLSALG_RSA_PKCS_15    1
 
 #define LCP_SIG_EXPONENT           65537
 
@@ -113,27 +99,6 @@ typedef struct __packed {
     uint32_t    policy_elt_control;
     uint8_t     data[];
 } lcp_policy_element_t;
-
-#define LCP_DEFAULT_POLICY_LIST_VERSION     0x0100
-
-typedef struct __packed {
-    uint16_t               version;
-    uint8_t                reserved;
-    uint8_t                sig_alg;
-    uint32_t               policy_elements_size;
-    lcp_policy_element_t   policy_elements[];
-    /* optionally: */
-    /* lcp_signature_t     sig; */
-} lcp_policy_list_t;
-
-#define LCP_FILE_SIG_LENGTH  32
-
-typedef struct __packed {
-    char               file_signature[LCP_FILE_SIG_LENGTH];
-    uint8_t            reserved[3];
-    uint8_t            num_lists;
-    lcp_policy_list_t  policy_lists[];
-} lcp_policy_data_t;
 
 /*--------- LCP Element sub-types ------------*/
 

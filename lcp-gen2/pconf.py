@@ -57,8 +57,11 @@ class PCONF( ElementGui ):
     self.myIndex = -1   # myIndex is set in createOrShowPanel()
     #if( hashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
     #  self.myIndex = DEFINES.DEFDATA_INDEX_SHA256
-    #elif( hashAlg == DEFINES.TPM_ALG_HASH['SHA1']):
-    #  self.myIndex = DEFINES.DEFDATA_INDEX_SHA1
+    #else:
+    #  print("PCONF::__init__ - invalid hashAlg=%d" % (hashAlg))
+
+    #if( hashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
+    #  self.myIndex = DEFINES.DEFDATA_INDEX_SHA256
     #else:
     #  print("PCONF::__init__ - invalid hashAlg=%d" % (hashAlg))
 

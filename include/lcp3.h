@@ -81,7 +81,6 @@
 #define LCP_MAX_LISTS      8
 
 /*Digest sizes*/
-#define SHA1_DIGEST_SIZE    20
 #define SHA256_DIGEST_SIZE	32
 #define SHA384_DIGEST_SIZE	48
 #define SHA512_DIGEST_SIZE	64
@@ -100,7 +99,6 @@ typedef union {
 
 /*--------- legacy LCP alg names ------------*/
 #define LCP_POLSALG_NONE           0
-#define LCP_POLSALG_RSA_PKCS_15    1
 
 /*--------- pconf helper structs ------------*/
 
@@ -117,7 +115,7 @@ typedef struct __packed {
 typedef struct __packed {
     tpm_pcr_selection      pcr_selection;
     TPM_LOCALITY_SELECTION locality_at_release;
-    uint8_t                digest_at_release[SHA1_DIGEST_SIZE]; //This is a hash of all selected pcr values
+    uint8_t                digest_at_release[SHA256_DIGEST_SIZE]; //This is a hash of all selected pcr values
 } tpm_pcr_info_short_t;
 
 /*--------- legacy policy elts ------------*/
@@ -155,56 +153,21 @@ typedef struct __packed {
 } lcp_policy_element_t;
 
 /*
-    LCP_POLICY_LIST  deprecated, kept to support legacy systems
     LCP_POLICY_LIST2 supported versions currently are: 2.0 and 2.1
     LCP_POLICY_LIST2_1 supported versions currently are: 3.0
 */
 
-#define LCP_TPM12_POLICY_LIST_VERSION        0x0100
 #define LCP_TPM20_POLICY_LIST_VERSION        0x0200
 #define LCP_TPM20_POLICY_LIST2_VERSION_201   0x0201
 #define LCP_TPM20_POLICY_LIST2_1_VERSION_300 0x0300
 
 //Max supported minor versions
-#define LCP_TPM12_POLICY_LIST_MAX_MINOR      0x0000
 #define LCP_TPM20_POLICY_LIST2_MAX_MINOR     0x0001
 #define LCP_TPM20_POLICY_LIST2_1_MAX_MINOR   0x0000
 
 #define LCP_DEFAULT_POLICY_LIST_VERSION      LCP_TPM20_POLICY_LIST_VERSION
 
-typedef struct __packed {
-    uint16_t               version; /* = 1.0 */
-    uint8_t                reserved;
-    uint8_t                sig_alg; //LCP_POLSALG_NONE i.e. 0 or *_RSA_PKCS_15 i.e. 1
-    uint32_t               policy_elements_size;
-    lcp_policy_element_t   policy_elements[];
-    /* optionally: */
-    /* lcp_signature_t     sig; */
-} lcp_policy_list_t;
-
 #define LCP_FILE_SIG_LENGTH  32
-typedef struct __packed {
-    char               file_signature[LCP_FILE_SIG_LENGTH];
-    uint8_t            reserved[3];
-    uint8_t            num_lists;
-    lcp_policy_list_t  policy_lists[];
-} lcp_policy_data_t;
-
-#define LCP_DEFAULT_POLICY_VERSION_2   0x0202
-typedef struct __packed {
-    uint16_t    version;         /* must be 0x0204    */
-    uint8_t     hash_alg;
-    uint8_t     policy_type;     /* one of LCP_POLTYPE_* */
-    uint8_t     sinit_min_version;
-    uint8_t     reserved1;
-    uint16_t    data_revocation_counters[LCP_MAX_LISTS];
-    uint32_t    policy_control;
-    uint8_t     max_sinit_min_version;
-    uint8_t     reserved2;
-    uint16_t    reserved3;
-    uint32_t    reserved4;
-    lcp_hash_t  policy_hash;
-} lcp_policy_t;
 
 /*--------- LCP_POLICY version 3.x ------------*/
 #define TPM_ALG_RSA     0x0001
@@ -223,9 +186,6 @@ typedef struct __packed {
 #define TPM_ALG_MASK_SHA512	    0x0080
 
 #define SIGN_ALG_MASK_NULL                  0x00000000
-#define SIGN_ALG_MASK_RSASSA_1024_SHA1      BITN(0)  //Not supported
-#define SIGN_ALG_MASK_RSASSA_1024_SHA256    BITN(1)
-#define SIGN_ALG_MASK_RSASSA_2048_SHA1      BITN(2)  //Legacy
 #define SIGN_ALG_MASK_RSASSA_2048_SHA256    BITN(3)  //ok
 #define SIGN_ALG_MASK_RSASSA_3072_SHA256    BITN(6)  //ok
 #define SIGN_ALG_MASK_RSASSA_3072_SHA384    BITN(7)  //ok
@@ -478,7 +438,6 @@ typedef struct __packed {
 } lcp_policy_list_t2_1;
 
 typedef union  __packed {
-    lcp_policy_list_t   tpm12_policy_list;
     lcp_policy_list_t2  tpm20_policy_list;
     lcp_policy_list_t2_1 tpm20_policy_list_2_1;
 } lcp_list_t;
@@ -491,7 +450,6 @@ typedef struct __packed {
 } lcp_policy_data_t2;
 
 typedef union __packed {
-    lcp_policy_t tpm12_policy;
     lcp_policy_t2 tpm20_policy;
 } lcp_policy_union;
 

@@ -258,7 +258,7 @@ class MyFrame(wx.Frame):
   #   Policy Rules   Version        Control Options     Policy Type     Hash Alg
   #  [rnd chk box    text box       sq chkbox           rnd chk box     pulldown]
   #   --------------------------------------------------------------------------
-  #     PS          Version    2.2  Allow NPW           LIST            SHA1
+  #     PS          Version    2.2  Allow NPW           LIST            SHA256
   #     PO          MinSINITVer  0  SINIT Cap...        ANY
   #
   #   Number of   View List     Add List    Delete List   ACM Revocation Limits   [text]
@@ -678,7 +678,7 @@ class MyFrame(wx.Frame):
     """ onKeyGen - Generating keys with OpenSSL"""
 
     dlg = wx.MessageDialog( self,
-      "To create public and private keys with OpenSSL:\n   openssl genrsa -out PrivateKeyFile.pem [1024,2048,3072]\n   openssl rsa -pubout -in PrivateKeyFile.pem -out PublicKeyFile.pem\n",
+      "To create public and private keys with OpenSSL:\n   openssl genrsa -out PrivateKeyFile.pem [2048,3072]\n   openssl rsa -pubout -in PrivateKeyFile.pem -out PublicKeyFile.pem\n",
       "Key Generation")
     dlg.ShowModal() # Show dialog & wait for OK or Cancel
     dlg.Destroy()   # finally destroy it when finished.
@@ -696,7 +696,7 @@ class MyFrame(wx.Frame):
     """ hashImageHelp - help for hashing image from cmd line"""
 
     dlg = wx.MessageDialog( self,
-      "To hash an image from the command line or a script:\ttxtPolGen2 -hash image.bin startOffset offsetSize hashAlgorithm\nwhere 4=SHA1, 0xb=SHA256",
+      "To hash an image from the command line or a script:\ttxtPolGen2 -hash image.bin startOffset offsetSize hashAlgorithm\nwhere 0xb=SHA256, 0xc=SHA384, 0xd=SHA512",
       "Hash Image Help")
     dlg.ShowModal() # Show dialog & wait for OK or Cancel
     dlg.Destroy()   # finally destroy it when finished.
@@ -910,9 +910,7 @@ class MyFrame(wx.Frame):
   def onHashAlg(self, event):
     """onHashAlg - update pdef.HashAlg"""
     pdef.HashAlg  =  DEFINES.TPM_ALG_HASH[event.GetString()]
-    #if(event.GetString() == "SHA1"):
-    #  pdef.HashAlg  =  DEFINES.TPM_ALG_SHA1
-    #elif(event.GetString() == "SHA256"):
+    #if(event.GetString() == "SHA256"):
     #  pdef.HashAlg  =  DEFINES.TPM_ALG_SHA256
     #elif(event.GetString() == "SHA384"):
     #  pdef.HashAlg  =  DEFINES.TPM_ALG_SHA384
@@ -925,9 +923,7 @@ class MyFrame(wx.Frame):
     """onAlgForAp - update algorithm for auto promotion"""
 
     pdef.AuxHashAlgMask  =  DEFINES.TPM_ALG_HASH_MASK[event.GetString()]
-    #if(event.GetString() == "SHA1"):
-    #  pdef.AuxHashAlgMask  =  DEFINES.TPM_ALG_HASH_MASK_SHA1
-    #elif(event.GetString() == "SHA256"):
+    #if(event.GetString() == "SHA256"):
     #  pdef.AuxHashAlgMask  =  DEFINES.TPM_ALG_HASH_MASK_SHA256
     pdef.Modified = True
     self.StatusBar.SetStatusText( "AuxHashAlgMask=0x%X" %(pdef.AuxHashAlgMask))
@@ -1830,8 +1826,6 @@ class MyFrame(wx.Frame):
       print("AuxHashAlgMask",         " = ", pdef.AuxHashAlgMask,         file=f)
       if(pdef.HashAlg == DEFINES.TPM_ALG_HASH_MASK['SHA256']):
         print("PolicyHash",             " = ", pdef.PolicyHashSha256Hex,  file=f)   # need to print the hex hash
-      elif(pdef.HashAlg == DEFINES.TPM_ALG_HASH_MASK['SHA1']):
-        print("PolicyHash",             " = ", pdef.PolicyHashSha1Hex,    file=f)   # need to print the hex hash
 
       # make sure MM, DD, HH, MM and SS fields print as 2 digits with leading 0 ie YYMMDD and HHMMSS
       month = '%02d' % (pdef.LastBuildDateStampMonth)

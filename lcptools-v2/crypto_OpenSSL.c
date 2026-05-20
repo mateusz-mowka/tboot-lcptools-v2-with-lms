@@ -37,7 +37,7 @@ crypto_hash_buffer_internal (
     return crypto_operation_fail;
   }
 
-  EVP_MD_CTX    *ctx = EVP_MD_CTX_create ();
+  EVP_MD_CTX    *ctx = EVP_MD_CTX_new ();
   const EVP_MD  *md;
 
   if (ctx == NULL) {
@@ -58,14 +58,14 @@ crypto_hash_buffer_internal (
       md = EVP_sm3 ();
       break;
     default:
-      EVP_MD_CTX_destroy (ctx);
+      EVP_MD_CTX_free (ctx);
       return crypto_unknown_hashalg;
   }
 
   EVP_DigestInit (ctx, md);
   EVP_DigestUpdate (ctx, buf, size);
   EVP_DigestFinal (ctx, hash, NULL);
-  EVP_MD_CTX_destroy (ctx);
+  EVP_MD_CTX_free (ctx);
   return crypto_ok;
 }
 
@@ -852,7 +852,7 @@ crypto_verify_rsa_signature_internal (
 
   if ( sig_alg == TPM_ALG_RSAPSS) {
     status = EVP_PKEY_CTX_set_rsa_padding (evp_context, RSA_PKCS1_PSS_PADDING);
-  } else if ((sig_alg == TPM_ALG_RSASSA) || (sig_alg == LCP_POLSALG_RSA_PKCS_15)) {
+  } else if (sig_alg == TPM_ALG_RSASSA) {
     status = EVP_PKEY_CTX_set_rsa_padding (evp_context, RSA_PKCS1_PADDING);
   } else {
     ERROR ("Error: unsupported signature algorithm.\n");

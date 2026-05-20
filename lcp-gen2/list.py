@@ -31,9 +31,6 @@ from sbios import SBIOS
 from mle import MLE
 from pconf import PCONF
 from stm import STM
-from sbiosLegacy import SBIOSLegacy
-from pconfLegacy import PCONFLegacy
-from mleLegacy import MLELegacy
 from pdef import *
 
 
@@ -408,7 +405,6 @@ class LIST( object ):
     self.allowedEdit.ChangeValue(str(currentList.RevokeCounter))
     self.revocationCountEdit.ChangeValue(str(currentList.RevocationCounter))
     self.keySizeEdit.SetValue(str(currentList.KeySize))
-    #if (currentList.SigAlgorithm == 1):  # For TPM 1.2
 
     signAlgName = ""
     try:
@@ -461,26 +457,16 @@ class LIST( object ):
       # Create a new element of selected spec and populate into currentListObject.MleDefData
       elementType, hashAlg = defdata.Name.split('-')
 
-      if hashAlg == 'LEGACY':
-        if elementType == 'SBIOS':
-          element = SBIOSLegacy()
-        elif elementType == 'MLE':
-          element = MLELegacy()
-        elif elementType == 'PCONF':
-          element = PCONFLegacy()
-        else:
-          print ("ERROR: invalid element")
+      if elementType == 'SBIOS':
+        element = SBIOS(DEFINES.TPM_ALG_HASH[hashAlg])      # GUI panel
+      elif elementType == 'STM':
+        element = STM(DEFINES.TPM_ALG_HASH[hashAlg])
+      elif elementType == 'MLE':
+        element = MLE(DEFINES.TPM_ALG_HASH[hashAlg])
+      elif elementType == 'PCONF':
+        element = PCONF(DEFINES.TPM_ALG_HASH[hashAlg])
       else:
-        if elementType == 'SBIOS':
-          element = SBIOS(DEFINES.TPM_ALG_HASH[hashAlg])      # GUI panel
-        elif elementType == 'STM':
-          element = STM(DEFINES.TPM_ALG_HASH[hashAlg])
-        elif elementType == 'MLE':
-          element = MLE(DEFINES.TPM_ALG_HASH[hashAlg])
-        elif elementType == 'PCONF':
-          element = PCONF(DEFINES.TPM_ALG_HASH[hashAlg])
-        else:
-          print ("ERROR: invalid element")
+        print ("ERROR: invalid element")
 
       element.createOrShowPanel(wx, self, self.parent, self.pdef, self.StatusBar)
       element.myIndex = index
@@ -529,7 +515,7 @@ class LIST( object ):
     listNum = 0
     while( listNum < pdef.NumLists):
       thisList = pdef.PolListInfo[str(listNum)]
-      #if(thisList.SigAlgorithm == DEFINES.LCP_POLSALG_RSA_PKCS_15):  # For TPM1.2
+
       if(thisList.SigAlgorithm == DEFINES.TPM_ALG_SIGN['RSASSA']):
         if(thisList.SyncRevCount == True):
           thisList.RevokeCounter = thisList.RevocationCounter
@@ -764,7 +750,6 @@ class LIST( object ):
 
     # Note: Sync checkbox and Algorithm pulldown are redundant
     #   Sync unchecked  == LCP_POLSALG_NONE
-    #   Sync checked    == LCP_POLSALG_RSA_PKCS_15
 
     #If Unsigned [ie algorithm=None], then revocation count, allowed, RESET, Sync, Key File & Key Size are all disabled,
     # else enabled
@@ -1058,33 +1043,20 @@ class LIST( object ):
     # Create a new element of selected spec and populate into currentListObject.MleDefData
     elementType, hashAlg = requestedElement.split('-')
 
-    if hashAlg == 'LEGACY':
-      if elementType == 'SBIOS':
-        element = SBIOSLegacy()
-        defdata = SBIOSLEGACY_DEF()
-      elif elementType == 'MLE':
-        element = MLELegacy()
-        defdata = MLELEGACY_DEF()
-      elif elementType == 'PCONF':
-        element = PCONFLegacy()
-        defdata = PCONFLEGACY_DEF()
-      else:
-        print ("ERROR: invalid element")
+    if elementType == 'SBIOS':
+      element = SBIOS(DEFINES.TPM_ALG_HASH[hashAlg])      # GUI panel
+      defdata = SBIOS_DEF(DEFINES.TPM_ALG_HASH[hashAlg])  # Element defined in pdef.py
+    elif elementType == 'STM':
+      element = STM(DEFINES.TPM_ALG_HASH[hashAlg])
+      defdata = STM_DEF(DEFINES.TPM_ALG_HASH[hashAlg])
+    elif elementType == 'MLE':
+      element = MLE(DEFINES.TPM_ALG_HASH[hashAlg])
+      defdata = MLE_DEF(DEFINES.TPM_ALG_HASH[hashAlg])
+    elif elementType == 'PCONF':
+      element = PCONF(DEFINES.TPM_ALG_HASH[hashAlg])
+      defdata = PCONF_DEF(DEFINES.TPM_ALG_HASH[hashAlg])
     else:
-      if elementType == 'SBIOS':
-        element = SBIOS(DEFINES.TPM_ALG_HASH[hashAlg])      # GUI panel
-        defdata = SBIOS_DEF(DEFINES.TPM_ALG_HASH[hashAlg])  # Element defined in pdef.py
-      elif elementType == 'STM':
-        element = STM(DEFINES.TPM_ALG_HASH[hashAlg])
-        defdata = STM_DEF(DEFINES.TPM_ALG_HASH[hashAlg])
-      elif elementType == 'MLE':
-        element = MLE(DEFINES.TPM_ALG_HASH[hashAlg])
-        defdata = MLE_DEF(DEFINES.TPM_ALG_HASH[hashAlg])
-      elif elementType == 'PCONF':
-        element = PCONF(DEFINES.TPM_ALG_HASH[hashAlg])
-        defdata = PCONF_DEF(DEFINES.TPM_ALG_HASH[hashAlg])
-      else:
-        print ("ERROR: invalid element")
+      print ("ERROR: invalid element")
 
     currentListObject.ElementDefData.append(defdata)
     element.createOrShowPanel(wx, self, self.parent, self.pdef, self.StatusBar)
@@ -1308,18 +1280,6 @@ class LIST( object ):
       print("%s DefData[Index]"% (element.Name),  " = ", element,  file=f)
       element.printDef(f)
       print("\n", file=f)         # for readability
-
-
-#  def enablePconfOverridePsPolicyCheckbox(self, value):
-#    """enablePconfOverridePsPolicyCheckbox - if current list has a PCONF element, enable its OverridePsPolicy checkbox"""
-#
-#    currentList = self.pdef.getCurrentListObject()
-#    if(currentList.PconfDefData[DEFINES.DEFDATA_INDEX['SHA256']].IncludeInList == True):
-#      pconf256.enablePconfOverridePsPolicyCheckbox(value)
-#    if(currentList.PconfDefData[DEFINES.DEFDATA_INDEX['SHA1']].IncludeInList == True):
-#      pconf1.enablePconfOverridePsPolicyCheckbox(value)
-#    if(currentList.PconfLegacyDefData[DEFINES.DEFDATA_INDEX['SHA1']].IncludeInList == True):
-#      pconf0.enablePconfOverridePsPolicyCheckbox(value)
 
 
   def hideAllPanels( self ):

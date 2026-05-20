@@ -394,8 +394,6 @@ sig_alg_to_str (
       return "TPM_ALG_SM3_256";
     case TPM_ALG_NULL:
       return "TPM_ALG_NULL";
-    case LCP_POLSALG_RSA_PKCS_15:
-      return "LCP_POLSALG_RSA_PKCS_15";
     case TPM_ALG_LMS:
       return "TPM_ALG_LMS";
     case TCG_ALG_MLDSA:
@@ -449,10 +447,6 @@ str_to_sig_alg (
   const char  *str
   )
 {
-  if (strcmp (str, "rsa-pkcs15") == 0) {
-    return LCP_POLSALG_RSA_PKCS_15;
-  }
-
   if ((strcmp (str, "rsa-ssa") == 0) || (strcmp (str, "rsassa") == 0) || (strcmp (str, "rsa") == 0)) {
     return TPM_ALG_RSASSA;
   }

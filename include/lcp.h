@@ -1,5 +1,5 @@
 /*
- * Copyright 2001 - 2007 Intel Corporation. All Rights Reserved.
+ * Copyright 2001 - 2026 Intel Corporation. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -73,40 +73,5 @@
 typedef union {
     uint8_t    sha256[SHA256_LENGTH];
 } lcp_hash_t;
-
-typedef struct __packed {
-    uint8_t     version;
-    uint8_t     hash_alg;        /* one of LCP_POLHALG_* */
-    uint8_t     policy_type;     /* one of LCP_POLTYPE_* */
-    uint8_t     sinit_revocation_counter;
-    uint32_t    policy_control;
-    uint16_t    reserved[3];
-    lcp_hash_t  policy_hash;
-} lcp_policy_t;
-
-typedef struct __packed {
-    uint8_t version;
-    uint8_t count;
-    union{
-        lcp_hash_t*          hashes;
-        TPM_PCR_INFO_SHORT*  pcrs;
-    };
-} lcp_unsigned_list_t;
-
-typedef struct __packed {
-    uint16_t             type;               /* One of LCP_POLDESC_*  */
-    lcp_unsigned_list_t  unsigned_list;
-} lcp_policy_list_t;
-
-typedef struct __packed {
-    uint8_t            version;
-    uint8_t            policy_data_listsize;
-    lcp_policy_list_t  policy_data_list[];
-} lcp_unsigned_policy_data_t;
-
-typedef struct __packed {
-    uuid_t                      uuid;
-    lcp_unsigned_policy_data_t  unsigned_data;
-} lcp_policy_data_t;
 
 #endif    /*  __TXT_LCP_H__ */

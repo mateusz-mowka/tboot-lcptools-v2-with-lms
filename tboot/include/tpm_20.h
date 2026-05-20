@@ -45,12 +45,6 @@ typedef struct {
     u8         buffer[1];
 } TPM2B;
 
-// Table 205 -- SHA1 Hash Values
-#define SHA1_DIGEST_SIZE    20
-#define SHA1_BLOCK_SIZE     64
-#define SHA1_DER_SIZE       15
-#define SHA1_DER            {0x30,0x21,0x30,0x09,0x06, 0x05,0x2B,0x0E,0x03,0x02,0x1A,0x05,0x00,0x04,0x14}
-
 // Table 206 -- SHA256 Hash Values
 #define SHA256_DIGEST_SIZE    32
 #define SHA256_BLOCK_SIZE     64
@@ -90,7 +84,6 @@ typedef struct {
 
 // Table 215 -- Implemented Algorithms
 #define ALG_RSA               YES    // 1
-#define ALG_SHA1              YES    // 1
 #define ALG_HMAC              YES    // 1
 #define ALG_AES               YES    // 1
 #define ALG_MGF1              YES    // 1
@@ -121,10 +114,10 @@ typedef struct {
 #define ALG_CFB               YES    // 1
 #define ALG_ECB               YES    // 1
 
-#define HASH_COUNT (ALG_SHA1+ALG_SHA256+ALG_SM3_256+ALG_SHA384+ALG_SHA512)
+#define HASH_COUNT (ALG_SHA256+ALG_SM3_256+ALG_SHA384+ALG_SHA512)
 
 // Table 217 -- RSA Algorithm Constants
-#define RSA_KEY_SIZES_BITS    {1024, 2048}    // {1024,2048}
+#define RSA_KEY_SIZES_BITS    {2048}    // {2048}
 #define MAX_RSA_KEY_BITS      2048
 #define MAX_RSA_KEY_BYTES     ((MAX_RSA_KEY_BITS + 7) / 8)    // 256
 
@@ -609,9 +602,6 @@ typedef TPM_HANDLE TPMI_RH_HIERARCHY;
 
 // Table 66 -- TPMU_HA Union <I/O,S>
 typedef union {
-#ifdef TPM_ALG_SHA1
-    u8  sha1[SHA1_DIGEST_SIZE];
-#endif
 #ifdef TPM_ALG_SHA256
     u8  sha256[SHA256_DIGEST_SIZE];
 #endif
@@ -894,22 +884,22 @@ typedef struct {
 // Table 141 -- TPMU_SIG_SCHEME Union <I/O,S>
 typedef union {
 #ifdef TPM_ALG_RSASSA
-    TPMS_SCHEME_RSASSA  rsassa;  
+    TPMS_SCHEME_RSASSA  rsassa;
 #endif
 #ifdef TPM_ALG_RSAPSS
-    TPMS_SCHEME_RSAPSS  rsapss;  
+    TPMS_SCHEME_RSAPSS  rsapss;
 #endif
 #ifdef TPM_ALG_ECDSA
-    TPMS_SCHEME_ECDSA  ecdsa;  
+    TPMS_SCHEME_ECDSA  ecdsa;
 #endif
 #ifdef TPM_ALG_SM2
-    TPMS_SCHEME_SM2  sm2;  
+    TPMS_SCHEME_SM2  sm2;
 #endif
 #ifdef TPM_ALG_ECDAA
-    TPMS_SCHEME_ECDAA  ecdaa;  
+    TPMS_SCHEME_ECDAA  ecdaa;
 #endif
 #ifdef TPM_ALG_ECSCHNORR
-    TPMS_SCHEME_ECSCHNORR  ec_schnorr;  
+    TPMS_SCHEME_ECSCHNORR  ec_schnorr;
 #endif
 #ifdef TPM_ALG_HMAC
     TPMS_SCHEME_HMAC  hmac;

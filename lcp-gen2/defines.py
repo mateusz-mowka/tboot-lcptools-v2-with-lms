@@ -49,7 +49,6 @@ class DEFINES( object ):
 
   # List Policy Signing Algorithm
   LCP_POLSALG_NONE        = 0   # list not signed
-  LCP_POLSALG_RSA_PKCS_15 = 1   # list signed
   LCP_POLSALG_ECDSA       = 2
   LCP_POLSALG_SM2         = 3
 
@@ -66,11 +65,10 @@ class DEFINES( object ):
   # So Pdef_list.[Mle,Pconf,Sbios,Stm]DefData[x]  is now an array
   # where x is one of the indexes below which must be < MAX_ELEMENTS
   DEFDATA_INDEX = {
-    'SHA1'      : 0,
-    'SHA256'    : 1,
-    'SHA384'    : 2,
-    'SHA512'    : 3,
-    #'SM3'       : 4
+    'SHA256'    : 0,
+    'SHA384'    : 1,
+    'SHA512'    : 2,
+    #'SM3'       : 3
   }
 
 
@@ -79,71 +77,57 @@ class DEFINES( object ):
   # This is used in list.py to create new element of the hash type.
   # So the following element names are possible:
   ELEMENT_NAME_NONE          = "None"
-  ELEMENT_NAME_MLE_SHA1      = "MLE-SHA1"
   ELEMENT_NAME_MLE_SHA256    = "MLE-SHA256"
   ELEMENT_NAME_MLE_SHA384   = "MLE-SHA384"
   ELEMENT_NAME_MLE_SHA512   = "MLE-SHA512"
   ELEMENT_NAME_MLE_SM3       = "MLE-SM3"
 
-  ELEMENT_NAME_PCONF_SHA1    = "PCONF-SHA1"
   ELEMENT_NAME_PCONF_SHA256  = "PCONF-SHA256"
   ELEMENT_NAME_PCONF_SHA384 = "PCONF-SHA384"
   ELEMENT_NAME_PCONF_SHA512 = "PCONF-SHA512"
   ELEMENT_NAME_PCONF_SM3     = "PCONF-SM3"
 
-  ELEMENT_NAME_SBIOS_SHA1    = "SBIOS-SHA1"
   ELEMENT_NAME_SBIOS_SHA256  = "SBIOS-SHA256"
   ELEMENT_NAME_SBIOS_SHA384 = "SBIOS-SHA384"
   ELEMENT_NAME_SBIOS_SHA512 = "SBIOS-SHA512"
   ELEMENT_NAME_SBIOS_SM3     = "SBIOS-SM3"
 
-  ELEMENT_NAME_STM_SHA1      = "STM-SHA1"
   ELEMENT_NAME_STM_SHA256    = "STM-SHA256"
   ELEMENT_NAME_STM_SHA384   = "STM-SHA384"
   ELEMENT_NAME_STM_SHA512   = "STM-SHA512"
   ELEMENT_NAME_STM_SM3       = "STM-SM3"
 
-  ELEMENT_NAME_MLE_LEGACY    = "MLE-LEGACY"
-  ELEMENT_NAME_PCONF_LEGACY  = "PCONF-LEGACY"
-  ELEMENT_NAME_SBIOS_LEGACY  = "SBIOS-LEGACY"
-
   # element name strings for PO rules
   ELEMENT_PO_RULES = [
     ELEMENT_NAME_STM_SHA512,   ELEMENT_NAME_STM_SHA384,
-    ELEMENT_NAME_STM_SHA256,   ELEMENT_NAME_STM_SHA1,     #ELEMENT_NAME_STM_SM3,
+    ELEMENT_NAME_STM_SHA256,   #ELEMENT_NAME_STM_SM3,
     ELEMENT_NAME_PCONF_SHA512, ELEMENT_NAME_PCONF_SHA384,
-    ELEMENT_NAME_PCONF_SHA256, ELEMENT_NAME_PCONF_SHA1,   #ELEMENT_NAME_PCONF_SM3,
-    ELEMENT_NAME_PCONF_LEGACY,
+    ELEMENT_NAME_PCONF_SHA256, #ELEMENT_NAME_PCONF_SM3,
     ELEMENT_NAME_MLE_SHA512,   ELEMENT_NAME_MLE_SHA384,
-    ELEMENT_NAME_MLE_SHA256,   ELEMENT_NAME_MLE_SHA1,     #ELEMENT_NAME_MLE_SM3,
-    ELEMENT_NAME_MLE_LEGACY
+    ELEMENT_NAME_MLE_SHA256,   #ELEMENT_NAME_MLE_SM3,
   ]
 
   """getElement - return array of element names strings"""
   ELEMENT = [
     ELEMENT_NAME_SBIOS_SHA512, ELEMENT_NAME_SBIOS_SHA384,
-    ELEMENT_NAME_SBIOS_SHA256, ELEMENT_NAME_SBIOS_SHA1,   #ELEMENT_NAME_SBIOS_SM3,
-    ELEMENT_NAME_SBIOS_LEGACY,
+    ELEMENT_NAME_SBIOS_SHA256, #ELEMENT_NAME_SBIOS_SM3,
     ELEMENT_NAME_STM_SHA512,   ELEMENT_NAME_STM_SHA384,
-    ELEMENT_NAME_STM_SHA256,   ELEMENT_NAME_STM_SHA1,     #ELEMENT_NAME_STM_SM3,
+    ELEMENT_NAME_STM_SHA256,   #ELEMENT_NAME_STM_SM3,
     ELEMENT_NAME_PCONF_SHA512, ELEMENT_NAME_PCONF_SHA384,
-    ELEMENT_NAME_PCONF_SHA256, ELEMENT_NAME_PCONF_SHA1,   #ELEMENT_NAME_PCONF_SM3,
-    ELEMENT_NAME_PCONF_LEGACY,
+    ELEMENT_NAME_PCONF_SHA256, #ELEMENT_NAME_PCONF_SM3,
     ELEMENT_NAME_MLE_SHA512,   ELEMENT_NAME_MLE_SHA384,
-    ELEMENT_NAME_MLE_SHA256,   ELEMENT_NAME_MLE_SHA1,     #ELEMENT_NAME_MLE_SM3,
-    ELEMENT_NAME_MLE_LEGACY
+    ELEMENT_NAME_MLE_SHA256,   #ELEMENT_NAME_MLE_SM3,
   ]
   
   # This replaces util.getHashes()
   # supported hash algorithm names
   SUPPORTED_HASHES = [
-    'SHA1', 'SHA256', 'SHA384', 'SHA512',
+    'SHA256', 'SHA384', 'SHA512',
     #'SM3'
   ]
   
   # allowed hash algorithm names
   ALLOWED_HASHES = [
-    'SHA1',
     #'SHA224', # not supported
     'SHA256', 'SHA384', 'SHA512',
     'SM3'
@@ -152,7 +136,6 @@ class DEFINES( object ):
   # ALLOWED_SIGNATURE_SCHEMES is ordered list that references TPM_ALG_SIGN_MASK
   # allowed signing algorithm names
   ALLOWED_SIGNATURE_SCHEMES = [
-    #'RSA-1024-SHA1', 'RSA-1024-SHA256', 'RSA-2048-SHA1',     # not supported
     'RSA-2048-SHA256',
     #'RSA-2048-SHA384', 'RSA-2048-SHA512',                    # not supported
     #'RSA-3072-SHA256', 'RSA-3072-SHA384', 'RSA-3072-SHA512', # not supported
@@ -163,7 +146,6 @@ class DEFINES( object ):
   
   SIGNATURE_ALGORITHMS = [
     'None',
-    #'RSA PKCS1.5/SHA1',
     'RSA PKCS1.5/SHA256',
     #'RSA PKCS1.5/SHA384',
     #'RSA PKCS1.5/SHA512',
@@ -182,8 +164,6 @@ class DEFINES( object ):
 
   # Hash Algorithm defines for pdef.hashAlg
   TPM_ALG_HASH = {
-    'SHA1_LEGACY'         : 0x0000,
-    'SHA1'                : 0x0004,
     'SHA256'              : 0x000B,
     'SHA384'              : 0x000C,
     'SHA512'              : 0x000D,
@@ -201,7 +181,6 @@ class DEFINES( object ):
 
   # SHAXXXXX_DIGEST_SIZE
   DIGEST_SIZE = {
-    'SHA1'                : 20,
     'SHA256'              : 32,
     'SHA384'              : 48,
     'SHA512'              : 64,
@@ -210,7 +189,6 @@ class DEFINES( object ):
 
   # TPM_ALG_HASH_MASK_XXXX
   TPM_ALG_HASH_MASK = {
-    'SHA1'                : 0x0001,
     'SHA224'              : 0x0002,
     'SHA512_224'          : 0x0004,
     'SHA256'              : 0x0008,
@@ -223,9 +201,6 @@ class DEFINES( object ):
 
   # TPM_ALG_SIGN_MASK_XXXX
   TPM_ALG_SIGN_MASK = {
-    'RSA-1024-SHA1'       : 0x00000001,
-    'RSA-1024-SHA256'     : 0x00000002,
-    'RSA-2048-SHA1'       : 0x00000004,
     'RSA-2048-SHA256'     : 0x00000008,
     'RSA-2048-SHA384'     : 0x00000010,
     'RSA-2048-SHA512'     : 0x00000020,
@@ -244,12 +219,10 @@ class DEFINES( object ):
 
   HashFileMode = {
     'HdrNull'     : 0,
-    'HdrSHA1'     : 1,
-    'RawSHA1'     : 2,
-    'RawSHA256'   : 3,
-    'RawSHA384'   : 4,
-    'RawSHA512'   : 5,
-    'RawSM3'      : 6 #TODO: check the value
+    'RawSHA256'   : 1,
+    'RawSHA384'   : 2,
+    'RawSHA512'   : 3,
+    'RawSM3'      : 4 #TODO: check the value
   }
 
   # Types of PCR dump Files - see util.verifyPcrFile()

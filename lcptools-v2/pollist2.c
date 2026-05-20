@@ -397,7 +397,7 @@ create_empty_tpm20_policy_list (
   LOG ("[create_empty_tpm20_policy_list]\n");
   lcp_policy_list_t2  *pollist = malloc (
                                          offsetof (
-                                                   lcp_policy_list_t,
+                                                   lcp_policy_list_t2,
                                                    policy_elements
                                                    )
                                          );

@@ -119,14 +119,14 @@ class MLELegacy( ElementGui ):
     #self.stmIsRequired.Bind(wx.EVT_CHECKBOX, self.onOverridePsPolicy)  # TODO: add function to handle event.
     #self.mlePanelWidgets.append(self.stmIsRequired)
     
-    hashList = ['SHA1']
+    hashList = ['SHA256']
     hashAlgLabel = wx.StaticText(self.mlePanel, label="Hash Algorithm")
     font = wx.Font( 10, wx.FONTFAMILY_DEFAULT, wx.NORMAL, wx.BOLD)
     hashAlgLabel.SetFont( font )
     self.mleGridSizer.Add(hashAlgLabel, pos=(0,20))
     self.mlePanelWidgets.append(hashAlgLabel)
 
-    hashAlgEdit = wx.ComboBox( self.mlePanel, size=(75, -1), value="SHA1", choices=hashList, style=wx.CB_DROPDOWN )
+    hashAlgEdit = wx.ComboBox( self.mlePanel, size=(75, -1), value="SHA256", choices=hashList, style=wx.CB_DROPDOWN )
     self.mleGridSizer.Add(hashAlgEdit, pos=(1,20))
     self.mlePanelWidgets.append(hashAlgEdit)
 
@@ -290,7 +290,6 @@ class MLELegacy( ElementGui ):
     self.setListModified()
     currentList.ElementDefData[self.myIndex].HashFiles = hashFileList
     currentList.ElementDefData[self.myIndex].NumbHashes = lineCnt
-    #print("MleLegacyDefData.NumbHashes=%i, HashFiles = %s" % (currentList.MleLegacyDefData[DEFINES.DEFDATA_INDEX['SHA1']].NumbHashes, currentList.MleLegacyDefData[DEFINES.DEFDATA_INDEX['SHA1']].HashFiles))   # DBGDBG
 
     # since hashListBox.AppendText() generates an event to onHashListBoxEdit()
     # and since hashListBoxEdit has to be enabled so text can be selected for Remove

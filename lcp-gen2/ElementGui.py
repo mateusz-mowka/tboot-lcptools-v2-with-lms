@@ -51,13 +51,10 @@ class ElementGui( object ):
 
 
   def getHashAlgName(self):
-    if 'Legacy' in self.__class__.__name__:
-      name = 'SHA1-LEGACY'
-    else:
-      try:
-        name = (key for key,val in DEFINES.TPM_ALG_HASH.items() if (val == self.myHashAlg)).next()
-      except StopIteration:
-        name = None
+    try:
+      name = (key for key,val in DEFINES.TPM_ALG_HASH.items() if (val == self.myHashAlg)).next()
+    except StopIteration:
+      name = None
     return name
 
 

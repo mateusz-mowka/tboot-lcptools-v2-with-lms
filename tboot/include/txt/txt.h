@@ -40,7 +40,6 @@
 
 /* TPM event log types */
 #define EVTLOG_UNKNOWN       0
-#define EVTLOG_TPM12         1
 #define EVTLOG_TPM2_LEGACY   2
 #define EVTLOG_TPM2_TCG      3
 

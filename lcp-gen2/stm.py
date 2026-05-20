@@ -56,8 +56,6 @@ class STM( ElementGui ):
 
     #if( hashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
     #  self.myIndex = DEFINES.DEFDATA_INDEX_SHA256
-    #elif( hashAlg == DEFINES.TPM_ALG_HASH['SHA1']):
-    #  self.myIndex = DEFINES.DEFDATA_INDEX_SHA1
     #else:
     #  print("STM::__init__ - invalid hashAlg=%d" % (hashAlg))
 

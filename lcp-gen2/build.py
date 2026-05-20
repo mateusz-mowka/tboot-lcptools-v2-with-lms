@@ -117,9 +117,7 @@ class Build( object ):
       #    f.close()
       #    return False
           
-        #if(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA1']):
-        #  pdef.PolicyHashSha1   = pack("20B", 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
-        #elif(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
+        #if(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
         #  pdef.PolicyHashSha256 = pack("32B", 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
         #elif(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA384']):
         #  pdef.PolicyHashSha384 = pack("40B", 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
@@ -141,9 +139,7 @@ class Build( object ):
       #    print("buildRawLcpPolicyFile: LIST - aborting - Hash Algorithm %d is not supported." % (pdef.HashAlg))  # DBGDBG
       #    f.close()
       #    return False
-      #if(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA1']):
-      #  print(pdef.PolicyHashSha1, end='', file=f )
-      #elif(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
+      #if(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
       #  print(pdef.PolicyHashSha256, end='', file=f )
       #else:     # don't hit the above else case if policyType=LIST
       #    self.StatusBar.SetStatusText("Aborting build, Hash Algorithm %d is not supported." % (pdef.HashAlg))
@@ -183,7 +179,7 @@ class Build( object ):
       print("word=", version, "\t\t# Version", sep='', file=f)
 
       hashAlg = '%04d' % (pdef.HashAlg)
-      print("word=", hashAlg, "\t\t# Hash Alg (4=Sha1[20], 11=Sha256[32]", sep='', file=f)
+      print("word=", hashAlg, "\t\t# Hash Alg (11=Sha256[32]", sep='', file=f)
 
       policyType = '%02d' % (pdef.PolicyType)
       print("byte=", policyType, "\t\t\t# PolicyType (0 = LIST, 1 = ANY)", sep='', file=f)
@@ -217,8 +213,6 @@ class Build( object ):
       
       #if(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
       #  print("byte=", pdef.PolicyHashSha256Hex, " # Hash", sep='', file=f)   # need to print the hex hash
-      #elif(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA1']):
-      #  print("byte=", pdef.PolicyHashSha1Hex,   " # Hash", sep='', file=f)   # need to print the hex hash
       print("byte=", binascii.b2a_hex(pdef.PolicyHash), " # Hash", sep='', file=f)   # need to print the hex hash
       
     except IOError:
@@ -274,8 +268,6 @@ class Build( object ):
 
       # if the list is signed, make sure that a public and private key file was specified
       # otherwise abort the build
-      #if(thisPdefList.SigAlgorithm == DEFINES.LCP_POLSALG_RSA_PKCS_15):     # TODO: add external signature support
-      #if(thisPdefList.SigAlgorithm == DEFINES.TPM_ALG_SIGN['RSASSA']):
       if thisPdefList.SigAlgorithm == DEFINES.TPM_ALG_SIGN['NULL']:
         # Not Signing..
         pass
@@ -329,9 +321,7 @@ class Build( object ):
 
     listCnt = 0
     while(listCnt < pdef.NumLists):
-      #if(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA1']):
-      #  thisHash = ListMeasurements.hashes[str(listCnt)]
-      #elif(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
+      #if(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
       #  thisHash = ListMeasurements.hashes32[str(listCnt)]
       thisHash = ListMeasurements.hashes[str(listCnt)]
       
@@ -359,7 +349,7 @@ class Build( object ):
     policyElementsSize = 0
     thisElementSize = 0
 
-    # Sort element in this order [MLE, STM, SBIOS, PCONF] from [SHA512... SHA1, SHA1-LEGACY]
+    # Sort element in this order [MLE, STM, SBIOS, PCONF] from [SHA512... SHA256]
     sortedPdefList = []
     mlelist = [element for element in thisPdefList.ElementDefData if 'MLE' in element.Name]
     sortedPdefList += sorted(mlelist, key=lambda x: x.HashAlg, reverse=True)
@@ -464,7 +454,6 @@ class Build( object ):
       # The RSA signature is calculated over the entire LCP_POLICY_LIST struct,
       # including the Signature member, EXCEPT for the SigBlock
       #
-      #if(thisPolicyList.SigAlgorithm == DEFINES.LCP_POLSALG_RSA_PKCS_15):
       if(thisPolicyList.SigAlgorithm != DEFINES.TPM_ALG_SIGN['NULL']):
         print("buildLcpPolicyDataFile: sign list %d" % (listCnt)) # DBGDBG
         self.signThisList(pdef, listCntStr, thisPolicyList, f, tmp, tmpFile)
@@ -670,8 +659,6 @@ class Build( object ):
       if(thisPdefList.SigAlgorithm == DEFINES.TPM_ALG_SIGN['NULL']):
         if(not self.hashThisList(pdef, thisPdefList, thisPolicyList, listCnt)):
            return False
-      #elif(thisPdefList.SigAlgorithm == DEFINES.LCP_POLSALG_RSA_PKCS_15):
-      #elif(thisPdefList.SigAlgorithm == DEFINES.TPM_ALG_SIGN['RSASSA']):
       else:
         # Get the key from the file again in case it was replaced
         type = DEFINES.KEY_FILE_TYPE['PUBLIC_RSASSA']

@@ -312,7 +312,6 @@ typedef struct {
 } HASH_SIZE_INFO;
 
 HASH_SIZE_INFO hash_sizes[] = {
-    {TPM_ALG_SHA1,          SHA1_DIGEST_SIZE},
     {TPM_ALG_SHA256,        SHA256_DIGEST_SIZE},
     {TPM_ALG_SHA384,        SHA384_DIGEST_SIZE},
     {TPM_ALG_SHA512,        SHA512_DIGEST_SIZE},
@@ -344,7 +343,7 @@ static void reverse_copy_digest_value_in(void **other, TPML_DIGEST_VALUES *tpml_
         num_bytes = get_digest_size(tpml_digest->digests[i].hash_alg);
 
         for (k=0; k<num_bytes; k++) {
-            *((u8 *)*other) = tpml_digest->digests[i].digest.sha1[k];
+            *((u8 *)*other) = tpml_digest->digests[i].digest.sha512[k];
             *other += sizeof(u8);
         }
     }
@@ -368,7 +367,7 @@ static bool reverse_copy_digest_values_out(TPML_DIGEST_VALUES *tpml_digest,
         num_bytes = get_digest_size(tpml_digest->digests[i].hash_alg);
 
         for (k=0; k<num_bytes; k++) {
-            tpml_digest->digests[i].digest.sha1[k] = *((u8 *)*other);
+            tpml_digest->digests[i].digest.sha512[k] = *((u8 *)*other);
             *other += sizeof(u8);
         }
     }

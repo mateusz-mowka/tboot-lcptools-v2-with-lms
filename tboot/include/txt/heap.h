@@ -85,24 +85,6 @@ typedef struct __packed {
     uint8_t    data[];
 } heap_custom_elt_t;
 
-/*
- * HEAP_EVENT_LOG_POINTER_ELEMENT
- */
-#define HEAP_EXTDATA_TYPE_TPM_EVENT_LOG_PTR   5
-
-typedef struct __packed {
-    uint64_t   event_log_phys_addr;
-} heap_event_log_ptr_elt_t;
-
-typedef struct __packed {
-    uint32_t pcr_index;
-    uint32_t type;
-    sha1_hash_t digest;
-    uint32_t data_size;
-    uint8_t data[];
-} tpm12_pcr_event_t;
-
-
 //Event Log Header
 
 /*
@@ -162,23 +144,7 @@ typedef struct __packed {
     uint8_t vendor_info[];    
 } tcg_efi_specid_event_strcut;
 
-#define EVTLOG_SIGNATURE "TXT Event Container\0"
-#define EVTLOG_CNTNR_MAJOR_VER 1
-#define EVTLOG_CNTNR_MINOR_VER 0
-#define EVTLOG_EVT_MAJOR_VER 1
-#define EVTLOG_EVT_MINOR_VER 0
-typedef struct __packed {
-    uint8_t signature[20];
-    uint8_t reserved[12];
-    uint8_t container_ver_major;
-    uint8_t container_ver_minor;
-    uint8_t pcr_event_ver_major;
-    uint8_t pcr_event_ver_minor;
-    uint32_t size;
-    uint32_t pcr_events_offset;
-    uint32_t next_event_offset; 
-    tpm12_pcr_event_t pcr_events[];
-} event_log_container_t;
+
 
 /*
  * HEAP_EVENT_LOG_POINTER_ELEMENT2
@@ -186,16 +152,13 @@ typedef struct __packed {
 #define HEAP_EXTDATA_TYPE_TPM_EVENT_LOG_PTR_2  7 
 #define HEAP_EXTDATA_TYPE_TPM_EVENT_LOG_PTR_2_1  8
 
-#define DIGEST_ALG_ID_SHA_1       0x00000001
 #define DIGEST_ALG_ID_SHA_256     0x00000002
 #define DIGEST_ALG_ID_SHA_384     0x00000003
 #define DIGEST_ALG_ID_SHA_512     0x00000004
 #define DIGEST_ALG_ID_SM3         0x00000005
 static inline unsigned int get_evtlog_digest_id(uint16_t hash_alg)
 {
-    if ( hash_alg == TB_HALG_SHA1 )
-        return DIGEST_ALG_ID_SHA_1;
-    else if ( hash_alg == TB_HALG_SHA256 )
+    if ( hash_alg == TB_HALG_SHA256 )
         return DIGEST_ALG_ID_SHA_256;
     else if ( hash_alg == TB_HALG_SM3 )
         return DIGEST_ALG_ID_SM3;
@@ -351,14 +314,14 @@ typedef struct __packed {
 
 typedef struct __packed {
     uint32_t     version;             /* currently 6-9 */
-    sha1_hash_t  bios_acm_id;         /* only for tpm1.2 */
-    uint32_t     edx_senter_flags;    /* only for tpm1.2 */
-    uint64_t     mseg_valid;          /* only for tpm1.2 */
-    sha1_hash_t  sinit_hash;          /* only for tpm1.2 */
-    sha1_hash_t  mle_hash;            /* only for tpm1.2 */
-    sha1_hash_t  stm_hash;            /* only for tpm1.2 */
-    sha1_hash_t  lcp_policy_hash;     /* only for tpm1.2 */
-    uint32_t     lcp_policy_control;  /* only for tpm1.2 */
+    uint8_t      bios_acm_id[20];     /* reserved, was tpm1.2 only */
+    uint32_t     edx_senter_flags;    /* reserved, was tpm1.2 only */
+    uint64_t     mseg_valid;          /* reserved, was tpm1.2 only */
+    uint8_t      sinit_hash[20];      /* reserved, was tpm1.2 only */
+    uint8_t      mle_hash[20];        /* reserved, was tpm1.2 only */
+    uint8_t      stm_hash[20];        /* reserved, was tpm1.2 only */
+    uint8_t      lcp_policy_hash[20]; /* reserved, was tpm1.2 only */
+    uint32_t     lcp_policy_control;  /* reserved, was tpm1.2 only */
     uint32_t     rlp_wakeup_addr;
     uint32_t     reserved;
     uint32_t     num_mdrs;

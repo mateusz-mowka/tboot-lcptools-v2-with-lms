@@ -44,12 +44,10 @@
 /* un-comment to enable detailed command tracing */
 //#define TPM_TRACE
 
-#define TPM_IF_12 0
 #define TPM_IF_20_FIFO 1
 #define TPM_IF_20_CRB 2
 
 #define TPM_VER_UNKNOWN 0
-#define TPM_VER_12 1
 #define TPM_VER_20 2
 
 #define TPM_INTERFACE_ID_FIFO_20  0x0
@@ -122,8 +120,6 @@ typedef struct __packed {
 #define TPM_ALG_RSA               0x0001
 #define TPM_ALG_DES               0x0002
 #define TPM_ALG__3DES             0x0003
-#define TPM_ALG_SHA               0x0004
-#define TPM_ALG_SHA1              0x0004
 #define TPM_ALG_HMAC              0x0005
 #define TPM_ALG_AES               0x0006
 #define TPM_ALG_MGF1              0x0007
@@ -189,21 +185,6 @@ typedef union {
 } tpm_reg_access_t;
 
 /* TPM_STS_x */
-
-typedef union {
-    u8 _raw[3];                  /* 3-byte reg */
-    struct __packed {
-        u8 reserved1       : 1;
-        u8 response_retry  : 1;  /* WO, 1=re-send response */
-        u8 self_test_done  : 1;  /* RO, only for version 2 */
-        u8 expect          : 1;  /* RO, 1=more data for command expected */
-        u8 data_avail      : 1;  /* RO, 0=no more data for response */
-        u8 tpm_go          : 1;  /* WO, 1=execute sent command */
-        u8 command_ready   : 1;  /* RW, 1=TPM ready to receive new cmd */
-        u8 sts_valid       : 1;  /* RO, 1=data_avail and expect bits are  valid */
-        u16 burst_count    : 16; /* RO, # read/writes bytes before wait */
-    };
-} tpm12_reg_sts_t;
 
 typedef union {
     u8 _raw[4];                  /* 4-byte reg */
@@ -413,16 +394,11 @@ extern const uint8_t tboot_alg_list_count;
 typedef tb_hash_t tpm_digest_t;
 typedef tpm_digest_t tpm_pcr_value_t;
 
-/* only for tpm1.2 to (un)seal */
-extern tpm_pcr_value_t post_launch_pcr17;
-extern tpm_pcr_value_t post_launch_pcr18;
 
 struct tpm_if;
 struct tpm_if_fp;
 
 struct tpm_if {
-#define TPM12_VER_MAJOR   1
-#define TPM12_VER_MINOR   2
 #define TPM20_VER_MAJOR   2
 #define TPM20_VER_MINOR   0
     u8 major;
@@ -493,7 +469,6 @@ struct tpm_if_fp {
 };
 
 extern struct tpm_if_data tpm_if_data;
-extern const struct tpm_if_fp tpm_12_if_fp;
 extern const struct tpm_if_fp tpm_20_if_fp;
 extern uint8_t g_tpm_ver;
 extern uint8_t g_tpm_family;

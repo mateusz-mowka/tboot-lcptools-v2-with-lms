@@ -40,7 +40,6 @@
 #include <compiler.h>
 #include <string.h>
 #include <misc.h>
-#include <sha1.h>
 #include <sha2.h>
 #include <hash.h>
 
@@ -83,11 +82,7 @@ bool hash_buffer(const unsigned char* buf, size_t size, tb_hash_t *hash,
         return false;
     }
 
-    if ( hash_alg == TB_HALG_SHA1 ) {
-        sha1_buffer(buf, size, hash->sha1);
-        return true;
-    }
-    else if ( hash_alg == TB_HALG_SHA256 ) {
+    if ( hash_alg == TB_HALG_SHA256 ) {
         sha256_buffer(buf, size, hash->sha256);
         return true;
     }
@@ -124,13 +119,7 @@ bool extend_hash(tb_hash_t *hash1, const tb_hash_t *hash2, uint16_t hash_alg)
         return false;
     }
 
-    if ( hash_alg == TB_HALG_SHA1 ) {
-        tb_memcpy(buf, &(hash1->sha1), sizeof(hash1->sha1));
-        tb_memcpy(buf + sizeof(hash1->sha1), &(hash2->sha1), sizeof(hash1->sha1));
-        sha1_buffer(buf, 2*sizeof(hash1->sha1), hash1->sha1);
-        return true;
-    }
-    else if ( hash_alg == TB_HALG_SHA256 ) {
+    if ( hash_alg == TB_HALG_SHA256 ) {
         tb_memcpy(buf, &(hash1->sha256), sizeof(hash1->sha256));
         tb_memcpy(buf + sizeof(hash1->sha256), &(hash2->sha256), sizeof(hash1->sha256));
         sha256_buffer(buf, 2*sizeof(hash1->sha256), hash1->sha256);
@@ -165,9 +154,7 @@ void print_hash(const tb_hash_t *hash, uint16_t hash_alg)
         return;
     }
 
-    if ( hash_alg == TB_HALG_SHA1 )
-        print_hex(NULL, (uint8_t *)hash->sha1, sizeof(hash->sha1));
-    else if ( hash_alg == TB_HALG_SHA256 )
+    if ( hash_alg == TB_HALG_SHA256 )
         print_hex(NULL, (uint8_t *)hash->sha256, sizeof(hash->sha256));
     else if ( hash_alg == TB_HALG_SM3 )
         print_hex(NULL, (uint8_t *)hash->sm3, sizeof(hash->sm3));

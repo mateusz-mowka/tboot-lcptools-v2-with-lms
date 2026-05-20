@@ -221,8 +221,7 @@ class UTILS( object ):
 
 
   # Verify that the file is a valid HASH_FILE with a HASH_TAG, hashAlg and hashSize
-  #     [with 1 or more SHA1 hashes]  - legacy support from the TPM1.2 LCP1 Spec
-  # or a raw data file [i.e. no header] with ONLY 1 20 bit SHA1 or 32 bit SHA256 hash
+  # or a raw data file [i.e. no header] with ONLY 1 32 bit SHA256 hash
   #
   # if OK, return a list containing: [True, HashFileModeXXX]  defined in defines.py
   # else return a list containing:   [False, HashFileModeNull]
@@ -230,23 +229,21 @@ class UTILS( object ):
   #     or if the length indicates the hash does not correspond to the elements.HashAlg
   #
   #TODO: Bill: verifyHashFile- LCP2 spec  deletes the HASH_FILE struct def for files with multiple hashes??
-  #TODO: Bill: verifyHashFile- still supporting files with multiple SHA1 hashes [with the hdr] or raw SHA1 or 256 files
   #
   def verifyHashFile(self, file, hashAlg):
     """verifyHashFile - return a list indicating if the file is valid and its type"""
 
     # HASH_FILE's are structured as:
-    #   - SHA1 or SHA256 hash data only, for raw SHA1 or SHA256 files with 1 hash
-    #   - SHA1 hash files with a header [defined below] containing 1 or more SHA1 hashes
+    #   - raw SHA256 hash data only, for raw files with 1 SHA256 hash
     #
     #  Where the header is:
     #     HASH_TAG = 0x48534148 = "HASH"
     #     typedef struct {
     #       UINT32 tag HASH_TAG;          # 4 bytes  "HASH"
-    #       UINT8 hashAlg ;               # 1 byte   SHA1_ALG = 4
-    #       UINT8 hashSize ;              # 1 byte   SHA1 = 20
+    #       UINT8 hashAlg ;               # 1 byte
+    #       UINT8 hashSize ;              # 1 byte
     #       UINT8 reserve[10] ;           # 12 bytes
-    #       SHA1 - SHA256 hash ;          # 20 bytes
+    #       hash ;                        # hash bytes
     #     } HASH_FILE;                    # ________
     #     File Size                       # 36 bytes
     # read the 1st 4 bytes from the file (i.e. the actualTag) and compare that to the expectedTag
@@ -254,8 +251,6 @@ class UTILS( object ):
     function = "verifyHashFile"
     mode = DEFINES.HashFileMode['RawSHA256']    # default
 
-    hashFileLengthHdrSha1   = 36    # header + SHA1 hash data
-    hashFileLengthRawSha1   = DEFINES.DIGEST_SIZE['SHA1']    # raw hash files have only the hash data, no header
     hashFileLengthRawSha256 = DEFINES.DIGEST_SIZE['SHA256']
     #hashFileLengthRawSha384 = 48
     #hashFileLengthRawSha512 = 64
@@ -268,8 +263,6 @@ class UTILS( object ):
 
     try:
       hashAlgStr = (key for key,val in DEFINES.TPM_ALG_HASH.items() if hashAlg == val).next()
-      if hashAlgStr == 'SHA1_LEGACY':
-          hashAlgStr = 'SHA1'
     except StopIteration:
       print("Unsupported hash algorithm (%d)" %(hashAlg))
       return [False, DEFINES.HashFileMode['HdrNull']]
@@ -280,49 +273,7 @@ class UTILS( object ):
     f.seek (0, os.SEEK_END)
     actualSize = f.tell()
 
-    if(actualSize == hashFileLengthHdrSha1):
-      mode = DEFINES.HashFileMode['HdrSHA1']
-      hashFileLength = hashFileLengthHdrSha1
-
-      # read the data
-      #
-      f.seek (0, os.SEEK_SET)     # back to the begininng
-      data = array.array ("B")   # Load file into data array
-      try:
-        data.fromfile (f, hashFileLength)
-      except:
-        print ("Error reading hash from file %s" % (file))
-        f.close()
-        return [False, DEFINES.HashFileMode['HdrNull']]
-
-      if(hashAlg != DEFINES.TPM_ALG_HASH['SHA1'] and hashAlg != DEFINES.TPM_ALG_HASH['SHA1_LEGACY']):
-        self.invalidHashFileMsg(file, hashAlg, DEFINES.TPM_ALG_HASH['SHA1'], hashFileLength)
-        return [False, DEFINES.HashFileMode['HdrNull']]
-
-      expectedHashTag = "HASH"        # 0x48415348
-      expectedSha1HashAlg =  4          # '\x04'
-      expectedSha1HashSize = 20         # '\x14'
-
-      actualHashTag  = data[0:4].tostring()          # 0:3 inclusive = 0:4 exclusive of 4
-      actualHashAlg  = data[4]
-      actualHashSize = data[5]
-
-      if(actualHashTag != expectedHashTag):
-        # check if a raw file matching the element's HashAlg length
-        print ("File: %s invalid tag = %s, expected %s" % (file, actualHashTag, expectedHashTag))
-        return [False, DEFINES.HashFileMode['HdrNull']]
-
-      if(actualHashAlg != expectedSha1HashAlg):
-        print ("File: %s invalid hashAlg = 0x%x, expected 0x%x" %
-              (file, actualHashAlg, expectedSha1HashAlg))
-        return [False, DEFINES.HashFileMode['HdrNull']]
-
-      if(actualHashSize != expectedSha1HashSize):
-        print ("File: %s invalid hashSize = 0x%x, expected 0x%x" %
-              (file, actualHashSize, expectedSha1HashSize))
-        return [False, DEFINES.HashFileMode['HdrNull']]
-
-    elif actualSize == DEFINES.DIGEST_SIZE[hashAlgStr]:
+    if actualSize == DEFINES.DIGEST_SIZE[hashAlgStr]:
       modeStr = 'Raw' + hashAlgStr
       mode = DEFINES.HashFileMode[modeStr]
       hashFileLength = DEFINES.DIGEST_SIZE[hashAlgStr]
@@ -334,12 +285,6 @@ class UTILS( object ):
     print("verifyHashFile - HashAlg=%d, Mode=%d, Len=%d" % (hashAlg, mode, hashFileLength)) # DBGDBG
 
     f.close()
-    # handle SHA1 files with headers
-    #if(mode == DEFINES.HashFileMode['HdrSHA1']):
-    #
-    #else:
-    #  print("verifyHashFile - Error: invalid mode = %d, aborting." % (mode))
-    #  return [False, DEFINES.HashFileMode['HdrNull']]
 
     return [True, mode]
 
@@ -352,20 +297,8 @@ class UTILS( object ):
   def verifyPcrFile(self, file, elementExpAlg):
     """verifyPcrFile - Validate the pcrFile"""
 
-    # 2 types of PCR dump files are supported: PCRD and PCR2
-    # PCR Dump File format
-    #     typedef struct {
-    #       UINT32 tag PCRD_TAG;          # 4 bytes  "PCRD" = 0x44524350
-    #       UINT8 hashAlg ;               # 1 byte   SHA1_ALG = 4 SHA256_ALG = 0x0b
-    #       UINT8 hashSize ;              # 1 byte   SHA1 = 20  SHA256 = 32
-    #       UINT8 numHashes ;             # 1 byte   number of hashes in the file
-    #       UINT8 reserve[9] ;            # 9 bytes
-    #       SHA1 pcrs[24] ;               # 20 bytes * numHashes
-    #     } HASH_FILE;                    # ________
-    #  File Size                       # 16  + (NumHashes * HashSize) bytes
-    #  Typically all 24 PCRs included  so size for SHA1 = 16 + 24*20 = 496 = 0x1f0
-    #  LCP tool only requires the 1st 8 PCRs, if they are selected via pcr0to7SelectionBitMask
-    #  I.e. if the bit mask 0-7 = 1 then that PCR is required
+    # PCR dump files use the PCR2 format.
+    # PCRD format (TPM1.2) is no longer supported.
     #
 
     # - PCR2 PCR dump File format  - from App. C.1.2
@@ -409,16 +342,10 @@ class UTILS( object ):
     fileHashTag  = data[0:4].tostring()          # 0:3 inclusive = 0:4 exclusive of 4
     numHashes = data[6]                          # PCRD 'numHashes' same as PCR2 'count'
     fileType = DEFINES.PcrFileMode['Null']
-    if(fileHashTag == expectedPcrdTag):          # PCRD file
-      fileType = DEFINES.PcrFileMode['PcrdSHA1']
-      fileActualHashAlg  = data[4]               # HashAlg is a UINT8
-      if(elementExpAlg != DEFINES.TPM_ALG_HASH['SHA1']):
-        print ("%s file %s SHA1 hash algorithm does not match the PCONF element's expected algorithm: 0x%x" %
-            (expectedPcrdTag, file, elementExpAlg))
-        return [False, DEFINES.PcrFileMode['Pcrd']]
-      else:
-        actAlg = DEFINES.TPM_ALG_HASH['SHA1']    # LCP2 PCRD format only supports SHA1 per C.1.1
-        minFileLength   = DEFINES.PCRDFileHdrSize + (8*DEFINES.DIGEST_SIZE['SHA1'])   # min PCRD SHA1   file has 8 hash's
+    if(fileHashTag == expectedPcrdTag):          # PCRD file (TPM1.2 only, no longer supported)
+      print ("%s file %s uses PCRD format which is no longer supported (TPM1.2 only)" %
+          (expectedPcrdTag, file))
+      return [False, DEFINES.PcrFileMode['Pcrd']]
 
     elif(fileHashTag == expectedPcr2Tag):        # PCR2 file
       # HashAlg in [4:5] is little endian so for current algs high byte=data[5]=0 and low byte=hashAlg
@@ -427,7 +354,7 @@ class UTILS( object ):
       if(elementExpAlg == fileActualHashAlg):
         actAlg = fileActualHashAlg
         fileType = DEFINES.PcrFileMode['Pcr2']
-        minFileLength   = DEFINES.PCR2FileHdrSize + (8*DEFINES.DIGEST_SIZE[elementExpAlgStr])   # min PCR2 SHA1   file has 8 hash's
+        minFileLength   = DEFINES.PCR2FileHdrSize + (8*DEFINES.DIGEST_SIZE[elementExpAlgStr])   # min PCR2 file has 8 hash's
       else:
         print("%s file: %s hashAlg: 0x%x%x does not match the PCONF element's expected algorithm: 0x%02x" %
             (expectedPcr2Tag, file, data[4], data[5], elementExpAlg))
@@ -476,9 +403,10 @@ class UTILS( object ):
       print("verifyPcrInfoNumHashes - invalid fileType=%x hash alg!!!" % (file, fileType, hashAlg))  # Should NEVER get here
 
     if(fileType == DEFINES.PcrFileMode['Pcrd']):
-      minFileLength   = DEFINES.PCRDFileHdrSize + (8*DEFINES.DIGEST_SIZE['SHA1'])   # min PCRD SHA1   file has 8 hash's
+      print("PCRD format is no longer supported (TPM1.2 only)")
+      return False
     elif(fileType == DEFINES.PcrFileMode['Pcr2']):
-      minFileLength   = DEFINES.PCR2FileHdrSize + (8*DEFINES.DIGEST_SIZE[hashAlgStr])   # min PCR2 SHA1   file has 8 hash's
+      minFileLength   = DEFINES.PCR2FileHdrSize + (8*DEFINES.DIGEST_SIZE[hashAlgStr])   # min PCR2 file has 8 hash's
     else:
       print("verifyPcrInfoNumHashes - invalid fileType=%x!!!" % (file, fileType))  # Should NEVER get here
 
@@ -510,7 +438,8 @@ class UTILS( object ):
       return False
 
     if(fileType == DEFINES.PcrFileMode['Pcrd']):
-      expectedFileSize = DEFINES.PCRDFileHdrSize + (numHashes * DEFINES.DIGEST_SIZE['SHA1'])
+      print("PCRD format is no longer supported (TPM1.2 only)")
+      return False
     elif(fileType == DEFINES.PcrFileMode['Pcr2']):
       expectedFileSize = DEFINES.PCR2FileHdrSize + (numHashes * DEFINES.DIGEST_SIZE[hashAlgStr])
     else:
@@ -568,9 +497,7 @@ class UTILS( object ):
     if(fileType == DEFINES.HashFileMode['HdrNull']):
       print("getHashFromFile - Error: invalid mode = %d, aborting." % (result[1]))
       return []
-    elif(fileType == DEFINES.HashFileMode['HdrSHA1']):
-      hashFileLength = 36
-    elif(fileType in DEFINES.HashFileMode.values()):  # All other raw modes
+    elif(fileType in DEFINES.HashFileMode.values()):  # All raw modes
       hashFileLength = DEFINES.DIGEST_SIZE[hashAlgStr]
     else:
       print("getHashFromFile - Error: invalid mode = %d, aborting." % (result[1]))
@@ -589,14 +516,9 @@ class UTILS( object ):
     #print("getHashFromFile - data = %s, len=%d" % (data, len(data))) # DBGDBG
 
     # handle all the flavors of hash files
-    if(fileType == DEFINES.HashFileMode['HdrSHA1']):
-      _GlobalHashData = data[16:36].tolist()        # 20 bytes 16:36 exclusive
-      print("getHashFromFile: %s, Hdr tag=%s alg=%i, size=%i, hash=%s, len=%d" %
-           (file, data[0:4].tostring(), data[4], data[5], _GlobalHashData, len(_GlobalHashData)))   # DBGDBG
-    else:
-      _GlobalHashData = data.tolist()
-      assert len(data) == DEFINES.DIGEST_SIZE[hashAlgStr], "Error: File size (%d bytes) mismatch with %s size (%d bytes)" %(len(data), hashAlgStr, DEFINES.DIGEST_SIZE[hashAlgStr])
-      print("getHashFromFile: %s, raw %s hash=%s, len=%d" % (file, hashAlgStr, _GlobalHashData, len(_GlobalHashData)))   # DBGDBG
+    _GlobalHashData = data.tolist()
+    assert len(data) == DEFINES.DIGEST_SIZE[hashAlgStr], "Error: File size (%d bytes) mismatch with %s size (%d bytes)" %(len(data), hashAlgStr, DEFINES.DIGEST_SIZE[hashAlgStr])
+    print("getHashFromFile: %s, raw %s hash=%s, len=%d" % (file, hashAlgStr, _GlobalHashData, len(_GlobalHashData)))   # DBGDBG
 
     return _GlobalHashData;
 
@@ -615,7 +537,8 @@ class UTILS( object ):
     global _GlobalPcrHash
 
     if(fileType == DEFINES.PcrFileMode['Pcrd']):
-      hdrSize = DEFINES.PCRDFileHdrSize
+      print("PCRD format is no longer supported (TPM1.2 only)")
+      return False
     elif(fileType == DEFINES.PcrFileMode['Pcr2']):
       hdrSize = DEFINES.PCR2FileHdrSize
     else:
@@ -648,8 +571,9 @@ class UTILS( object ):
         f.close()
         return False
     elif tag == 'PCRD':
-      # PCR1 file format
-      pos = hdrSize + (thisPcr * hashSize)
+      print("PCRD format is no longer supported (TPM1.2 only)")
+      f.close()
+      return False
     else:
       print ("Error invalid PCR tag format for file %s" % (file))
 
@@ -684,14 +608,13 @@ class UTILS( object ):
     # PCR Dump File format
     #     typedef struct {
     #       UINT32 tag PCRD_TAG;          # 4 bytes  "PCRD" = 0x44524340
-    #       UINT8 hashAlg ;               # 1 byte   SHA1_ALG = 4 SHA256_ALG = 0x0b
-    #       UINT8 hashSize ;              # 1 byte   SHA1 = 20  SHA256 = 32
+    #       UINT8 hashAlg ;               # 1 byte   SHA256_ALG = 0x0b
+    #       UINT8 hashSize ;              # 1 byte   SHA256 = 32
     #       UINT8 numHashes ;             # 1 byte   number of hashes in the file
     #       UINT8 reserve[9] ;            # 9 bytes
-    #       SHA1 pcrs[24] ;               # 20 bytes * numHashes
+    #       hash pcrs[24] ;               # hashSize bytes * numHashes
     #     } HASH_FILE;                    # ________
     #  File Size                       # 16  + (NumHashes * HashSize) bytes
-    #  Typically all 24 PCRs included  so size for SHA1 = 16 + 24*20 = 496 = 0x1f0
     #  LCP tool only requires the 1st 8 PCRs, if they are selected via pcr0to7SelectionBitMask
     #  I.e. if the bit mask 0-7 = 1 then that PCR is required
     #
@@ -746,10 +669,8 @@ class UTILS( object ):
       minFileLength = pcrStartPos + (8 * (2 + expectedPcrHashSize))             # PCR2 file structure has 8 bytes followed by size and value for each measurement. min file has 8 hash's
       expectedFileSize = pcrStartPos + (numHashes * (2 + expectedPcrHashSize))  # include the 2-byte size field for each PCR value
     elif tag == 'PCRD':
-      expectedPcrHashSize = 0x14                                                # for TPM1 only SHA1 is supported which has length of 20 bytes.
-      pcrStartPos = 16                                                          # position of the first PCR measurement in the file
-      minFileLength = pcrStartPos + (8 * expectedPcrHashSize)                   # PCRD file structure has 16 bytes followed by value of each measurements. min file has 8 hash's
-      expectedFileSize = pcrStartPos + (numHashes * expectedPcrHashSize)
+      print("PCRD format is no longer supported (TPM1.2 only)")
+      return False
 
     # Check PCR dump for valid file size
     if(actualFileSize < expectedFileSize):
@@ -796,7 +717,8 @@ class UTILS( object ):
         if tag == 'PCR2':
           pos = pcrStartPos + 2 + bit * (2 + hashLength)
         elif tag == 'PCRD':
-          pos = pcrStartPos + bit * hashLength
+          print("PCRD format is no longer supported (TPM1.2 only)")
+          return
 
         temp += data[pos:pos+hashLength]
         numSelectedPcrs += 1
@@ -809,7 +731,7 @@ class UTILS( object ):
 
     #print("hashPcrInfoFromFile TypeOf: tempList=%s, tempList[0]=%s, _GlobalPcrHash=%s, _GlobalPcrHash[0]=%s" %
     #        (type(tempList), type(tempList[0]), type(_GlobalPcrHash), type(_GlobalPcrHash[0])))  # DBGDBG
-    #pcrHash = hashlib.sha1()
+    #pcrHash = hashlib.sha256()
     hashAlg = header[4]   # TODO: is hashAlg determined by GUI or from PCR file.
     hashAlgStr = None
     try:
@@ -827,20 +749,8 @@ class UTILS( object ):
     if tag == 'PCR2':
       pcrHash.update(temp)
     elif tag == 'PCRD':
-      #pcrHash = hashlib.sha1()
-      pcrHash = M2Crypto.EVP.MessageDigest('sha1')
-      # The PCR composite hash consists of:  TPM_PCR_COMPOSITE structure
-      #     UINT16  sizeOfSelect              # BigEndian = 00 03
-      #     UINT8   pcr_select[3]
-      #     UINT32  valueSize                 # BigEndian = 20 * NumberOfSelectedHashes
-      #     UINT8   pcrValue[]                # all the selected PCR hashes
-      data = pack("<BBBBB", 0, 3, pcr0to7SelectionBitMask, 0, 0)  # pack sezeOfSelect and pcr_select[3]
-      pcrHash.update(data)
-      valueSize = numSelectedPcrs * DEFINES.DIGEST_SIZE['SHA1']
-      data = pack(">L", valueSize)            # Note '>' for BigEndian packing of valueSize
-      pcrHash.update(data)
-      # pack pcrValue[]
-      pcrHash.update(temp)
+      print("PCRD format is no longer supported (TPM1.2 only)")
+      return
 
     # hash.digest() Returns the digest of the strings passed to the update() method so far.
     # This is a string of digest_size bytes [which may contain non-ASCII characters, including null bytes]

@@ -70,13 +70,9 @@ static bool hash_file(const char *filename, bool unzip, tb_hash_t *hash, uint16_
 
     const EVP_MD *md;
     uint8_t* hash_out;
-    EVP_MD_CTX *ctx = EVP_MD_CTX_create();
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
 
      switch (hash_alg) {
-        case TB_HALG_SHA1:
-            md = EVP_sha1();
-            hash_out = hash->sha1;
-            break;
         case TB_HALG_SHA256:
             md = EVP_sha256();
             hash_out = hash->sha256;
@@ -91,7 +87,7 @@ static bool hash_file(const char *filename, bool unzip, tb_hash_t *hash, uint16_
             break;
         default:
             error_msg("unsupported hash alg (%d)\n", hash_alg);
-            EVP_MD_CTX_destroy(ctx);
+            EVP_MD_CTX_free(ctx);
             if ( unzip ) {
                 gzclose((gzFile)f);
             } else {
@@ -118,7 +114,7 @@ static bool hash_file(const char *filename, bool unzip, tb_hash_t *hash, uint16_
     else
         fclose(f);
     
-    EVP_MD_CTX_destroy(ctx);
+    EVP_MD_CTX_free(ctx);
     return true;
 }
 
