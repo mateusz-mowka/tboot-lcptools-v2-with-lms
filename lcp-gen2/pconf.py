@@ -60,11 +60,6 @@ class PCONF( ElementGui ):
     #else:
     #  print("PCONF::__init__ - invalid hashAlg=%d" % (hashAlg))
 
-    #if( hashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
-    #  self.myIndex = DEFINES.DEFDATA_INDEX_SHA256
-    #else:
-    #  print("PCONF::__init__ - invalid hashAlg=%d" % (hashAlg))
-
     self.myHashAlg = hashAlg
 
   #

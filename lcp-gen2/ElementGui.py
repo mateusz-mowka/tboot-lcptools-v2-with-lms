@@ -55,6 +55,7 @@ class ElementGui( object ):
       name = (key for key,val in DEFINES.TPM_ALG_HASH.items() if (val == self.myHashAlg)).next()
     except StopIteration:
       name = None
+
     return name
 
 

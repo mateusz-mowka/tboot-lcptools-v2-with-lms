@@ -52,10 +52,7 @@ class DEFINES( object ):
   LCP_POLSALG_ECDSA       = 2
   LCP_POLSALG_SM2         = 3
 
-  # Element types:  MLE, PCONF, SBIOS and STM
-  LCP_POLELT_TYPE_MLE    = 0x00
-  LCP_POLELT_TYPE_PCONF  = 0x01
-  LCP_POLELT_TYPE_SBIOS  = 0x02
+  # Element types:  MLE2, PCONF2, SBIOS2 and STM
   LCP_POLELT_TYPE_MLE2   = 0x10
   LCP_POLELT_TYPE_PCONF2 = 0x11
   LCP_POLELT_TYPE_SBIOS2 = 0x12
@@ -65,10 +62,10 @@ class DEFINES( object ):
   # So Pdef_list.[Mle,Pconf,Sbios,Stm]DefData[x]  is now an array
   # where x is one of the indexes below which must be < MAX_ELEMENTS
   DEFDATA_INDEX = {
-    'SHA256'    : 0,
-    'SHA384'    : 1,
-    'SHA512'    : 2,
-    #'SM3'       : 3
+    'SHA256' : 0,
+    'SHA384' : 1,
+    'SHA512' : 2,
+    #'SM3'   : 3
   }
 
 
@@ -78,23 +75,23 @@ class DEFINES( object ):
   # So the following element names are possible:
   ELEMENT_NAME_NONE          = "None"
   ELEMENT_NAME_MLE_SHA256    = "MLE-SHA256"
-  ELEMENT_NAME_MLE_SHA384   = "MLE-SHA384"
-  ELEMENT_NAME_MLE_SHA512   = "MLE-SHA512"
+  ELEMENT_NAME_MLE_SHA384    = "MLE-SHA384"
+  ELEMENT_NAME_MLE_SHA512    = "MLE-SHA512"
   ELEMENT_NAME_MLE_SM3       = "MLE-SM3"
 
   ELEMENT_NAME_PCONF_SHA256  = "PCONF-SHA256"
-  ELEMENT_NAME_PCONF_SHA384 = "PCONF-SHA384"
-  ELEMENT_NAME_PCONF_SHA512 = "PCONF-SHA512"
+  ELEMENT_NAME_PCONF_SHA384  = "PCONF-SHA384"
+  ELEMENT_NAME_PCONF_SHA512  = "PCONF-SHA512"
   ELEMENT_NAME_PCONF_SM3     = "PCONF-SM3"
 
   ELEMENT_NAME_SBIOS_SHA256  = "SBIOS-SHA256"
-  ELEMENT_NAME_SBIOS_SHA384 = "SBIOS-SHA384"
-  ELEMENT_NAME_SBIOS_SHA512 = "SBIOS-SHA512"
+  ELEMENT_NAME_SBIOS_SHA384  = "SBIOS-SHA384"
+  ELEMENT_NAME_SBIOS_SHA512  = "SBIOS-SHA512"
   ELEMENT_NAME_SBIOS_SM3     = "SBIOS-SM3"
 
   ELEMENT_NAME_STM_SHA256    = "STM-SHA256"
-  ELEMENT_NAME_STM_SHA384   = "STM-SHA384"
-  ELEMENT_NAME_STM_SHA512   = "STM-SHA512"
+  ELEMENT_NAME_STM_SHA384    = "STM-SHA384"
+  ELEMENT_NAME_STM_SHA512    = "STM-SHA512"
   ELEMENT_NAME_STM_SM3       = "STM-SM3"
 
   # element name strings for PO rules
@@ -118,12 +115,11 @@ class DEFINES( object ):
     ELEMENT_NAME_MLE_SHA512,   ELEMENT_NAME_MLE_SHA384,
     ELEMENT_NAME_MLE_SHA256,   #ELEMENT_NAME_MLE_SM3,
   ]
-  
+
   # This replaces util.getHashes()
   # supported hash algorithm names
   SUPPORTED_HASHES = [
-    'SHA256', 'SHA384', 'SHA512',
-    #'SM3'
+    'SHA256', 'SHA384', 'SHA512', #'SM3'
   ]
   
   # allowed hash algorithm names
@@ -219,10 +215,10 @@ class DEFINES( object ):
 
   HashFileMode = {
     'HdrNull'     : 0,
-    'RawSHA256'   : 1,
-    'RawSHA384'   : 2,
-    'RawSHA512'   : 3,
-    'RawSM3'      : 4 #TODO: check the value
+    'RawSHA256'   : 3,
+    'RawSHA384'   : 4,
+    'RawSHA512'   : 5,
+    'RawSM3'      : 6 #TODO: check the value
   }
 
   # Types of PCR dump Files - see util.verifyPcrFile()

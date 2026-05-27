@@ -1,4 +1,4 @@
-# Copyright (c) 2006-2010, Intel Corporation
+# Copyright (c) 2006-2026, Intel Corporation
 # All rights reserved.
 
 # -*- mode: Makefile; -*-
@@ -6,8 +6,8 @@
 #
 # tboot-specific build settings
 #
-RELEASEVER  := "1.11.10"
-RELEASETIME := "2025-04-17 16:00 +0100"
+RELEASEVER  := "1.11.12"
+RELEASETIME := "2026-03-18 16:00 +0100"
 ROOTDIR ?= $(CURDIR)/..
 
 # tboot needs too many customized compiler settings to use system CFLAGS,

@@ -93,55 +93,10 @@
 /*--------- with LCP_POLICY version 2.0 ------------*/
 #define SHA256_LENGTH      32
 
-typedef union {
-    uint8_t    sha256[SHA256_LENGTH];
-} lcp_hash_t;
-
-/*--------- legacy LCP alg names ------------*/
-#define LCP_POLSALG_NONE           0
-
 /*--------- pconf helper structs ------------*/
 
 #define TPM_LOCALITY_SELECTION     uint8_t
 #define DEFAULT_LOCALITY_SELECT    0x1F
-
-typedef lcp_hash_t tpm_composite_hash;
-
-typedef struct __packed {
-    uint16_t size_of_select;
-    uint8_t  pcr_select; //We only need PCRs 0-7 so it's just one byte here
-} tpm_pcr_selection;
-
-typedef struct __packed {
-    tpm_pcr_selection      pcr_selection;
-    TPM_LOCALITY_SELECTION locality_at_release;
-    uint8_t                digest_at_release[SHA256_DIGEST_SIZE]; //This is a hash of all selected pcr values
-} tpm_pcr_info_short_t;
-
-/*--------- legacy policy elts ------------*/
-
-#define LCP_POLELT_TYPE_MLE     0
-
-typedef struct __packed {
-    uint8_t      sinit_min_version;
-    uint8_t      hash_alg;
-    uint16_t     num_hashes;
-    lcp_hash_t  hashes[];
-} lcp_mle_element_t;
-
-#define LCP_POLELT_TYPE_PCONF     1
-
-typedef struct __packed {
-    uint16_t           num_pcr_infos;
-    tpm_pcr_info_short_t pcr_infos[];
-} lcp_pconf_element_t;
-
-typedef struct __packed {
-    uint16_t    revocation_counter;
-    uint16_t    pubkey_size;
-    uint8_t     pubkey_value[0];
-    uint8_t     sig_block[];
-} lcp_signature_t;
 
 /* set bit 0: override PS policy for this element type */
 #define DEFAULT_POL_ELT_CONTROL     0x0001
@@ -312,9 +267,6 @@ typedef struct __packed {
     uint16_t               sig_alg;
     uint32_t               policy_elements_size;
     lcp_policy_element_t   policy_elements[];
-//#if (sig_alg != TPM_ALG_NULL)
-//    lcp_signature_t        sig;
-//#endif
 } lcp_policy_list_t2;
 
 /* LCP POLICY LIST 2.1 and its helper structs */

@@ -1,3 +1,27 @@
+20260318: v1.11.12
+		Fix lcptools-v2 compilation error, caused by incorrect size of
+		digest buffer allocation. The size of the digest buffer should be
+		SHA1_DIGEST_SIZE, not sizeof(tb_hash_t).
+
+		Fix SGX status verification. TBOOT used improper method of the SGX
+		status verification. Added proper SGX status verification by checking
+		both CPUID and MSR_IA32_FEATURE_CONTROL[bit 18]. If SGX is not
+		enabled, TBOOT will print error message and return without doing the
+		SVN check.
+
+		Secure pointer to the TBOOT Log base from unauthorized DMA access.
+		Defined new functions in tboot.h to return the base address of the
+		TBOOT Log and validate its UUID, ensuring proper initialization.
+
+		Provide DMA protection for global variable holding the number of e820
+		entries. Defined a secure global pointer in OsMleData structure,
+		protected from unauthorized DMA access, with verification procedure
+		called before e820 map copying and TXT heap initialization.
+20260214: v1.11.11
+		Provide new cmdline option - "force_pmrs", which disabled TPR
+		configuration and support both for TBOOT and SINIT ACM. TBOOT sets
+		PMRs for SINIT ACM as it's default memory protection mechanism.
+		Disable Intel CET technology, during TBOOT shutdown execution.
 20250417: v1.11.10
 		Fix the issue causing tboot to hang during waking up processors from
 		txt sleep on DMR simics
