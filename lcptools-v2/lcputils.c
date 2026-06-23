@@ -267,6 +267,12 @@ parse_line_hashes (
       case TPM_ALG_SHA384:
         hash->sha384[i++] = (uint8_t)strtoul (line, &next, 16);
         break;
+      case TPM_ALG_SM3_256:
+        hash->sm3[i++] = (uint8_t)strtoul (line, &next, 16);
+        break;
+      case TPM_ALG_SHA512:
+        hash->sha512[i++] = (uint8_t)strtoul (line, &next, 16);
+        break;
       default:
         ERROR ("Error: unsupported alg: 0x%x\n", alg);
         return false;
