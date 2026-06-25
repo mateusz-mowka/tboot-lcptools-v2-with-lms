@@ -45,7 +45,7 @@
 #include "../include/config.h"
 #include "../include/hash.h"
 #include "../include/uuid.h"
-#include "../include/lcp2.h"
+#include "../include/lcp3.h"
 #include "../include/tb_error.h"
 #include "../include/tb_policy.h"
 #include "tb_polgen.h"

@@ -221,6 +221,7 @@ class UTILS( object ):
 
 
   # Verify that the file is a valid HASH_FILE with a HASH_TAG, hashAlg and hashSize
+  #     [with 1 or more SHA1 hashes]  - legacy support from the TPM1.2 LCP1 Spec
   # or a raw data file [i.e. no header] with ONLY 1 32 bit SHA256 hash
   #
   # if OK, return a list containing: [True, HashFileModeXXX]  defined in defines.py
@@ -229,6 +230,7 @@ class UTILS( object ):
   #     or if the length indicates the hash does not correspond to the elements.HashAlg
   #
   #TODO: Bill: verifyHashFile- LCP2 spec  deletes the HASH_FILE struct def for files with multiple hashes??
+  #TODO: Bill: raw SHA256 hash data only, for raw files with 1 SHA256 hash
   #
   def verifyHashFile(self, file, hashAlg):
     """verifyHashFile - return a list indicating if the file is valid and its type"""
@@ -299,7 +301,6 @@ class UTILS( object ):
 
     # PCR dump files use the PCR2 format.
     # PCRD format (TPM1.2) is no longer supported.
-    #
 
     # - PCR2 PCR dump File format  - from App. C.1.2
     #     typedef struct {
@@ -342,9 +343,9 @@ class UTILS( object ):
     fileHashTag  = data[0:4].tostring()          # 0:3 inclusive = 0:4 exclusive of 4
     numHashes = data[6]                          # PCRD 'numHashes' same as PCR2 'count'
     fileType = DEFINES.PcrFileMode['Null']
-    if(fileHashTag == expectedPcrdTag):          # PCRD file (TPM1.2 only, no longer supported)
-      print ("%s file %s uses PCRD format which is no longer supported (TPM1.2 only)" %
-          (expectedPcrdTag, file))
+    if (fileHashTag == expectedPcrdTag):          # PCRD file (TPM1.2 only, no longer supported)
+      print("%s file %s uses PCRD format which is no longer supported (TPM1.2 only)" %
+           (expectedPcrdTag, file))
       return [False, DEFINES.PcrFileMode['Pcrd']]
 
     elif(fileHashTag == expectedPcr2Tag):        # PCR2 file
@@ -354,7 +355,8 @@ class UTILS( object ):
       if(elementExpAlg == fileActualHashAlg):
         actAlg = fileActualHashAlg
         fileType = DEFINES.PcrFileMode['Pcr2']
-        minFileLength   = DEFINES.PCR2FileHdrSize + (8*DEFINES.DIGEST_SIZE[elementExpAlgStr])   # min PCR2 file has 8 hash's
+        minFileLength = DEFINES.PCR2FileHdrSize + \
+                        (8 * DEFINES.DIGEST_SIZE[elementExpAlgStr])   # min PCR2 file has 8 hash's
       else:
         print("%s file: %s hashAlg: 0x%x%x does not match the PCONF element's expected algorithm: 0x%02x" %
             (expectedPcr2Tag, file, data[4], data[5], elementExpAlg))
@@ -406,7 +408,8 @@ class UTILS( object ):
       print("PCRD format is no longer supported (TPM1.2 only)")
       return False
     elif(fileType == DEFINES.PcrFileMode['Pcr2']):
-      minFileLength   = DEFINES.PCR2FileHdrSize + (8*DEFINES.DIGEST_SIZE[hashAlgStr])   # min PCR2 file has 8 hash's
+      minFileLength = DEFINES.PCR2FileHdrSize + \
+                      (8 * DEFINES.DIGEST_SIZE[hashAlgStr]) # min PCR2 file has 8 hash's
     else:
       print("verifyPcrInfoNumHashes - invalid fileType=%x!!!" % (file, fileType))  # Should NEVER get here
 
@@ -518,7 +521,7 @@ class UTILS( object ):
     # handle all the flavors of hash files
     _GlobalHashData = data.tolist()
     assert len(data) == DEFINES.DIGEST_SIZE[hashAlgStr], "Error: File size (%d bytes) mismatch with %s size (%d bytes)" %(len(data), hashAlgStr, DEFINES.DIGEST_SIZE[hashAlgStr])
-    print("getHashFromFile: %s, raw %s hash=%s, len=%d" % (file, hashAlgStr, _GlobalHashData, len(_GlobalHashData)))   # DBGDBG
+    print("getHashFromFile: %s, raw %s hash=%s, len=%d" % (file, hashAlgStr, _GlobalHashData, len(_GlobalHashData))) # DBG
 
     return _GlobalHashData;
 

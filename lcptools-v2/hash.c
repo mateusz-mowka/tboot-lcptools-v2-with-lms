@@ -103,7 +103,7 @@ print_hash (
   if ( hash_alg == TB_HALG_SHA256 ) {
     for ( unsigned int i = 0; i < SHA256_LENGTH; i++ ) {
       printf ("%02x", hash->sha256[i]);
-      if ( i < SHA256_LENGTH-1 ) {
+      if ( i < SHA256_LENGTH - 1 ) {
         printf (" ");
       }
     }

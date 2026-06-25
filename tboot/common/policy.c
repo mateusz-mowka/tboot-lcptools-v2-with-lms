@@ -851,7 +851,7 @@ static tb_error_t verify_nvindex(tb_policy_entry_t *pol_entry,
         }
         break;
     case TB_POL_MOD_NUM_NV_RAW:
-        if (nv_size != SHA256_DIGEST_SIZE && nv_size != SHA384_DIGEST_SIZE
+        if ( nv_size != SHA256_DIGEST_SIZE && nv_size != SHA384_DIGEST_SIZE
              && nv_size != SHA512_DIGEST_SIZE) {
             printk(TBOOT_ERR"\t :raw nv with wrong size (%d), should be"
                    " %d, %d or %d\n",
@@ -877,7 +877,7 @@ static tb_error_t verify_nvindex(tb_policy_entry_t *pol_entry,
         VL_ENTRIES(NUM_VL_ENTRIES).hl.count = 1;
         VL_ENTRIES(NUM_VL_ENTRIES).hl.entries[0].alg = hash_alg;
         tb_memcpy(VL_ENTRIES(NUM_VL_ENTRIES++).hl.entries[0].hash.sha512,
-                digest.sha512, SHA512_LENGTH);
+                digest.sha512, get_hash_size(hash_alg));
     }
 
     /* verify nv content */

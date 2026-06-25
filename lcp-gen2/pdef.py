@@ -13,7 +13,8 @@ from util import UTILS
 utilities = UTILS()
 
 
-_GlobalHashData   = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+_GlobalHashData   = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                     0,0,0]
 
 PCONF_ELEMENT2_HDR_SIZE = 16  # size of LCP_PCONF_ELEMENT2's fields except PcrInfo's
                               # i.e. sizeof(ElementSize+ElementType+
@@ -40,7 +41,7 @@ class PDEF( object ):
     #
     self.MaxLists =          8                                 # UINT8  MAX_LISTS = 8      - Max lists per policy
     #self.MaxElements =       4                                 # UINT8  MAX_ELEMENTS = 4   - Max elements per list per element
-    self.MaxElements =       3                                 # support SHA256, SHA384, SHA512
+    self.MaxElements =       3                                 # support SHA256, SHA384 & SHA512
 
     self.MaxHashSize =       64                                # UINT8  MAX_HASH_SIZE = 64 - Max allowed HASH size
     self.MaxHashes =         16                                # UINT16 MAX_HASHES = 16    - Max hashes per element, 0=unlimited
@@ -76,7 +77,7 @@ class PDEF( object ):
     self.AuxHashAlgMask = DEFINES.TPM_ALG_HASH_MASK['SHA256']  # UINT16  TPM_ALG_HASH_MASK_XXXXX
     self.LcpSignAlgMask = DEFINES.TPM_ALG_HASH_MASK['SHA256']  # UINT32  TPM_ALG_SIGN_MASK_XXXXX
 
-    # save the raw and hex formatted versions of the SHA256 hashes
+    # save both the raw and hex formatted versions of the SHA256 hashes
     #self.PolicyHashSha256     = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     #                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]  # MAX_HASH = 32 for SHA256
     #self.PolicyHashSha256Hex  = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -159,7 +160,7 @@ class PLIST_DEF( object ):
     self.ListModified            = False                   # BOOLEAN - indicates if this list has changed since last build; only clear when building policy.
     # Reserved[3]           = 0                            # UINT8
     self.SigAlgorithm            = DEFINES.TPM_ALG_SIGN['NULL']    # UINT8 - USER: 0=Not signed
-    self.sigAlgorithmHash        = DEFINES.TPM_ALG_HASH['SHA256']   # corresponds to signing hash
+    self.sigAlgorithmHash        = DEFINES.TPM_ALG_HASH['SHA256']  # corresponds to signing hash
     self.PolicyElementSize       = 0                       # UINT32 - total size of all elements in this list
     self.CurrentElementView      = "None"                  # UINT8 - saves user state: 0=MLE, 1=PCONF, 3=SBIOS, 0xFF=None
     # Reserved2[3]          = 0                            # UINT8

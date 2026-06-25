@@ -458,7 +458,7 @@ class LIST( object ):
       elementType, hashAlg = defdata.Name.split('-')
 
       if elementType == 'SBIOS':
-        element = SBIOS(DEFINES.TPM_ALG_HASH[hashAlg])      # GUI panel
+        element = SBIOS(DEFINES.TPM_ALG_HASH[hashAlg]) # GUI panel
       elif elementType == 'STM':
         element = STM(DEFINES.TPM_ALG_HASH[hashAlg])
       elif elementType == 'MLE':
@@ -515,7 +515,6 @@ class LIST( object ):
     listNum = 0
     while( listNum < pdef.NumLists):
       thisList = pdef.PolListInfo[str(listNum)]
-
       if(thisList.SigAlgorithm == DEFINES.TPM_ALG_SIGN['RSASSA']):
         if(thisList.SyncRevCount == True):
           thisList.RevokeCounter = thisList.RevocationCounter
@@ -751,7 +750,8 @@ class LIST( object ):
     # Note: Sync checkbox and Algorithm pulldown are redundant
     #   Sync unchecked  == LCP_POLSALG_NONE
 
-    #If Unsigned [ie algorithm=None], then revocation count, allowed, RESET, Sync, Key File & Key Size are all disabled,
+    # If Unsigned [ie algorithm=None], then revocation count, allowed, RESET,
+    # Sync, Key File & Key Size are all disabled,
     # else enabled
 
     currentList = self.pdef.getCurrentListObject()
@@ -1281,13 +1281,11 @@ class LIST( object ):
       element.printDef(f)
       print("\n", file=f)         # for readability
 
-
   def hideAllPanels( self ):
     """hideAllPanels - hide all the element panels"""
 
     for element in self.includedElements:
       element.hidePanel()
-
 
   def hideThisPanel( self, panelToHide ):
     """hideThisPanel"""

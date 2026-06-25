@@ -322,7 +322,7 @@ class Build( object ):
     listCnt = 0
     while(listCnt < pdef.NumLists):
       #if(pdef.HashAlg == DEFINES.TPM_ALG_HASH['SHA256']):
-      #  thisHash = ListMeasurements.hashes32[str(listCnt)]
+      #  thisHash = ListMeasurements.hashes[str(listCnt)]
       thisHash = ListMeasurements.hashes[str(listCnt)]
       
       hash.update(bytes(thisHash))

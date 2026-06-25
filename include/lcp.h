@@ -70,8 +70,4 @@
 /*--------- Other data structures of LCP Policy ------------*/
 #define SHA256_LENGTH      32
 
-typedef union {
-    uint8_t    sha256[SHA256_LENGTH];
-} lcp_hash_t;
-
 #endif    /*  __TXT_LCP_H__ */
